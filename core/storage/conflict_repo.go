@@ -2,7 +2,7 @@
 // 模式定义、数据迁移和 CRUD 仓储。
 //
 // 本文件包含 ConflictRepo 仓储，封装对 conflict_reports 表的 CRUD 操作。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -15,7 +15,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // ConflictRepo 封装对 conflict_reports 表的 CRUD 操作。

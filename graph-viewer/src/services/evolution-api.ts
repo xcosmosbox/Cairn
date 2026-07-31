@@ -1,7 +1,7 @@
 // ============================================================
 // evolution-api — 演化后端 API 客户端 / Evolution Backend API Client
 //
-// 对接 dk-evolve-serve（E-4，默认 127.0.0.1:7801）：
+// 对接 cairn-evolve（E-4，默认 127.0.0.1:7801）：
 //   GET /api/manifest → 时间轴 + 曲线数据一次拉齐。
 // 快照 db 文件不走本模块——由 DBLoader.loadFromURL 直接 fetch
 // /snapshots/<file>（前端 sql.js 加载，性能优先）。
@@ -9,7 +9,7 @@
 
 import type { EvolutionManifest } from '../types'
 
-/** 默认后端地址（dk-evolve-serve 的默认监听） */
+/** 默认后端地址（cairn-evolve 的默认监听） */
 export const EVOLUTION_DEFAULT_BASE_URL = 'http://127.0.0.1:7801'
 
 /**

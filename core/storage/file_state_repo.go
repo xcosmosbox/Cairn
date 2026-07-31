@@ -4,7 +4,7 @@
 // 本文件包含 FileStateRepo 仓储，用于跟踪已索引文件的哈希状态以支持增量更新。
 // 使用 (repo_url, file_path) 复合主键实现 Loop Guard：
 // 防止同一文件在不同仓库中被重复处理。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //

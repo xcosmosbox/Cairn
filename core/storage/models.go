@@ -4,7 +4,7 @@
 // 本文件包含数据库行映射结构体（dbNode、dbEdge）及其到公有类型
 // （dktypes.Node、dktypes.Edge）的转换方法。这些结构体使用 *string 表示
 // 可空的数据库列，在转换时处理 nil 与空字符串之间的差异。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // dbNode 映射 nodes 表中的一行记录。

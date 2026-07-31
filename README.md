@@ -1,4 +1,4 @@
-# Domain Knowledge Layer
+# Cairn
 
 > 把散落在 Skill 文档里的领域知识，持续构建成一张可查询、可演化、可分发的知识图谱，
 > 并通过 MCP 交付给 AI Agent。
@@ -14,7 +14,7 @@
 
 AI Agent 消费文档时面临两难：全量塞进上下文太贵且噪声大；用向量检索又丢失结构关系。
 
-Domain Knowledge Layer 走第三条路：**先把文档蒸馏成结构化知识图谱**（领域 → 子域 → 实体/概念 +
+Cairn 走第三条路：**先把文档蒸馏成结构化知识图谱**（领域 → 子域 → 实体/概念 +
 语义关系），Agent 按需精准检索子图。同时解决三个工程问题：
 
 | 问题 | 做法 |
@@ -29,11 +29,11 @@ Domain Knowledge Layer 走第三条路：**先把文档蒸馏成结构化知识�
 
 ```
                           ┌──────────────────────────────────────┐
-    你的 Skill 仓库  ────▶ │  dk-build（构建端）                  │
-    SKILL.md +            │  ├ dkd            持续构建守护进程   │
-    references/*.md       │  ├ dk-ingest      全量提取流水线     │
-                          │  ├ dk-incremental 增量更新           │
-                          │  └ dk-rebalance   结构重整           │
+    你的 Skill 仓库  ────▶ │  build（构建端）                  │
+    SKILL.md +            │  ├ cairnd          持续构建守护进程  │
+    references/*.md       │  ├ cairn-ingest      全量提取流水线     │
+                          │  ├ cairn-incremental 增量更新           │
+                          │  └ cairn-rebalance   结构重整           │
                           └───────────────┬──────────────────────┘
                                           │ knowledge.db（SQLite + FTS5）
                                           │ → 打包为不可变 Bundle
@@ -46,10 +46,10 @@ Domain Knowledge Layer 走第三条路：**先把文档蒸馏成结构化知识�
                        ┌──────────────────┴───────────────────┐
                        ▼                                      ▼
         ┌──────────────────────────────┐      ┌───────────────────────────────┐
-        │ dk-service（查询端）         │      │ graph-viewer（可视化）        │
-        │ ├ mcp-server                 │      │ 浏览器内 SQLite（sql.js）     │
+        │ service（查询端）         │      │ graph-viewer（可视化）        │
+        │ ├ cairn-mcp                 │      │ 浏览器内 SQLite（sql.js）     │
         │ │   stdio / SSE / REST API   │      │ 3D 力导向图 + 演化时间线      │
-        │ └ dk    命令行只读查询       │      └───────────────────────────────┘
+        │ └ cairn  命令行只读查询      │      └───────────────────────────────┘
         └──────────────┬───────────────┘
                        ▼
           Claude Desktop / 任意 MCP client
@@ -78,40 +78,40 @@ make build          # 产出 8 个二进制到 bin/
 构建端的三个流水线二进制走命令行参数（不读配置文件）：
 
 ```bash
-export DK_LLM_API_KEY="your-key"          # Key 只走环境变量，绝不写进配置
+export CAIRN_LLM_API_KEY="your-key"          # Key 只走环境变量，绝不写进配置
 
-./bin/dk-ingest \
+./bin/cairn-ingest \
   --repo /path/to/your-skills-repo \
   --db   ./knowledge.db
 ```
 
-默认模型与端点是 DeepSeek（`--model` / `--endpoint` 可改）。完整参数见 `./bin/dk-ingest -h`。
+默认模型与端点是 DeepSeek（`--model` / `--endpoint` 可改）。完整参数见 `./bin/cairn-ingest -h`。
 
 产出 `knowledge.db`（SQLite）。用 CLI 查一下（`--db-path` 是全局标志，须置于子命令之前）：
 
 ```bash
-./bin/dk --db-path ./knowledge.db find "订单聚合根"     # 按名称搜索实体及其入边
-./bin/dk --db-path ./knowledge.db impact "支付网关"     # 前向 BFS，看影响范围
-./bin/dk --db-path ./knowledge.db status                # 图谱概览
+./bin/cairn --db-path ./knowledge.db find "订单聚合根"     # 按名称搜索实体及其入边
+./bin/cairn --db-path ./knowledge.db impact "支付网关"     # 前向 BFS，看影响范围
+./bin/cairn --db-path ./knowledge.db status                # 图谱概览
 ```
 
 > **关于中文检索**：`nodes_fts` 使用 FTS5 默认的 `unicode61` 分词器，连续汉字是
 > 单个 token，因此请传**完整节点名**而非子串（搜「订单聚合根」可命中，只搜「订单」不行）。
 > 命中一个入口节点后，图遍历会把周边子图带出来。这是当前的既定设计，
-> 原因与后续改法记录在 `dk-service/internal/service/query_rewriter.go` 的文档注释里。
+> 原因与后续改法记录在 `service/internal/service/query_rewriter.go` 的文档注释里。
 
 ### 3. 挂给 AI Agent（MCP）
 
 ```bash
 cp configs/mcp-local.example.yaml configs/mcp-local.yaml   # 改 path 指向你的 .db
-./bin/mcp-server --config configs/mcp-local.yaml           # stdio 传输
+./bin/cairn-mcp --config configs/mcp-local.yaml           # stdio 传输
 ```
 
 需要团队共享（HTTP/SSE + 免鉴权 REST API）：
 
 ```bash
 cp configs/mcp-http.example.yaml configs/mcp-http.yaml
-./bin/mcp-server --config configs/mcp-http.yaml --listen :8080
+./bin/cairn-mcp --config configs/mcp-http.yaml --listen :8080
 
 curl 'http://localhost:8080/api/search?keyword=aggregate&kg=my-skills&limit=5'
 ```
@@ -131,12 +131,12 @@ cd graph-viewer && npm install && npm run dev
 
 ### 无凭证试跑整条流水线
 
-`dkd` 支持 `--fake` 模式，用内存版 Forge 替代 GitHub，无需任何凭证即可走完
+`cairnd` 支持 `--fake` 模式，用内存版 Forge 替代 GitHub，无需任何凭证即可走完
 「构建 → PR → Catalog → stable」全流程：
 
 ```bash
-cp configs/dkd.example.yaml configs/dkd.yaml
-./bin/dkd run --once --fake --config configs/dkd.yaml
+cp configs/cairnd.example.yaml configs/cairnd.yaml
+./bin/cairnd run --once --fake --config configs/dkd.yaml
 ```
 
 ---
@@ -145,23 +145,23 @@ cp configs/dkd.example.yaml configs/dkd.yaml
 
 | 二进制 | 归属 | 职责 |
 | --- | --- | --- |
-| `dkd` | dk-build | 持续构建守护进程：轮询源仓库 → 构建 → 开 PR → 发布 Bundle → 提升 stable |
-| `dkctl` | dk-build | dkd 的运维 CLI（查看 run 状态、重试、解除阻塞） |
-| `dk-ingest` | dk-build | 全量提取流水线（首次建库 / 指纹变更后重建） |
-| `dk-incremental` | dk-build | 增量更新（文档改动后最小化重算） |
-| `dk-rebalance` | dk-build | 结构重整（漂移达阈值时全局化简） |
-| `dk-evolve-serve` | dk-build | 演化数据 HTTP 服务（供 Viewer 的时间线视图） |
-| `mcp-server` | dk-service | MCP Server：stdio / SSE / REST 三种传输，支持 catalog 自动热更新 |
-| `dk` | dk-service | 命令行只读查询：`find` `impact` `show` `status` `why` `timeline` `sentinel` |
+| `cairnd` | build | 持续构建守护进程：轮询源仓库 → 构建 → 开 PR → 发布 Bundle → 提升 stable |
+| `cairnctl` | build | dkd 的运维 CLI（查看 run 状态、重试、解除阻塞） |
+| `cairn-ingest` | build | 全量提取流水线（首次建库 / 指纹变更后重建） |
+| `cairn-incremental` | build | 增量更新（文档改动后最小化重算） |
+| `cairn-rebalance` | build | 结构重整（漂移达阈值时全局化简） |
+| `cairn-evolve` | build | 演化数据 HTTP 服务（供 Viewer 的时间线视图） |
+| `cairn-mcp` | service | MCP Server：stdio / SSE / REST 三种传输，支持 catalog 自动热更新 |
+| `cairn` | service | 命令行只读查询：`find` `impact` `show` `status` `why` `timeline` `sentinel` |
 
 ### 目录结构
 
 ```
 core/           共享库：storage(SQLite+FTS5) / kbbundle(打包分发) / githubapp(鉴权)
                        metrics(图质量哨兵) / evolve+observe(演化) / dktypes / dkconfig
-dk-build/       构建端：cmd/* 入口 + internal/{pipeline,extract,incremental,rebalance,
+build/       构建端：cmd/* 入口 + internal/{pipeline,extract,incremental,rebalance,
                        writeback,controller,...}
-dk-service/     查询端：cmd/{dk,mcp-server} + internal/service（只读、零 LLM）
+service/     查询端：cmd/{dk,cairn-mcp} + internal/service（只读、零 LLM）
 graph-viewer/   前端：Vite + React + TypeScript，浏览器内 SQLite
 configs/        配置示例（*.example.yaml）
 deploy/         Dockerfile / docker-compose / systemd unit
@@ -202,7 +202,7 @@ GitHub App 私钥走文件路径或环境变量。
 
 | 示例配置 | 用途 |
 | --- | --- |
-| `configs/dkd.example.yaml` | dkd 守护进程：GitHub App、源仓库、catalog、阈值 |
+| `configs/cairnd.example.yaml` | cairnd 守护进程：GitHub App、源仓库、catalog、阈值 |
 | `configs/mcp-local.example.yaml` | MCP stdio + 本地静态 db（最简） |
 | `configs/mcp-catalog-watch.example.yaml` | MCP stdio + catalog 自动热更新 |
 | `configs/mcp-http.example.yaml` | MCP HTTP/SSE + REST API |

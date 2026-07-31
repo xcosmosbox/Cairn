@@ -1,6 +1,6 @@
 # graph-viewer
 
-Domain Knowledge Layer 的知识图谱可视化前端。**纯浏览器端运行**——用
+Cairn 的知识图谱可视化前端。**纯浏览器端运行**——用
 [sql.js](https://sql.js.org/)（SQLite 编译到 WebAssembly）直接在页面里读取
 `knowledge.db`，不需要后端。
 
@@ -30,19 +30,19 @@ npm run dev        # http://localhost:5173
 cd ..
 make build
 export DK_LLM_API_KEY="your-key"
-./bin/dk-ingest --repo /path/to/your-skills-repo --db ./knowledge.db
+./bin/cairn-ingest --repo /path/to/your-skills-repo --db ./knowledge.db
 ```
 
 也可以从 catalog 拉取已发布的 Bundle（见根 README 的 Bundle 分发章节）。
 
 ### 演化时间线需要额外服务
 
-时间线与指标趋势视图从 `dk-evolve-serve` 读取演化数据。它读的是**演化产物目录**
+时间线与指标趋势视图从 `cairn-evolve` 读取演化数据。它读的是**演化产物目录**
 （含 `evolution.db` 与 `snapshots/`），默认位于 `.db` 同级的 `evolution/`：
 
 ```bash
 cd ..
-./bin/dk-evolve-serve --dir ./evolution
+./bin/cairn-evolve --dir ./evolution
 # 默认监听 127.0.0.1:7801，可用 --addr 改
 ```
 

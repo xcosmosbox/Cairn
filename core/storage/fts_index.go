@@ -2,7 +2,7 @@
 // 模式定义、数据迁移和 CRUD 仓储。
 //
 // 本文件包含 FTSIndex 结构体，封装对 SQLite FTS5 全文搜索虚拟表的操作。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -14,7 +14,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // FTSIndex 封装对 nodes_fts 虚拟表的全文搜索操作。

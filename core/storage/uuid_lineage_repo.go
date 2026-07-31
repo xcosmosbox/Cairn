@@ -8,7 +8,7 @@
 // 主要用途：重整后把文档/审计中引用的旧 uuid 顺血缘链解析到最新存活 uuid
 // （ResolveLatest），以及测试与审计导出（ListAll）。
 //
-// Package storage implements the persistence layer for the Domain Knowledge Layer.
+// Package storage implements the persistence layer for the Cairn.
 // This file contains the UUIDLineageRepo repository: write and resolve operations
 // over the uuid_lineage table (node identity lineage, written only on merge/split).
 package storage

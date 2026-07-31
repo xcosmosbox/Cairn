@@ -2,7 +2,7 @@
 # MCP Server — Catalog 自动热更新 / Catalog auto hot-reload
 # ============================================================================
 # 传输：stdio（JSON-RPC over stdin/stdout）
-# 鉴权：复用与 dkd 相同的 GitHub App（无需另建 PAT）
+# 鉴权：复用与 cairnd 相同的 GitHub App（无需另建 PAT）
 #
 # 工作流程：
 #   1. 启动时：若本地 DB 不存在，自动从 catalog repo 拉取当前 stable bundle
@@ -17,10 +17,10 @@
 #
 # 用法：
 #   cp configs/mcp-catalog-watch.example.yaml configs/mcp-catalog-watch.yaml
-#   ./bin/mcp-server --config configs/mcp-catalog-watch.yaml
+#   ./bin/cairn-mcp --config configs/mcp-catalog-watch.yaml
 # ============================================================================
 
-# ── GitHub App 鉴权（与 dkd.example.yaml 的 github 段保持一致）──
+# ── GitHub App 鉴权（与 cairnd.example.yaml 的 github 段保持一致）──
 github:
   # GitHub App 的 App ID（App 设置页可见）
   app_id: 123456
@@ -35,10 +35,10 @@ mcp:
       path: ./.local/kbs/my-skills/current/knowledge.db
       description: "示例知识库（catalog 自动热更新）/ Example KB with catalog auto-update"
 
-      # ── Catalog 配置（与 dkd.example.yaml 的 catalog 段保持一致）──
-      catalog_repo: your-org/kb-catalog      # = dkd 的 catalog.repo
-      catalog_branch: main                    # = dkd 的 catalog.branch
-      manifest_dir: knowledge-bases           # = dkd 的 catalog.manifest_dir（仓库内路径）
+      # ── Catalog 配置（与 cairnd.example.yaml 的 catalog 段保持一致）──
+      catalog_repo: your-org/kb-catalog      # = cairnd 的 catalog.repo
+      catalog_branch: main                    # = cairnd 的 catalog.branch
+      manifest_dir: knowledge-bases           # = cairnd 的 catalog.manifest_dir（仓库内路径）
       install_dir: ./.local/kbs/my-skills     # 本地安装目录（自动创建）
       poll_interval: 5m                       # 轮询间隔
 

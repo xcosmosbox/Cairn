@@ -24,8 +24,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
-	"github.com/xcosmosbox/domain-knowledge-layer/core/storage"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // 节点变更类别 / node change categories.
@@ -57,7 +57,7 @@ type NodeChange struct {
 }
 
 // UnmarshalJSON 按 Change 把 Detail 还原为具体类型（默认反序列化只会得到
-// map[string]any，Markdown()/dk show 需要类型化 Detail）。
+// map[string]any，Markdown()/cairn show 需要类型化 Detail）。
 //
 // UnmarshalJSON restores the concrete Detail type implied by Change so a
 // JSON round-trip keeps DiffResult fully renderable.

@@ -1,4 +1,4 @@
-// Package dktypes 定义领域知识层（Domain Knowledge Layer）中所有跨包共享的核心类型、
+// Package dktypes 定义领域知识层（Cairn）中所有跨包共享的核心类型、
 // 枚举、数据结构及其校验方法。
 //
 // 本文件包含知识图谱查询相关的请求、响应及结果数据结构。

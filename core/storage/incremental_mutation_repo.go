@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // IncrementalMutationRepo 封装增量旁路的事务化复合操作。

@@ -3,7 +3,7 @@
 //
 // 本文件包含 CrossRefRepo 仓储，封装对 cross_references 表的 CRUD 操作，
 // 以及跨知识图谱（cross-KG）链接的检测和查询。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -16,7 +16,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // CrossRefRepo 封装对 cross_references 表的 CRUD 操作。

@@ -18,7 +18,7 @@ import { fetchManifest, EVOLUTION_DEFAULT_BASE_URL } from '../services/evolution
 /** 快照图缓存上限（LRU；超出淘汰最久未选中的快照） */
 export const EVOLUTION_CACHE_CAP = 6
 
-/** diff 着色板（与 dk show / Markdown 事件配色一致） */
+/** diff 着色板（与 cairn show / Markdown 事件配色一致） */
 export const DIFF_COLORS = {
   added: '#22c55e', // 🟢 新增
   deleted: '#ef4444', // 🔴 删除（仅事件流；图上该节点已不存在）
@@ -39,7 +39,7 @@ export function evolutionSnapshotPath(cs: EvolutionChangeset): string {
 interface EvolutionState {
   /** 演化模式开关（sidebar 按钮切换） */
   enabled: boolean
-  /** 后端地址 / dk-evolve-serve base URL */
+  /** 后端地址 / cairn-evolve base URL */
   baseUrl: string
   /** 连接状态 / manifest fetch status */
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -134,9 +134,9 @@ function deriveOverlay(cs: EvolutionChangeset): {
 // ─── Store 实现 / Store Implementation ────────────────────────
 
 export const useEvolutionStore = create<EvolutionState>()((set, get) => ({
-  // 默认开启演化模式（前后端服务器模式）：前端启动即连 dk-evolve-serve。
+  // 默认开启演化模式（前后端服务器模式）：前端启动即连 cairn-evolve。
   // 单快照上传模式已移除，演化模式为唯一工作模式。
-  // Evolution mode is on by default: the viewer connects to dk-evolve-serve on startup.
+  // Evolution mode is on by default: the viewer connects to cairn-evolve on startup.
   // Single-snapshot upload has been removed; evolution is the only mode.
   enabled: true,
   baseUrl: EVOLUTION_DEFAULT_BASE_URL,

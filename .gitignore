@@ -7,14 +7,14 @@ coverage.txt
 coverage.html
 
 # 编译产物（顶层裸二进制）
-/dk
-/dkd
-/dkctl
-/dk-ingest
-/dk-incremental
-/dk-rebalance
-/dk-evolve-serve
-/mcp-server
+/cairn
+/cairnd
+/cairnctl
+/cairn-ingest
+/cairn-incremental
+/cairn-rebalance
+/cairn-evolve
+/cairn-mcp
 
 # ── Node / graph-viewer ────────────────────────────────────────────────────
 node_modules/

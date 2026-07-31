@@ -4,7 +4,7 @@
 // 本文件包含 ConflictDetector 结构体，在入库时检测同名概念冲突。
 // 使用 Jaro-Winkler 相似度算法（对中文更友好），阈值 0.85。
 //
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -17,7 +17,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // ConflictDetector 在入库时检测同名概念冲突。

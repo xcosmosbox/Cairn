@@ -4,7 +4,7 @@
 // 本文件包含数据库迁移机制：Migration 结构体、Migrations 注册表以及
 // DB 上的 Migrate 和 SchemaVersion 方法。迁移利用 SQLite 的 PRAGMA user_version
 // 追踪当前版本，只执行未应用过的迁移。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //

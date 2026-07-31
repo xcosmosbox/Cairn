@@ -2,7 +2,7 @@
 // 模式定义、数据迁移和 CRUD 仓储。
 //
 // 本文件包含 EdgeRepo 仓储，提供 edges 表的完整 CRUD 操作。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // EdgeRepo 封装对 edges 表的所有 CRUD 操作。

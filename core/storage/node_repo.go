@@ -2,7 +2,7 @@
 // 模式定义、数据迁移和 CRUD 仓储。
 //
 // 本文件包含 NodeRepo 仓储，提供 nodes 表的完整 CRUD 操作。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // NodeRepo 封装对 nodes 表的所有 CRUD 操作。

@@ -3,7 +3,7 @@
 //
 // 本文件包含数据库连接包装器 DB 及初始化入口 NewDB，负责创建 SQLite 连接、
 // 启用 WAL 模式、执行 DDL 和迁移。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -37,8 +37,8 @@ type DB struct {
 // DBOptions configures the database connection parameters.
 // All fields have sensible defaults and can be used without explicit configuration.
 type DBOptions struct {
-	// Path 是 SQLite 数据库文件路径，默认 "./domain-knowledge.db"
-	// Path is the SQLite database file path, default "./domain-knowledge.db"
+	// Path 是 SQLite 数据库文件路径，默认 "./knowledge.db"
+	// Path is the SQLite database file path, default "./knowledge.db"
 	Path string
 	// MaxOpenConns 是最大打开连接数，默认 1（SQLite 序列化写）
 	// MaxOpenConns is the maximum number of open connections, default 1 (SQLite serializes writes)
@@ -71,7 +71,7 @@ type DBOptions struct {
 func NewDB(opts DBOptions) (*DB, error) {
 	// 应用默认配置 / Apply defaults
 	if opts.Path == "" {
-		opts.Path = "./domain-knowledge.db"
+		opts.Path = "./knowledge.db"
 	}
 	if opts.MaxOpenConns == 0 {
 		opts.MaxOpenConns = 1
@@ -149,7 +149,7 @@ func (db *DB) Conn() *sql.DB {
 // no DDL or migration is executed.
 func OpenReadOnly(path string) (*DB, error) {
 	if path == "" {
-		path = "./domain-knowledge.db"
+		path = "./knowledge.db"
 	}
 	// mode=ro: 只读; _query_only=true: 禁止任何写操作; _journal_mode=WAL: 保持与构建端一致
 	// mode=ro: read-only; _query_only=true: prevent any writes; WAL journal mode

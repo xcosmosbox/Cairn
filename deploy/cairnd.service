@@ -1,0 +1,48 @@
+[Unit]
+Description=Cairn Controller (cairnd) — GitOps daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cairnd
+Group=cairnd
+WorkingDirectory=/var/lib/cairnd
+ExecStart=/usr/local/bin/cairnd daemon --config /etc/cairnd/config.yaml
+
+# 刻意不提供 ExecReload：cairnd 只捕获 SIGINT / SIGTERM（见 build/cmd/cairnd/main.go），
+# 未注册 SIGHUP。若这里写 ExecReload=kill -HUP，`systemctl reload` 会走 SIGHUP 的
+# 默认处置——直接终止进程，且跳过优雅关闭的安全边界。改配置请用 restart：
+#   systemctl restart cairnd
+# 若将来为 cairnd 实现了 SIGHUP 热重载，再把 ExecReload 加回来。
+
+# 优雅关闭：SIGTERM 后等待安全边界
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# 资源限制
+MemoryMax=2G
+CPUQuota=200%
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cairnd
+
+# 自动重启
+Restart=on-failure
+RestartSec=10
+
+# 环境变量（secret 经环境注入，不写入配置文件）
+Environment=CAIRND_CONFIG=/etc/cairnd/config.yaml
+EnvironmentFile=-/etc/cairnd/cairnd.env
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/cairnd
+
+[Install]
+WantedBy=multi-user.target

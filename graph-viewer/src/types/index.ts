@@ -110,8 +110,8 @@ export interface GraphLoadResult {
 }
 
 // ─── 复杂度哨兵采样 / Complexity Sentinel Sample ─────────────
-// 与 dk-service SentinelSnapshot 的 JSON 字段一一对应（sentinel.history 元素）。
-// Mirrors the dk-service SentinelSnapshot JSON shape (one sentinel.history entry).
+// 与 service SentinelSnapshot 的 JSON 字段一一对应（sentinel.history 元素）。
+// Mirrors the service SentinelSnapshot JSON shape (one sentinel.history entry).
 
 export interface SentinelSample {
   ts: string // 采样时间 ISO / sampling timestamp
@@ -143,7 +143,7 @@ export interface GraphTheme {
 }
 
 // ─── 演化模式类型 / Evolution Mode Types (E-5) ───────────────
-// 与 dk-evolve-serve 的 GET /api/manifest 返回结构一一对应
+// 与 cairn-evolve 的 GET /api/manifest 返回结构一一对应
 // （core/evolve 的 ChangesetRow / MetricRow JSON 字段）。
 
 /** 节点变更类别（血缘感知，与 core/observe 的分类常量一致） */

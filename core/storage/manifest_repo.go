@@ -2,9 +2,9 @@
 //
 // 本文件包含 ManifestRepo 仓储，提供 kg_manifest 表（键值对，value 为 JSON 字符串）
 // 的基础读写。kg_manifest 是跨会话的清单存储：本批由增量流水线写入「本轮/累计改动量」，
-// 供第三块（全量重整 dk-rebalance）的保底触发读取。
+// 供第三块（全量重整 cairn-rebalance）的保底触发读取。
 //
-// Package storage implements the persistence layer for the Domain Knowledge Layer.
+// Package storage implements the persistence layer for the Cairn.
 // This file contains the ManifestRepo repository, providing basic read/write over
 // the kg_manifest key-value table (values are JSON strings). The incremental
 // pipeline writes per-run/cumulative change statistics here for the rebalance

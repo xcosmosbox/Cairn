@@ -1,4 +1,4 @@
-// Package dktypes 定义领域知识层（Domain Knowledge Layer）中所有跨包共享的核心类型、
+// Package dktypes 定义领域知识层（Cairn）中所有跨包共享的核心类型、
 // 枚举、数据结构及其校验方法。
 //
 // 本文件定义「LLM 标注阶段」的产出契约：AnnotatedDocument / AnnotatedItem。

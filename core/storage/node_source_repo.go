@@ -20,7 +20,7 @@
 // 本批只实现写入（InsertBatch）与回写/审计所需的基础查询；
 // 增量批次的软删/引用计数查询（ListByNode / ListByFile）一并提供以便后续复用。
 //
-// Package storage implements the persistence layer for the Domain Knowledge Layer.
+// Package storage implements the persistence layer for the Cairn.
 // This file contains the NodeSourceRepo repository, providing write and query
 // operations on the node_sources table — the lifeline of write-back anchoring,
 // shared reference counting, and audit.

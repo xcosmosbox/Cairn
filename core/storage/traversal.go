@@ -5,7 +5,7 @@
 // 借鉴 CodeGraph 的 GraphTraverser 模式，每 BFS 步仅发 2 条简单 SQL，
 // 不使用 WITH RECURSIVE，以获得可预测的性能和可控的内存占用。
 //
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // bfsQueueItem 是 BFS 队列元素，包含节点 ID 和当前深度。

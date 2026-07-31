@@ -1,6 +1,6 @@
 // Package githubapp 提供 GitHub App 鉴权（JWT + installation token）。
-// 从 dk-build/internal/controller/githubapp 提取到 core/ 共享，
-// 使 dk-service（MCP Server）也能复用同一套鉴权。
+// 从 build/internal/controller/githubapp 提取到 core/ 共享，
+// 使 service（MCP Server）也能复用同一套鉴权。
 package githubapp
 
 import (

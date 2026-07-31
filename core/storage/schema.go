@@ -2,7 +2,7 @@
 // 模式定义、数据迁移和 CRUD 仓储。
 //
 // 本文件包含所有 DDL（数据定义语言）函数：建表语句、索引创建语句和表名列表。
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //

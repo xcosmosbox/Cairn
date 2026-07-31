@@ -1,6 +1,6 @@
 # 贡献指南 / Contributing
 
-感谢你对 Domain Knowledge Layer 的兴趣。本文档说明开发约定与不可违背的架构约束。
+感谢你对 Cairn 的兴趣。本文档说明开发约定与不可违背的架构约束。
 
 ## 开发环境
 
@@ -22,7 +22,7 @@ make verify     # 完整门禁（提 PR 前必跑）
 
 | 约束 | 含义 |
 | --- | --- |
-| 查询端零 LLM | `dk-service/internal/service` 不得 import LLM 包 |
+| 查询端零 LLM | `service/internal/service` 不得 import LLM 包 |
 | 查询端只读 | 查询端不得对 KG 结构做 Insert / Update / Delete / 重建 |
 | 演化层不写 KG | `core/evolve` 不得写 node / edge |
 | 零 embedding | 查询端、哨兵、演化层不得引入 embedding / faiss / hnsw |

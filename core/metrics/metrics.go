@@ -23,8 +23,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
-	"github.com/xcosmosbox/domain-knowledge-layer/core/storage"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // SubdomainKey 标识一个 subdomain（domain slug + subdomain slug）。

@@ -1,4 +1,4 @@
-// Package dkconfig 提供领域知识层控制器（dkd）、构建端与查询端共用的规范配置。
+// Package dkconfig 提供领域知识层控制器（cairnd）、构建端与查询端共用的规范配置。
 //
 // 设计要点（产品化 Prompt §5）：
 //   - secret 只存「环境变量名」或「文件路径」，绝不存值本身（§4.3）。
@@ -8,7 +8,7 @@
 //   - 默认 auto_merge_on_green=false；默认不执行源仓库脚本/workflow/hook/submodule。
 //   - 每repo串行、跨repo并发。
 //
-// 禁止让新 controller 跨包依赖 dk-service/internal/config；本包是模块级共享包。
+// 禁止让新 controller 跨包依赖 service/internal/config；本包是模块级共享包。
 package dkconfig
 
 import (
@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// Mode 决定 dkd 运行模式。
+// Mode 决定 cairnd 运行模式。
 type Mode string
 
 const (
@@ -27,7 +27,7 @@ const (
 	ModeOnce   Mode = "once"   // 跑一轮 reconcile 后退出
 )
 
-// Config 是 dkd / dkctl / 构建端共用的顶层配置。
+// Config 是 cairnd / cairnctl / 构建端共用的顶层配置。
 type Config struct {
 	Service ServiceConfig `yaml:"service"`
 	GitHub  GitHubConfig  `yaml:"github"`
@@ -170,7 +170,7 @@ func (c *Config) Validate() error {
 		c.LLM.Endpoint = "https://api.deepseek.com/chat/completions"
 	}
 	if c.LLM.APIKeyEnv == "" {
-		c.LLM.APIKeyEnv = "DK_LLM_API_KEY"
+		c.LLM.APIKeyEnv = "CAIRN_LLM_API_KEY"
 	}
 	if !envNameRe.MatchString(c.LLM.APIKeyEnv) {
 		return fmt.Errorf("dkconfig: llm.api_key_env 非法环境变量名 %q", c.LLM.APIKeyEnv)
@@ -327,7 +327,7 @@ func Defaults() Config {
 		LLM: LLMConfig{
 			Provider:   "openai_compatible",
 			Endpoint:   "https://api.deepseek.com/chat/completions",
-			APIKeyEnv:  "DK_LLM_API_KEY",
+			APIKeyEnv:  "CAIRN_LLM_API_KEY",
 			Model:      "deepseek-v4-pro",
 			MaxTokens:  384000,
 			Timeout:    Duration(600 * time.Second),

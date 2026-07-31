@@ -3,7 +3,7 @@
 //
 // 本文件包含混合排序引擎，对 BFS 遍历结果按 BM25 + 图深度的加权公式进行排序。
 //
-// Package storage implements the persistence layer for the Domain Knowledge Layer,
+// Package storage implements the persistence layer for the Cairn,
 // including database connection management, schema definition, data migration,
 // and CRUD repositories.
 //
@@ -14,7 +14,7 @@ package storage
 import (
 	"sort"
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // ScoredNode 是加权排序后的节点，包含各维度分数。

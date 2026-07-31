@@ -10,44 +10,44 @@ RUN go mod download
 COPY . .
 
 # 纯 Go 零 CGO 构建全部二进制
-RUN CGO_ENABLED=0 go build -o /out/dkd ./dk-build/cmd/dkd/ \
-    && CGO_ENABLED=0 go build -o /out/dkctl ./dk-build/cmd/dkctl/ \
-    && CGO_ENABLED=0 go build -o /out/dk-ingest ./dk-build/cmd/dk-ingest/ \
-    && CGO_ENABLED=0 go build -o /out/dk-incremental ./dk-build/cmd/dk-incremental/ \
-    && CGO_ENABLED=0 go build -o /out/dk-rebalance ./dk-build/cmd/dk-rebalance/ \
-    && CGO_ENABLED=0 go build -o /out/dk ./dk-service/cmd/dk/ \
-    && CGO_ENABLED=0 go build -o /out/mcp-server ./dk-service/cmd/mcp-server/ \
-    && CGO_ENABLED=0 go build -o /out/dk-evolve-serve ./dk-build/cmd/dk-evolve-serve/
+RUN CGO_ENABLED=0 go build -o /out/cairnd ./build/cmd/cairnd/ \
+    && CGO_ENABLED=0 go build -o /out/cairnctl ./build/cmd/cairnctl/ \
+    && CGO_ENABLED=0 go build -o /out/cairn-ingest ./build/cmd/cairn-ingest/ \
+    && CGO_ENABLED=0 go build -o /out/cairn-incremental ./build/cmd/cairn-incremental/ \
+    && CGO_ENABLED=0 go build -o /out/cairn-rebalance ./build/cmd/cairn-rebalance/ \
+    && CGO_ENABLED=0 go build -o /out/cairn ./service/cmd/cairn/ \
+    && CGO_ENABLED=0 go build -o /out/cairn-mcp ./service/cmd/cairn-mcp/ \
+    && CGO_ENABLED=0 go build -o /out/cairn-evolve ./build/cmd/cairn-evolve/
 
 # ── 运行阶段 / runtime stage ──
 FROM alpine:3.19
 
 RUN apk add --no-cache git ca-certificates tzdata \
-    && addgroup -S dkd && adduser -S -G dkd dkd
+    && addgroup -S cairnd && adduser -S -G cairnd cairnd
 
 # 二进制
-COPY --from=builder /out/dkd /usr/local/bin/dkd
-COPY --from=builder /out/dkctl /usr/local/bin/dkctl
-COPY --from=builder /out/dk-ingest /usr/local/bin/dk-ingest
-COPY --from=builder /out/dk-incremental /usr/local/bin/dk-incremental
-COPY --from=builder /out/dk-rebalance /usr/local/bin/dk-rebalance
-COPY --from=builder /out/dk /usr/local/bin/dk
-COPY --from=builder /out/mcp-server /usr/local/bin/mcp-server
-COPY --from=builder /out/dk-evolve-serve /usr/local/bin/dk-evolve-serve
+COPY --from=builder /out/cairnd /usr/local/bin/cairnd
+COPY --from=builder /out/cairnctl /usr/local/bin/cairnctl
+COPY --from=builder /out/cairn-ingest /usr/local/bin/cairn-ingest
+COPY --from=builder /out/cairn-incremental /usr/local/bin/cairn-incremental
+COPY --from=builder /out/cairn-rebalance /usr/local/bin/cairn-rebalance
+COPY --from=builder /out/cairn /usr/local/bin/cairn
+COPY --from=builder /out/cairn-mcp /usr/local/bin/cairn-mcp
+COPY --from=builder /out/cairn-evolve /usr/local/bin/cairn-evolve
 
 # 持久化目录
-RUN mkdir -p /var/lib/dkd/workspaces /var/lib/dkd/cache /var/lib/dkd/bundles \
-    && chown -R dkd:dkd /var/lib/dkd
+RUN mkdir -p /var/lib/cairnd/workspaces /var/lib/cairnd/cache /var/lib/cairnd/bundles \
+    && chown -R cairnd:cairnd /var/lib/cairnd
 
-USER dkd
-WORKDIR /var/lib/dkd
+USER cairnd
+WORKDIR /var/lib/cairnd
 
 # 默认 daemon 模式；配置经 volume 挂载
-ENV DKD_CONFIG=/etc/dkd/config.yaml
+ENV CAIRND_CONFIG=/etc/cairnd/config.yaml
 EXPOSE 7810
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -qO- http://127.0.0.1:7810/healthz || exit 1
 
-ENTRYPOINT ["dkd"]
-CMD ["daemon", "--config", "/etc/dkd/config.yaml"]
+ENTRYPOINT ["cairnd"]
+CMD ["daemon", "--config", "/etc/cairnd/config.yaml"]

@@ -17,11 +17,11 @@
 #   scripts/dev/smoke-mcp.sh configs/mcp-local.yaml
 #   scripts/dev/smoke-mcp.sh configs/mcp-local.yaml my-skills 订单聚合根
 #
-# 依赖：已 make build（需要 bin/mcp-server）、python3（仅用于美化 JSON 输出）
+# 依赖：已 make build（需要 bin/cairn-mcp）、python3（仅用于美化 JSON 输出）
 #
 # 提示：中文检索请传「完整节点名」。索引侧使用 FTS5 unicode61 且不做分词，
 # 连续汉字是单个 token，因此子串（如只传「订单」）不会命中——这是既定设计，
-# 详见 dk-service/internal/service/query_rewriter.go 的文档注释。
+# 详见 service/internal/service/query_rewriter.go 的文档注释。
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -32,7 +32,7 @@ KEYWORD="${3:-aggregate}"
 # 定位仓库根（本脚本位于 scripts/dev/）
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-BIN=./bin/mcp-server
+BIN=./bin/cairn-mcp
 # 变量后紧跟全角标点时必须写 ${BIN}：某些 locale 下 bash 会把全角字符的
 # 首字节并入变量名，导致 set -u 报 "unbound variable"。
 [ -x "$BIN" ] || { echo "✗ 未找到 ${BIN}，请先 make build" >&2; exit 1; }

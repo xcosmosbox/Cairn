@@ -46,7 +46,7 @@ type PullResult struct {
 //	    CatalogOwner: "acme", CatalogRepo: "knowledge-catalog",
 //	    CatalogBranch: "main", ManifestDir: "knowledge-bases",
 //	    KG: "payment", Token: tok, APIBaseURL: "https://api.github.com",
-//	    InstallDir: "~/.dk/kbs/payment",
+//	    InstallDir: "~/.cairn/kbs/payment",
 //	})
 //	defer os.RemoveAll(res.TempDir)
 func PullRemote(spec PullRemoteSpec) (*PullResult, error) {
@@ -97,7 +97,7 @@ func PullRemote(spec PullRemoteSpec) (*PullResult, error) {
 	// 4. 组装 Bundle 目录。
 	//   - 新格式：asset 是完整 Bundle tarball（gzip）→ 解包后直接 Verify，digest 天然一致。
 	//   - 旧格式：asset 是裸 knowledge.db → 回退到重新 Pack（文件集缺 build-report 等，
-	//     digest 无法对齐，降级为 warning）。重跑 dkd 产出新格式 Release 后即消除。
+	//     digest 无法对齐，降级为 warning）。重跑 cairnd 产出新格式 Release 后即消除。
 	bundleDir := filepath.Join(tmpDir, "bundle")
 	isGz, err := IsGzip(tempAsset)
 	if err != nil {
@@ -135,7 +135,7 @@ func PullRemote(spec PullRemoteSpec) (*PullResult, error) {
 			return nil, fmt.Errorf("kbbundle.PullRemote: 重新打包: %w", err)
 		}
 		if cm.Manifest.BundleDigest != "" && packed.Manifest.BundleDigest != cm.Manifest.BundleDigest {
-			fmt.Fprintf(os.Stderr, "[kbbundle] ⚠ bundle_digest 不匹配（catalog %s 实际 %s）—旧格式 Release 上传裸 DB 而非完整 tarball，已降级为 warning；重跑 dkd 产出新 Release 后即消除\n",
+			fmt.Fprintf(os.Stderr, "[kbbundle] ⚠ bundle_digest 不匹配（catalog %s 实际 %s）—旧格式 Release 上传裸 DB 而非完整 tarball，已降级为 warning；重跑 cairnd 产出新 Release 后即消除\n",
 				cm.Manifest.BundleDigest, packed.Manifest.BundleDigest)
 		}
 	}

@@ -1,4 +1,4 @@
-module github.com/xcosmosbox/domain-knowledge-layer
+module github.com/xcosmosbox/cairn
 
 go 1.22
 

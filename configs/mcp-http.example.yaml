@@ -21,7 +21,7 @@
 #
 # 用法：
 #   cp configs/mcp-http.example.yaml configs/mcp-http.yaml
-#   ./bin/mcp-server --config configs/mcp-http.yaml
+#   ./bin/cairn-mcp --config configs/mcp-http.yaml
 #   # 也可用命令行覆盖监听地址：--listen :8080
 #
 # ⚠ REST API 免鉴权，仅供内网/演示。暴露到公网前请在反向代理层加鉴权与限流。

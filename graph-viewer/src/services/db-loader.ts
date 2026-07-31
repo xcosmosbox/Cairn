@@ -48,7 +48,7 @@ export class DBLoader {
       if (err.message?.includes('no such table')) {
         throw new Error(
           'Invalid knowledge graph database: nodes table not found. ' +
-          'Ensure the .db file was produced by domain-knowledge-layer.',
+          'Ensure the .db file was produced by cairn.',
         )
       }
       throw new Error(`Failed to load database: ${err.message || err}`)
@@ -81,7 +81,7 @@ export class DBLoader {
       if (err.message?.includes('no such table')) {
         throw new Error(
           'Invalid knowledge graph database: nodes table not found. ' +
-          'Ensure the snapshot was produced by domain-knowledge-layer.',
+          'Ensure the snapshot was produced by cairn.',
         )
       }
       throw new Error(`Failed to load snapshot from ${url}: ${err.message || err}`)
@@ -233,7 +233,7 @@ export class DBLoader {
   /**
    * 读取复杂度哨兵时序（W-B）：kg_manifest 的 sentinel.history 键（JSON 数组）。
    * 老库无 kg_manifest 表或无该键 / JSON 损坏时返回空数组（观测数据，缺省安全）。
-   * 与 dk-service 的 SentinelSnapshot JSON 字段（ts/q/singleton_ratio/...）对应。
+   * 与 service 的 SentinelSnapshot JSON 字段（ts/q/singleton_ratio/...）对应。
    *
    * Reads the sentinel history (W-B) from kg_manifest's sentinel.history key.
    * Returns [] for older DBs without the table/key or with corrupt JSON.

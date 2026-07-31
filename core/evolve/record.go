@@ -1,5 +1,5 @@
-// Package evolve 是演化观测套件的捕获层（E-2）：每次 dk-ingest / dk-incremental /
-// dk-rebalance 跑完后，作为旁路收尾（R-ev-1）完成——
+// Package evolve 是演化观测套件的捕获层（E-2）：每次 cairn-ingest / cairn-incremental /
+// cairn-rebalance 跑完后，作为旁路收尾（R-ev-1）完成——
 //  1. 打开/建立独立的 evolution.db（演化层自己的持久化，绝不写 KG 库，R-ev-2）；
 //  2. 把当前 KG 以 VACUUM INTO 归档为 snapshots/kg-<seq>-<kbver>.db（全部保留，不滚动淘汰）；
 //  3. 取上一条 changeset 的快照作 parent，用 observe.Diff 产出血缘感知变更；
@@ -28,9 +28,9 @@ import (
 
 	_ "modernc.org/sqlite" // SQLite driver（与 core/storage 同源，纯 Go）
 
-	"github.com/xcosmosbox/domain-knowledge-layer/core/metrics"
-	"github.com/xcosmosbox/domain-knowledge-layer/core/observe"
-	"github.com/xcosmosbox/domain-knowledge-layer/core/storage"
+	"github.com/xcosmosbox/cairn/core/metrics"
+	"github.com/xcosmosbox/cairn/core/observe"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // changesetsSchema / metricsSchema 是 evolution.db 的独立 schema（与 KG schema 无关）。
@@ -58,7 +58,7 @@ const metricsSchema = `CREATE TABLE IF NOT EXISTS metrics (
   node_count     INT,  edge_count      INT,  cumulative_ratio REAL
 )`
 
-// summaryMaxLines 是终端摘要的事件流截断上限（完整事件流由 dk show / 前端渲染）。
+// summaryMaxLines 是终端摘要的事件流截断上限（完整事件流由 cairn show / 前端渲染）。
 const summaryMaxLines = 80
 
 // DefaultDir 返回演化产物目录的默认值：<KG 库所在目录>/evolution（E-3 各 CLI
@@ -374,7 +374,7 @@ func docsAffected(ctx context.Context, kg *storage.DB, diff *observe.DiffResult)
 }
 
 // buildSummary 生成人读摘要（写 changesets.summary，也由调用方打印到终端）。
-// 事件流超 summaryMaxLines 截断，完整内容经 diff_json 由 dk show / 前端渲染。
+// 事件流超 summaryMaxLines 截断，完整内容经 diff_json 由 cairn show / 前端渲染。
 func buildSummary(seq int64, tool, ts, kbVersion, parentVersion, trigger string, diff *observe.DiffResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Changeset #%d · %s · %s\n", seq, tool, ts)
@@ -390,7 +390,7 @@ func buildSummary(seq int64, tool, ts, kbVersion, parentVersion, trigger string,
 	lines := strings.Split(strings.TrimRight(md, "\n"), "\n")
 	if len(lines) > summaryMaxLines {
 		b.WriteString(strings.Join(lines[:summaryMaxLines], "\n"))
-		fmt.Fprintf(&b, "\n  …（截断 %d 行，完整事件流见 dk show %d）\n", len(lines)-summaryMaxLines, seq)
+		fmt.Fprintf(&b, "\n  …（截断 %d 行，完整事件流见 cairn show %d）\n", len(lines)-summaryMaxLines, seq)
 	} else {
 		b.WriteString(md)
 	}
@@ -398,7 +398,7 @@ func buildSummary(seq int64, tool, ts, kbVersion, parentVersion, trigger string,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 读取侧（dk-evolve-serve 的 /api/manifest 与 dk timeline/show 共用，R-ev-6）
+// 读取侧（cairn-evolve 的 /api/manifest 与 cairn timeline/show 共用，R-ev-6）
 // ────────────────────────────────────────────────────────────────────────────
 
 // ChangesetRow 是 changesets 表一行的读取视图。

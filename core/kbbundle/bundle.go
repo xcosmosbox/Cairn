@@ -1,6 +1,6 @@
 // Package kbbundle 实现不可变 KB Bundle 的打包、校验与安装（产品化 Prompt §11、§12）。
 //
-// Bundle 是消费者（Viewer / MCP / dk）读取知识库的唯一不可变载体：
+// Bundle 是消费者（Viewer / MCP / cairn）读取知识库的唯一不可变载体：
 //   - knowledge.db          KG 主库
 //   - kb-manifest.json      不可变 provenance（本包的 Manifest）
 //   - build-report.json     构建报告（可选）
@@ -27,6 +27,9 @@ import (
 )
 
 // ManifestFormat 是 manifest 的 format 字段固定值。
+// ⚠ 值 "dk-kb-bundle/v1" 是历史遗留，**永远不要改成 "cairn-kb-bundle"**：
+// 已发布的 Bundle 在 kb-manifest.json 里写死了这个值，改了会让消费端的格式校验
+// 全部失败。项目虽已更名为 Cairn，但 manifest 格式标识是不可变的兼容性契约。
 const ManifestFormat = "dk-kb-bundle/v1"
 
 // Manifest 是 Bundle 内的不可变 provenance（kb-manifest.json）。
