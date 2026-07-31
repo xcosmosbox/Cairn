@@ -1,0 +1,48 @@
+[Unit]
+Description=DK Controller (dkd) — GitOps daemon for domain knowledge layer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dkd
+Group=dkd
+WorkingDirectory=/var/lib/dkd
+ExecStart=/usr/local/bin/dkd daemon --config /etc/dkd/config.yaml
+
+# 刻意不提供 ExecReload：dkd 只捕获 SIGINT / SIGTERM（见 dk-build/cmd/dkd/main.go），
+# 未注册 SIGHUP。若这里写 ExecReload=kill -HUP，`systemctl reload` 会走 SIGHUP 的
+# 默认处置——直接终止进程，且跳过优雅关闭的安全边界。改配置请用 restart：
+#   systemctl restart dkd
+# 若将来为 dkd 实现了 SIGHUP 热重载，再把 ExecReload 加回来。
+
+# 优雅关闭：SIGTERM 后等待安全边界
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# 资源限制
+MemoryMax=2G
+CPUQuota=200%
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dkd
+
+# 自动重启
+Restart=on-failure
+RestartSec=10
+
+# 环境变量（secret 经环境注入，不写入配置文件）
+Environment=DKD_CONFIG=/etc/dkd/config.yaml
+EnvironmentFile=-/etc/dkd/dkd.env
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/dkd
+
+[Install]
+WantedBy=multi-user.target

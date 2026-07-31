@@ -1,0 +1,32 @@
+# ============================================================================
+# MCP Server — 本地模式（最简）/ Local mode (minimal)
+# ============================================================================
+# 传输：stdio（JSON-RPC over stdin/stdout），供 Claude Desktop 等 MCP client 直接拉起。
+# 数据：指向本地已构建好的 knowledge.db，不联网、不自动更新。
+#
+# 用法：
+#   1. 先构建一个知识库：
+#        export DK_LLM_API_KEY="your-key"
+#        ./bin/dk-ingest --repo /path/to/your-skills-repo --db ./knowledge.db
+#   2. 复制本文件：  cp configs/mcp-local.example.yaml configs/mcp-local.yaml
+#   3. 改下面的 path 指向你的 .db
+#   4. 启动：        ./bin/mcp-server --config configs/mcp-local.yaml
+#
+# 需要自动跟随远端发布更新 → 见 mcp-catalog-watch.example.yaml
+# 需要 HTTP/SSE/REST 供团队共享 → 见 mcp-http.example.yaml
+# ============================================================================
+
+mcp:
+  knowledge_bases:
+    - name: my-skills
+      path: ./knowledge.db
+      description: "示例知识库 / Example knowledge base"
+
+    # 可同时挂载多个知识库，MCP 工具会按 kb 名路由：
+    # - name: team-specific
+    #   path: ./knowledge-team.db
+    #   description: "Team-specific knowledge base"
+
+  # 可选：缩写映射表，查询时把缩写展开为全称（如 DDD → DomainDrivenDesign）。
+  # Optional abbreviation map for query-time expansion.
+  # abbreviations_file: configs/abbreviations.yaml

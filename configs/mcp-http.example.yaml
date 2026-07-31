@@ -1,0 +1,54 @@
+# ============================================================================
+# MCP Server — HTTP / SSE / REST 模式（团队共享部署）
+# ============================================================================
+# 一次启动同时提供三种消费方式：
+#
+#   MCP over SSE（给 MCP client）
+#     GET  /sse                  SSE 事件流，client 连此端点建立 session
+#     POST /rpc?session=ID       JSON-RPC 请求通道
+#
+#   REST API（给普通前端/脚本，免鉴权，直接返回 JSON）
+#     GET  /api/tools            工具清单
+#     GET  /api/kbs              已挂载知识库
+#     GET  /api/search?keyword=...&kg=...&limit=10
+#     GET  /api/status?kg=...
+#     GET  /api/impact?entity=...&kg=...&depth=2
+#     GET  /api/describe?kg=...
+#
+#   运维
+#     GET  /health               健康检查
+#     GET  /                     服务信息页
+#
+# 用法：
+#   cp configs/mcp-http.example.yaml configs/mcp-http.yaml
+#   ./bin/mcp-server --config configs/mcp-http.yaml
+#   # 也可用命令行覆盖监听地址：--listen :8080
+#
+# ⚠ REST API 免鉴权，仅供内网/演示。暴露到公网前请在反向代理层加鉴权与限流。
+# ============================================================================
+
+# ── GitHub App 鉴权（仅在需要 catalog 自动更新时必填）──
+github:
+  app_id: 123456
+  private_key_file: ./secrets/github-app.private-key.pem
+  api_base_url: https://api.github.com
+
+mcp:
+  # 监听地址：非空 → HTTP/SSE 模式；留空 → stdio 模式
+  listen: ":8080"
+
+  knowledge_bases:
+    - name: my-skills
+      path: ./.local/kbs/my-skills/current/knowledge.db
+      description: "示例知识库（catalog 自动热更新）/ Example KB with catalog auto-update"
+
+      # ── Catalog 自动更新（不需要则整段删除，path 指向静态 .db 即可）──
+      catalog_repo: your-org/kb-catalog
+      catalog_branch: main
+      manifest_dir: knowledge-bases
+      install_dir: ./.local/kbs/my-skills
+      poll_interval: 5m
+
+  # 可选：缩写映射表，查询时把缩写展开为全称（如 DDD → DomainDrivenDesign）。
+  # Optional abbreviation map for query-time expansion.
+  # abbreviations_file: configs/abbreviations.yaml

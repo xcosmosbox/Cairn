@@ -1,0 +1,60 @@
+# ════════════════════════════════════════════════════════════════════
+# 用法 / Usage
+#   本文件位于 deploy/，但构建上下文是【仓库根】（Dockerfile 需要 go.mod）。
+#   因此必须从仓库根启动，用 -f 指定本文件：
+#
+#     cp configs/dkd.example.yaml configs/dkd.yaml   # 填入真实值
+#     export DK_LLM_API_KEY=...
+#     export DK_GITHUB_WEBHOOK_SECRET=...
+#     export DK_CONTROLLER_ADMIN_TOKEN=...
+#     docker compose -f deploy/docker-compose.yml up -d --build
+#
+#   GitHub App 私钥放 ./secrets/dk-app.pem（secrets/ 已被 .gitignore 排除）。
+# ════════════════════════════════════════════════════════════════════
+
+services:
+  dkd:
+    build:
+      # 上下文 = 仓库根（.. 相对本文件所在的 deploy/）
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: dkd:latest
+    container_name: dkd
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7810:7810"
+    volumes:
+      - dkd-data:/var/lib/dkd
+      - ../configs/dkd.yaml:/etc/dkd/config.yaml:ro
+      # GitHub App private key（Docker secret 或文件挂载）
+      - ../secrets/dk-app.pem:/run/secrets/dk-app.pem:ro
+    environment:
+      - DK_LLM_API_KEY=${DK_LLM_API_KEY}
+      - DK_GITHUB_WEBHOOK_SECRET=${DK_GITHUB_WEBHOOK_SECRET}
+      - DK_CONTROLLER_ADMIN_TOKEN=${DK_CONTROLLER_ADMIN_TOKEN}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7810/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # 可选：MCP 消费端（只读挂载 dkd 产出的 Bundle）
+  # mcp-server 只认 --config，配置里的 mcp.knowledge_bases[].path 指向 .db。
+  mcp-server:
+    image: dkd:latest
+    container_name: mcp-server
+    restart: unless-stopped
+    entrypoint: ["mcp-server"]
+    command: ["--config", "/etc/mcp/config.yaml"]
+    depends_on:
+      dkd:
+        condition: service_healthy
+    volumes:
+      - dkd-data:/var/lib/dkd:ro
+      # 复制 configs/mcp-local.example.yaml 为 configs/mcp.yaml，
+      # 并把 path 指向 /var/lib/dkd/bundles/<your-kg>/current/knowledge.db
+      - ../configs/mcp.yaml:/etc/mcp/config.yaml:ro
+
+volumes:
+  dkd-data:

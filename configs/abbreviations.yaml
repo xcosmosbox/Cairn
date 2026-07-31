@@ -1,0 +1,24 @@
+# 缩写映射表 / Abbreviation map
+#
+# 查询改写会把用户输入中的缩写展开为全称，提升 FTS5 召回。
+# 例：配置 "DDD: DomainDrivenDesign" 后，搜索 "DDD" 等价于搜索 "DomainDrivenDesign"。
+#
+# 启用方式：在 MCP 配置的 mcp 段下指定本文件路径
+#   mcp:
+#     abbreviations_file: configs/abbreviations.yaml
+#
+# 格式：缩写: 全称
+#
+# 注意：只有「纯 ASCII 字母数字」的缩写会被实际应用，因为只有它们能可靠
+# 判定词边界（避免 "PM" 把 "PMS" 误改成 "PaymentS"）。其他形态的键会被
+# 安全跳过。中文查询不受缩写扩展影响。
+#
+# Query rewriting expands abbreviations into full forms to improve FTS5 recall.
+# Only ASCII-alphanumeric keys are applied, since only those have reliable word
+# boundaries. Enable via `mcp.abbreviations_file` in your MCP config.
+
+# ── 示例（按你的领域替换）/ Examples (replace with your own domain) ──
+DDD: DomainDrivenDesign
+TDD: TestDrivenDevelopment
+CQRS: CommandQueryResponsibilitySegregation
+API: ApplicationProgrammingInterface

@@ -1,0 +1,78 @@
+/* ============================================================
+   Tailwind CSS v4 入口 / Entry Point
+   所有样式通过 Tailwind 原子类管理，自定义 CSS 变量在此定义。
+   ============================================================ */
+
+@import "tailwindcss";
+
+/* ─── 暗色主题 CSS 变量 / Dark Theme CSS Variables ────────────
+   采用 Steel Violet 配色方案（参考 Atomic 的 CanvasTheme）。
+   变量命名遵循 [类别]-[属性] 约定，便于组件中直接引用。 */
+
+:root {
+  /* 背景层级 / Background layers */
+  --bg-root: #12141c; /* 根背景 / root background */
+  --bg-main: #1a1c24; /* 主面板背景 / main panel background */
+  --bg-card: #22242e; /* 卡片/面板背景 / card background */
+  --bg-hover: #2a2c38; /* 悬停高亮 / hover highlight */
+  --bg-active: #323440; /* 激活态背景 / active background */
+
+  /* 文字层级 / Text hierarchy */
+  --text-primary: #e8eaf0; /* 主文字 / primary text */
+  --text-secondary: #a0a8b8; /* 次要文字 / secondary text */
+  --text-muted: #6a7080; /* 辅助文字 / muted text */
+
+  /* 边框 / Borders */
+  --border-default: rgba(80, 100, 140, 0.25); /* 默认边框 / default border */
+  --border-hover: rgba(80, 100, 140, 0.45); /* 悬停边框 / hover border */
+
+  /* 强调色 / Accent colors */
+  --accent: #6a80d0; /* 主强调色 / primary accent */
+  --accent-hover: #7a90e0; /* 悬停强调色 / hover accent */
+  --accent-muted: rgba(106, 128, 208, 0.2); /* 弱强调色 / muted accent */
+
+  /* 语义色 / Semantic colors */
+  --success: #4ade80;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #60a5fa;
+
+  /* 侧边栏 / Sidebar */
+  --sidebar-width: 260px;
+  --detail-panel-width: 380px;
+}
+
+/* ─── 全局重置 / Global Reset ───────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg-root);
+  color: var(--text-primary);
+}
+
+/* ─── 滚动条 / Scrollbar ────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}

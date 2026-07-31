@@ -1,0 +1,47 @@
+# ============================================================================
+# MCP Server — Catalog 自动热更新 / Catalog auto hot-reload
+# ============================================================================
+# 传输：stdio（JSON-RPC over stdin/stdout）
+# 鉴权：复用与 dkd 相同的 GitHub App（无需另建 PAT）
+#
+# 工作流程：
+#   1. 启动时：若本地 DB 不存在，自动从 catalog repo 拉取当前 stable bundle
+#   2. 运行中：按 poll_interval 轮询 catalog，发现新 stable 即拉取并热切换
+#   3. 热切换：打开新 DB → 原子替换 → 关闭旧 DB，查询过程不中断
+#
+# 路径语义（容易混淆，务必看清）：
+#   path         → install_dir/current/knowledge.db（符号链接，始终指向最新 stable）
+#                  首次启动时该文件尚不存在，watcher 拉取后会自动创建
+#   install_dir  → 本地安装目录，自动创建，无需手动 mkdir
+#   manifest_dir → catalog **仓库内**的目录路径（不是本地路径，也不是 Release 名）
+#
+# 用法：
+#   cp configs/mcp-catalog-watch.example.yaml configs/mcp-catalog-watch.yaml
+#   ./bin/mcp-server --config configs/mcp-catalog-watch.yaml
+# ============================================================================
+
+# ── GitHub App 鉴权（与 dkd.example.yaml 的 github 段保持一致）──
+github:
+  # GitHub App 的 App ID（App 设置页可见）
+  app_id: 123456
+  # 私钥 PEM 文件路径。请放在仓库外或 ./secrets/（已被 .gitignore 排除），切勿提交。
+  # 也可改用 private_key_env 从环境变量读取 PEM 内容。
+  private_key_file: ./secrets/github-app.private-key.pem
+  api_base_url: https://api.github.com
+
+mcp:
+  knowledge_bases:
+    - name: my-skills
+      path: ./.local/kbs/my-skills/current/knowledge.db
+      description: "示例知识库（catalog 自动热更新）/ Example KB with catalog auto-update"
+
+      # ── Catalog 配置（与 dkd.example.yaml 的 catalog 段保持一致）──
+      catalog_repo: your-org/kb-catalog      # = dkd 的 catalog.repo
+      catalog_branch: main                    # = dkd 的 catalog.branch
+      manifest_dir: knowledge-bases           # = dkd 的 catalog.manifest_dir（仓库内路径）
+      install_dir: ./.local/kbs/my-skills     # 本地安装目录（自动创建）
+      poll_interval: 5m                       # 轮询间隔
+
+  # 可选：缩写映射表，查询时把缩写展开为全称（如 DDD → DomainDrivenDesign）。
+  # Optional abbreviation map for query-time expansion.
+  # abbreviations_file: configs/abbreviations.yaml

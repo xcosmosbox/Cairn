@@ -1,0 +1,66 @@
+# ── Go ─────────────────────────────────────────────────────────────────────
+bin/
+*.exe
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# 编译产物（顶层裸二进制）
+/dk
+/dkd
+/dkctl
+/dk-ingest
+/dk-incremental
+/dk-rebalance
+/dk-evolve-serve
+/mcp-server
+
+# ── Node / graph-viewer ────────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.vite/
+npm-debug.log*
+yarn-error.log*
+
+# ── 运行时产物 / 本地状态 ──────────────────────────────────────────────────
+.tmp/
+.cache/
+.build/
+.local/
+.workspaces/
+workspaces/
+
+# ── 知识库数据（绝不入库：可能含私有业务知识）────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── 密钥与凭证（绝不入库）──────────────────────────────────────────────────
+secrets/
+*.pem
+*.key
+*.p12
+.env
+.env.*
+!.env.example
+
+# ── 真实配置（只跟踪 example 与共享词表）──────────────────────────────────
+# 防止误提交含 GitHub App 私钥路径、私有仓库名、内部库名的本地配置。
+configs/*.yaml
+configs/*.yml
+!configs/*.example.yaml
+!configs/abbreviations.yaml
+
+# ── 编辑器 / 操作系统 ──────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+docs/
