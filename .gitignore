@@ -18,8 +18,8 @@ coverage.html
 
 # ── Node / graph-viewer ────────────────────────────────────────────────────
 node_modules/
-dist/
-build/
+graph-viewer/dist/
+graph-viewer/build/
 *.tsbuildinfo
 .vite/
 npm-debug.log*
