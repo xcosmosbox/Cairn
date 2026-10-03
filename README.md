@@ -88,7 +88,14 @@ export CAIRN_LLM_API_KEY="your-key"          # Key 只走环境变量，绝不�
   --db   ./knowledge.db
 ```
 
-默认模型与端点是 DeepSeek（`--model` / `--endpoint` 可改）。完整参数见 `./bin/cairn-ingest -h`。
+默认使用 DeepSeek 官方 API 的 `deepseek-flash`，保留 thinking（默认 high effort）与
+JSON Output。`--model` / `--endpoint` 可改，完整参数见 `./bin/cairn-ingest -h`。
+
+按 [DeepSeek 当前规格](https://api-docs.deepseek.com/quick_start/pricing/)，
+`deepseek-flash` 对应 DeepSeek-V4.1-Flash，支持 1M 上下文。Cairn 的三个构建命令与
+控制器统一采用标准 thinking 的 64K 输出预算（`65536`）；可通过 `--max-tokens` 或
+`llm.max_tokens` 调整到官方最大 `393216`（384K）。输入与输出之和仍须满足上下文上限。
+`finish_reason` 表明截断、过滤或中断时，构建会报错，不把不完整输出当作成功知识。
 
 产出 `knowledge.db`（SQLite）。用 CLI 查一下（`--db-path` 可置于子命令之前或之后）：
 

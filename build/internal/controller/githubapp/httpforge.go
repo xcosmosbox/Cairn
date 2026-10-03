@@ -17,17 +17,26 @@ import (
 	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 )
 
-// HTTPForge 通过 GitHub REST API 实现 Forge（生产用）。
-// 需配合 core/githubapp.AppAuth 提供 installation token。
+// InstallationTokenSource 让 HTTP 传输只依赖凭证契约；生产入口仍使用 AppAuth。
+// Decouple REST transport from token minting without adding a production auth bypass.
+type InstallationTokenSource interface {
+	InstallToken(context.Context, int64) (string, time.Time, error)
+	HTTPBaseURL() string
+}
+
+var _ InstallationTokenSource = (*coregh.AppAuth)(nil)
+
+// HTTPForge 通过 GitHub REST API 实现 Forge；生产入口使用 AppAuth。
+// HTTPForge accepts the token-source contract while the daemon retains App authentication.
 type HTTPForge struct {
-	auth           *coregh.AppAuth
+	auth           InstallationTokenSource
 	installationID int64
 	http           *http.Client
 }
 
 // NewHTTPForge 构造一个指向真实 GitHub（或兼容 API）的 Forge。
 // installationID 由 AppAuth.ResolveInstallation 获取。
-func NewHTTPForge(auth *coregh.AppAuth, installationID int64) *HTTPForge {
+func NewHTTPForge(auth InstallationTokenSource, installationID int64) *HTTPForge {
 	return &HTTPForge{
 		auth:           auth,
 		installationID: installationID,

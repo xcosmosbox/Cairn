@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/xcosmosbox/cairn/core/dkconfig"
 )
 
 // defaultOpenAIEndpoint 是未显式配置 Endpoint 时的兜底端点（DeepSeek OpenAI 兼容）。
 // defaultOpenAIEndpoint is the fallback endpoint when Config.Endpoint is empty.
-const defaultOpenAIEndpoint = "https://api.deepseek.com/chat/completions"
+const defaultOpenAIEndpoint = dkconfig.DeepSeekEndpoint
 
 // OpenAICompatClient 是 OpenAI /chat/completions 兼容端点的 Client 实现，
 // 主要用于接入 DeepSeek 的 JSON mode + thinking mode。
@@ -27,8 +29,9 @@ const defaultOpenAIEndpoint = "https://api.deepseek.com/chat/completions"
 //   - 认证走 Authorization: Bearer 而非 x-api-key
 //   - 请求体带 response_format:{type:json_object} 保证返回合法 JSON
 //   - 请求体带 thinking:{type:enabled} 开启思维链，响应含 reasoning_content
-//   - thinking 模式下 DeepSeek 禁用 temperature/top_p/presence_penalty/
-//     frequency_penalty——这些参数一律不发送，否则返回 400
+//   - thinking 默认 high effort；temperature/presence/frequency 被忽略，
+//     top_p 仅在 thinking 下生效（0.95–1.0）。Cairn 不发送这些采样覆盖。
+//     Default high effort is retained without ineffective sampling overrides.
 type OpenAICompatClient struct {
 	config     Config
 	httpClient *http.Client
@@ -47,14 +50,25 @@ func NewOpenAICompatClient(cfg Config) (*OpenAICompatClient, error) {
 
 	timeout := 60 * time.Second
 	if cfg.Timeout != "" {
-		if parsed, err := time.ParseDuration(cfg.Timeout); err == nil {
-			timeout = parsed
+		parsed, err := time.ParseDuration(cfg.Timeout)
+		if err != nil || parsed <= 0 {
+			return nil, fmt.Errorf("openai_compatible: invalid positive timeout %q", cfg.Timeout)
 		}
+		timeout = parsed
 	}
 
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
 		endpoint = defaultOpenAIEndpoint
+	}
+	if cfg.Model == "" {
+		cfg.Model = dkconfig.DeepSeekFlashModel
+	}
+	if cfg.MaxTokens <= 0 && dkconfig.IsDeepSeekEndpoint(endpoint) {
+		cfg.MaxTokens = dkconfig.DeepSeekDefaultThinkingTokens
+	}
+	if dkconfig.IsDeepSeekEndpoint(endpoint) && cfg.MaxTokens > dkconfig.DeepSeekMaxOutputTokens {
+		return nil, fmt.Errorf("openai_compatible: max_tokens %d exceeds DeepSeek maximum %d", cfg.MaxTokens, dkconfig.DeepSeekMaxOutputTokens)
 	}
 
 	return &OpenAICompatClient{
@@ -75,6 +89,13 @@ func (c *OpenAICompatClient) Complete(ctx context.Context, req CompleteRequest) 
 }
 
 func (c *OpenAICompatClient) doComplete(ctx context.Context, req CompleteRequest) (*CompleteResponse, error) {
+	maxTokens := pickInt(req.MaxTokens, c.config.MaxTokens, 4096)
+	if dkconfig.IsDeepSeekEndpoint(c.endpoint) && maxTokens > dkconfig.DeepSeekMaxOutputTokens {
+		return nil, fmt.Errorf("openai_compatible: max_tokens %d exceeds DeepSeek maximum %d", maxTokens, dkconfig.DeepSeekMaxOutputTokens)
+	}
+	if dkconfig.IsDeepSeekEndpoint(c.endpoint) && len(req.StopSequences) > 16 {
+		return nil, fmt.Errorf("openai_compatible: DeepSeek accepts at most 16 stop sequences")
+	}
 	// 组装 OpenAI /chat/completions 请求体。
 	// system + user 两条消息；开启 JSON mode 与 thinking mode。
 	body := openAIReq{
@@ -83,16 +104,15 @@ func (c *OpenAICompatClient) doComplete(ctx context.Context, req CompleteRequest
 			{Role: "system", Content: req.System},
 			{Role: "user", Content: req.User},
 		},
-		MaxTokens:      pickInt(req.MaxTokens, c.config.MaxTokens, 4096),
+		MaxTokens:      maxTokens,
 		ResponseFormat: &openAIResponseFormat{Type: "json_object"},
 		Thinking:       &openAIThinking{Type: "enabled"},
 	}
 	if len(req.StopSequences) > 0 {
 		body.Stop = req.StopSequences
 	}
-	// 关键：thinking 模式下 DeepSeek 禁用 temperature/top_p/presence_penalty/
-	// frequency_penalty，发送任一都会 400。故这些字段一律不设置——请求体里根本没有。
-	// NOTE: temperature 等被禁参数在 openAIReq 中已省略，绝不发送。
+	// 不覆盖官网默认推理强度，也不发送无效或未选择的采样参数。
+	// Retain default high thinking effort and do not send sampling overrides.
 
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -147,11 +167,16 @@ func (c *OpenAICompatClient) doComplete(ctx context.Context, req CompleteRequest
 	if len(or.Choices) == 0 {
 		return nil, fmt.Errorf("openai_compatible: response has no choices")
 	}
+	// JSON 可在被截断或中断时仍碰巧合法；不能把这类不完整结果当作完整知识。
+	// A syntactically valid JSON fragment is not a completed response after interruption.
+	if or.Choices[0].FinishReason != "stop" {
+		return nil, fmt.Errorf("openai_compatible: incomplete response (finish_reason=%q)", or.Choices[0].FinishReason)
+	}
 
 	msg := or.Choices[0].Message
-	// 日志化每次调用：content 与 reasoning_content 都写入日志，便于审计与调试；
+	// 日志化每次调用的 token 数与输出长度，便于审计与调试；
 	// 仅 content 作为返回进入领域知识层（reasoning_content 是思维链，不入库）。
-	// Log both content and reasoning_content per call; only content is returned.
+	// Log token usage and lengths; only final content is returned.
 	logExtraction(c.config.Model, msg.Content, msg.ReasoningContent,
 		or.Usage.PromptTokens, or.Usage.CompletionTokens)
 
@@ -194,7 +219,7 @@ func truncateForLog(b []byte) string {
 }
 
 // ---- 请求 / 响应结构（OpenAI /chat/completions 形态）----
-// 字段与 /tmp/claude/cairn-llm-verify 已验证通过的形态一致。
+// DeepSeek 规格：https://api-docs.deepseek.com/api/create-chat-completion/
 
 type openAIReq struct {
 	Model          string                `json:"model"`
@@ -203,8 +228,8 @@ type openAIReq struct {
 	ResponseFormat *openAIResponseFormat `json:"response_format,omitempty"`
 	Thinking       *openAIThinking       `json:"thinking,omitempty"`
 	Stop           []string              `json:"stop,omitempty"`
-	// 刻意不含 temperature/top_p/presence_penalty/frequency_penalty：
-	// thinking 模式下发送它们会导致 DeepSeek 返回 400。
+	// 不设置采样覆盖：保留官方默认的 thinking 行为。
+	// No sampling overrides: retain the provider's default thinking behavior.
 }
 
 type openAIMsg struct {
