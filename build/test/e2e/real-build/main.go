@@ -85,6 +85,9 @@ func run() error {
 	acceptedDump := flag.String("accepted-dump", "", "original stages containing accepted annotations and Gate B evidence")
 	historicalCode := flag.String("historical-code-root", "", "original builder source for reuse-compatibility verification")
 	allowPaid := flag.Bool("allow-paid", false, "permit new real provider requests after checkpoint validation")
+	materializeFrom := flag.String("materialize-from", "", "completed real LLM run to materialize without any new LLM calls")
+	checkpointManifest := flag.String("checkpoint-manifest", "", "reviewed SHA-256 manifest for the completed LLM run")
+	checkpointManifestSHA := flag.String("checkpoint-manifest-sha256", "", "explicit SHA-256 pin for that manifest")
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekMaxOutputTokens, "output budget for fresh extraction and downstream stages")
 	concurrency := flag.Int("concurrency", 8, "maximum simultaneous real provider calls")
 	requestTimeout := flag.Duration("request-timeout", 30*time.Minute, "timeout per provider request")
@@ -111,6 +114,12 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *runTimeout)
 	defer cancel()
+	if *materializeFrom != "" {
+		if *allowPaid {
+			return errors.New("--materialize-from cannot be combined with --allow-paid")
+		}
+		return runMaterialize(ctx, *repo, *out, *acceptedDump, *historicalCode, codeRoot, *materializeFrom, *checkpointManifest, *checkpointManifestSHA)
+	}
 	checkpoint, err := newAcceptedCheckpointClient(ctx, *repo, *acceptedDump, *historicalCode, codeRoot, denyNetwork{})
 	if err != nil {
 		return err

@@ -153,6 +153,7 @@ type RunReport struct {
 	DocsRewritten int          // 通过双门、进入提取的文档数
 	Skipped       []SkippedDoc // 降级跳过的文档
 	ExtractRounds int
+	Selection     *extract.CandidateSelectionReport // 同一候选集用于入库与回写
 	Ingest        *ingest.IngestDomainsResult
 	Coverage      *extract.CoverageReport // 覆盖保障报告（05c1 阶段）；nil 表示未执行
 	Repair        *extract.RepairReport   // 悬空边修正报告（05b/05c 阶段）；nil 表示未执行修正
@@ -181,7 +182,7 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 		return nil, err
 	}
 	report := &RunReport{}
-	identity, err := repoidentity.Ensure(ctx, repoPath, o.repositoryIdentity)
+	_, err := repoidentity.Ensure(ctx, repoPath, o.repositoryIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: repository identity: %w", err)
 	}
@@ -364,47 +365,17 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	extract.GenerateFileSlugs(ctx, res.Domains, o.client) //nolint:staticcheck // o.client is set in NewOrchestrator
 	o.dumpJSON("05g_file_slugs.json", res)
 
-	// ——4. 全量重建入库——
-	logStage("4", "全量重建入库 / ingest（物化双层图）")
-	// 构建 MemberSources 映射：从 withIDs（AssignIDs 后的 []*AnnotatedDocument，含 04 id +
-	// FilePath + SourceSpan）遍历，供 ingest 写 node_sources + 供 stage 4.5 回写分组。
-	// Build MemberSources from withIDs for both ingest (node_sources) and stage 4.5 (write-back).
-	memberSources := buildMemberSources(withIDs)
-	s4Ctx, s4Cancel := stageCtx(ctx, o.stageTimeout)
-	ingestRes, err := o.fullRebuildIngest(s4Ctx, dbPath, res, skillMetas, memberSources, identity)
-	s4Cancel()
+	// Select once for both outputs; resume uses the same production entry point.
+	materialized, err := o.MaterializeCompletedExtraction(ctx, repoPath, dbPath, res, withIDs, skillMetas)
+	report.Selection, report.Ingest, report.Writeback = materialized.Selection, materialized.Ingest, materialized.Writeback
 	if err != nil {
-		return report, fmt.Errorf("pipeline: ingest: %w", err)
-	}
-	report.Ingest = ingestRes
-	o.dumpJSON("06_ingest_result.json", ingestRes)
-	log.Printf("[pipeline] 入库完成: %d 节点, %d 边 (跳过 %d), node_sources %d 行",
-		ingestRes.NodesInserted, ingestRes.EdgesInserted, ingestRes.EdgesSkipped, ingestRes.NodeSourcesInserted)
-
-	// ——4.5 结构化回写（ingest 之后；失败阻止发布）——
-	logStage("4.5", "结构化回写 / write-back（md + sidecar + _shared）")
-	// 回写是产物输出：把 KG 结构化回写为每篇 reference 的 md + sidecar + _shared 共享区。
-	// MD / sidecar 未闭环的 KG 只能作为诊断结果，不能进入发布或 stable 基线。
-	// ingest.MemberSource 与 writeback.MemberSource 同构但分属两包（避免 import 环），
-	// 故此处转换后再传入。
-	// A partially materialized KG is diagnostic only; fail the build before publication.
-	wbMemberSources := toWritebackMemberSources(memberSources)
-	wbReport, wbErr := writeback.WritebackContext(ctx, res, wbMemberSources, repoPath)
-	report.Writeback = wbReport
-	o.dumpJSON("06b_writeback_report.json", wbReport)
-	if wbErr != nil {
-		return report, fmt.Errorf("pipeline: writeback incomplete (candidate not publishable): %w", wbErr)
-	}
-	if wbReport != nil {
-		log.Printf("[pipeline] 回写统计: 文档 %d, 节点块 %d, shared %d, 镜像块 %d, primary %d, sidecar %d",
-			wbReport.DocsWritten, wbReport.NodesWritten, wbReport.SharedNodes,
-			wbReport.MirrorBlocks, wbReport.PrimaryFiles, wbReport.SidecarsWritten)
+		return report, err
 	}
 
 	logStage("✓", "流水线完成 / pipeline done")
 	log.Printf("[pipeline] 完成: skills=%d docs=%d rewritten=%d skipped=%d domains=%d nodes=%d edges=%d (悬空修正: 发现%d/残留%d)",
 		report.SkillsScanned, report.DocsTotal, report.DocsRewritten, len(report.Skipped),
-		len(res.Domains), ingestRes.NodesInserted, ingestRes.EdgesInserted,
+		len(res.Domains), report.Ingest.NodesInserted, report.Ingest.EdgesInserted,
 		repairRpt.DanglingFound, repairRpt.StillDangling)
 	return report, nil
 }
