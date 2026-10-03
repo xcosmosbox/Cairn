@@ -22,6 +22,7 @@ type stores struct {
 	files     *storage.FileStateRepo
 	version   *storage.KBVersionRepo
 	manifest  *storage.ManifestRepo
+	identity  *storage.RepositoryIdentityRepo
 	mutations *storage.IncrementalMutationRepo
 	lineage   *storage.UUIDLineageRepo // 重整 merge/split 血缘（第三块）/ rebalance lineage
 }
@@ -37,6 +38,7 @@ func newStores(db *storage.DB) *stores {
 		files:     storage.NewFileStateRepo(db),
 		version:   storage.NewKBVersionRepo(db),
 		manifest:  storage.NewManifestRepo(db),
+		identity:  storage.NewRepositoryIdentityRepo(db),
 		mutations: storage.NewIncrementalMutationRepo(db),
 		lineage:   storage.NewUUIDLineageRepo(db),
 	}

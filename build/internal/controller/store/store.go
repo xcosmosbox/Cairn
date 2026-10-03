@@ -4,7 +4,8 @@
 // 不依赖进程内 map。所有状态迁移在事务中写入。
 //
 // 表：managed_repositories / runs / pull_requests / candidates /
-//     external_effects（outbox 幂等去重）/ repo_leases / webhook_deliveries。
+//
+//	external_effects（outbox 幂等去重）/ repo_leases / webhook_deliveries。
 package store
 
 import (
@@ -19,11 +20,12 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/xcosmosbox/cairn/build/internal/controller/model"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // schemaVersion 是 controller.db 的迁移版本。
 // v2：managed_repositories 增加 last_stable_fingerprint 列（fingerprint 变化触发全量重建）。
-const schemaVersion = 2
+const schemaVersion = 3
 
 // schemaSQL 是建表 DDL（IF NOT EXISTS，幂等）。
 const schemaSQL = `
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS runs (
   base_bundle_digest    TEXT NOT NULL DEFAULT '',
   builder_fingerprint   TEXT NOT NULL DEFAULT '',
   state                 TEXT NOT NULL,
+  retry_state           TEXT NOT NULL DEFAULT '',
   attempt               INTEGER NOT NULL DEFAULT 0,
   reason                TEXT NOT NULL DEFAULT '',
   report_path           TEXT NOT NULL DEFAULT '',
@@ -135,9 +138,11 @@ type Store struct {
 func Open(path string) (*Store, error) {
 	// 确保父目录存在（SQLite CANTOPEN=14 在目录不存在时报误导性 OOM）。
 	if dir := filepath.Dir(path); dir != "" {
-		os.MkdirAll(dir, 0o755)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("controller store: mkdir: %w", err)
+		}
 	}
-	conn, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	conn, err := storage.OpenSQLite(path, storage.SQLiteOptions{ImmediateTransactions: true})
 	if err != nil {
 		return nil, fmt.Errorf("controller store: open %s: %w", path, err)
 	}
@@ -154,8 +159,8 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 
 // columnExists 检查表中是否已存在某列（用于幂等的 ADD COLUMN 迁移）。
-func (s *Store) columnExists(table, col string) (bool, error) {
-	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+func columnExists(tx *sql.Tx, table, col string) (bool, error) {
+	rows, err := tx.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
 	if err != nil {
 		return false, err
 	}
@@ -178,31 +183,47 @@ func (s *Store) columnExists(table, col string) (bool, error) {
 func (s *Store) DB() *sql.DB { return s.db }
 
 func (s *Store) migrate() error {
-	if _, err := s.db.Exec(schemaSQL); err != nil {
+	// 多实例启动也必须串行迁移，避免同时判断缺列后重复 ALTER。
+	// Immediate transactions serialize schema upgrades across controller processes.
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("controller store: 建表: %w", err)
 	}
 	// 版本化列迁移：对已存在的旧库补列（CREATE TABLE IF NOT EXISTS 不会加列）。
 	// 按列存在性判断，兼容「新建库（schemaSQL 已含该列）」与「旧库升级」两种情况，幂等。
-	if ok, err := s.columnExists("managed_repositories", "last_stable_fingerprint"); err != nil {
+	if ok, err := columnExists(tx, "managed_repositories", "last_stable_fingerprint"); err != nil {
 		return fmt.Errorf("controller store: 检查 last_stable_fingerprint 列: %w", err)
 	} else if !ok {
-		if _, err := s.db.Exec(`ALTER TABLE managed_repositories ADD COLUMN last_stable_fingerprint TEXT NOT NULL DEFAULT ''`); err != nil {
+		if _, err := tx.Exec(`ALTER TABLE managed_repositories ADD COLUMN last_stable_fingerprint TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("controller store: 迁移 last_stable_fingerprint: %w", err)
+		}
+	}
+	// v3 保存失败前的阶段，避免等待 PR 的暂时错误触发整个重建。
+	// Persist retry checkpoints without changing existing candidate/PR identity.
+	if ok, err := columnExists(tx, "runs", "retry_state"); err != nil {
+		return err
+	} else if !ok {
+		if _, err := tx.Exec(`ALTER TABLE runs ADD COLUMN retry_state TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
 		}
 	}
 	// 记录迁移版本。
 	var cur int
-	err := s.db.QueryRow(`SELECT COALESCE((SELECT version FROM schema_version ORDER BY version DESC LIMIT 1),0)`).Scan(&cur)
+	err = tx.QueryRow(`SELECT COALESCE((SELECT version FROM schema_version ORDER BY version DESC LIMIT 1),0)`).Scan(&cur)
 	if err != nil {
 		return fmt.Errorf("controller store: 读 schema_version: %w", err)
 	}
 	if cur < schemaVersion {
-		_, err := s.db.Exec(`INSERT INTO schema_version(version) VALUES(?)`, schemaVersion)
+		_, err := tx.Exec(`INSERT OR IGNORE INTO schema_version(version) VALUES(?)`, schemaVersion)
 		if err != nil {
 			return fmt.Errorf("controller store: 写 schema_version: %w", err)
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ─── ManagedRepo ────────────────────────────────────────────────
@@ -213,7 +234,7 @@ func (s *Store) UpsertRepo(ctx context.Context, r model.ManagedRepo) error {
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO managed_repositories
+	_, err := s.execWrite(ctx, `INSERT INTO managed_repositories
 		(id, github_owner, github_name, github_repository_id, source_url, branch, kg_group,
 		 enabled, config_digest, last_seen_source_sha, last_stable_source_sha,
 		 last_stable_bundle_digest, last_stable_fingerprint, created_at, updated_at)
@@ -262,7 +283,7 @@ func (s *Store) ListRepos(ctx context.Context) ([]model.ManagedRepo, error) {
 // UpdateRepoStable 更新 repo 的 stable 指针（含 builder fingerprint）。
 func (s *Store) UpdateRepoStable(ctx context.Context, id, sourceSHA, bundleDigest, fingerprint string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx, `UPDATE managed_repositories
+	_, err := s.execWrite(ctx, `UPDATE managed_repositories
 		SET last_stable_source_sha=?, last_stable_bundle_digest=?, last_stable_fingerprint=?,
 		    last_seen_source_sha=?, updated_at=?
 		WHERE id=?`, sourceSHA, bundleDigest, fingerprint, sourceSHA, now, id)
@@ -271,14 +292,14 @@ func (s *Store) UpdateRepoStable(ctx context.Context, id, sourceSHA, bundleDiges
 
 // UpdateRunFingerprint 更新 run 的 builder fingerprint。
 func (s *Store) UpdateRunFingerprint(ctx context.Context, runID, fingerprint string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE runs SET builder_fingerprint=? WHERE run_id=?`, fingerprint, runID)
+	_, err := s.execWrite(ctx, `UPDATE runs SET builder_fingerprint=? WHERE run_id=?`, fingerprint, runID)
 	return err
 }
 
 // UpdateRepoSeen 更新 last_seen_source_sha。
 func (s *Store) UpdateRepoSeen(ctx context.Context, id, sourceSHA string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx, `UPDATE managed_repositories
+	_, err := s.execWrite(ctx, `UPDATE managed_repositories
 		SET last_seen_source_sha=?, updated_at=? WHERE id=?`, sourceSHA, now, id)
 	return err
 }
@@ -290,12 +311,12 @@ func (s *Store) CreateRun(ctx context.Context, r model.Run) error {
 	if r.StartedAt.IsZero() {
 		r.StartedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO runs
+	_, err := s.execWrite(ctx, `INSERT INTO runs
 		(run_id, repo_id, desired_source_sha, base_bundle_digest, builder_fingerprint,
-		 state, attempt, reason, report_path, error_code, error_message, started_at, finished_at, next_retry_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 state, retry_state, attempt, reason, report_path, error_code, error_message, started_at, finished_at, next_retry_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.RunID, r.RepoID, r.DesiredSourceSHA, r.BaseBundleDigest, r.BuilderFingerprint,
-		string(r.State), r.Attempt, r.Reason, r.ReportPath, r.ErrorCode, r.ErrorMessage,
+		string(r.State), string(r.RetryState), r.Attempt, r.Reason, r.ReportPath, r.ErrorCode, r.ErrorMessage,
 		r.StartedAt, ts(r.FinishedAt), ts(r.NextRetryAt))
 	return err
 }
@@ -303,7 +324,7 @@ func (s *Store) CreateRun(ctx context.Context, r model.Run) error {
 // GetRun 读取 run。
 func (s *Store) GetRun(ctx context.Context, runID string) (*model.Run, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT run_id, repo_id, desired_source_sha, base_bundle_digest,
-		builder_fingerprint, state, attempt, reason, report_path, error_code, error_message,
+		builder_fingerprint, state, retry_state, attempt, reason, report_path, error_code, error_message,
 		started_at, finished_at, next_retry_at FROM runs WHERE run_id=?`, runID)
 	return scanRun(row)
 }
@@ -314,7 +335,7 @@ func (s *Store) ListRuns(ctx context.Context, repoID string, limit int) ([]model
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT run_id, repo_id, desired_source_sha, base_bundle_digest,
-		builder_fingerprint, state, attempt, reason, report_path, error_code, error_message,
+		builder_fingerprint, state, retry_state, attempt, reason, report_path, error_code, error_message,
 		started_at, finished_at, next_retry_at FROM runs WHERE repo_id=? ORDER BY started_at DESC LIMIT ?`,
 		repoID, limit)
 	if err != nil {
@@ -335,7 +356,7 @@ func (s *Store) ListRuns(ctx context.Context, repoID string, limit int) ([]model
 // ActiveRuns 返回非终态的活跃 run（调度器用）。
 func (s *Store) ActiveRuns(ctx context.Context) ([]model.Run, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT run_id, repo_id, desired_source_sha, base_bundle_digest,
-		builder_fingerprint, state, attempt, reason, report_path, error_code, error_message,
+		builder_fingerprint, state, retry_state, attempt, reason, report_path, error_code, error_message,
 		started_at, finished_at, next_retry_at FROM runs
 		WHERE state NOT IN ('Stable','Blocked','FailedPermanent','Stale')
 		ORDER BY started_at`)
@@ -356,7 +377,7 @@ func (s *Store) ActiveRuns(ctx context.Context) ([]model.Run, error) {
 
 // TransitionRun 在事务中校验并执行状态迁移（§6：非法迁移直接拒绝）。
 func (s *Store) TransitionRun(ctx context.Context, runID string, to model.RunState, reason string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx)
 	if err != nil {
 		return err
 	}
@@ -384,14 +405,14 @@ func (s *Store) TransitionRun(ctx context.Context, runID string, to model.RunSta
 
 // SetRunError 记录 run 的错误信息与重试时间。
 func (s *Store) SetRunError(ctx context.Context, runID, code, msg string, nextRetry time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE runs SET error_code=?, error_message=?, next_retry_at=? WHERE run_id=?`,
+	_, err := s.execWrite(ctx, `UPDATE runs SET error_code=?, error_message=?, next_retry_at=? WHERE run_id=?`,
 		code, msg, nextRetry.UTC().Format(time.RFC3339), runID)
 	return err
 }
 
 // UpdateRunDesiredSHA 持久化 run 的 desired_source_sha（fetch 阶段获取后调用）。
 func (s *Store) UpdateRunDesiredSHA(ctx context.Context, runID, sha string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE runs SET desired_source_sha=? WHERE run_id=?`, sha, runID)
+	_, err := s.execWrite(ctx, `UPDATE runs SET desired_source_sha=? WHERE run_id=?`, sha, runID)
 	return err
 }
 
@@ -402,7 +423,7 @@ func (s *Store) UpsertPR(ctx context.Context, pr model.PullRequest) error {
 	if pr.LastObservedAt.IsZero() {
 		pr.LastObservedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO pull_requests
+	_, err := s.execWrite(ctx, `INSERT INTO pull_requests
 		(run_id, kind, owner, repo, number, branch, head_sha, base_branch, status, last_observed_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(run_id, kind) DO UPDATE SET
@@ -439,7 +460,7 @@ func (s *Store) GetPR(ctx context.Context, runID string, kind model.PRKind) (*mo
 
 // UpsertCandidate 插入或更新 candidate。
 func (s *Store) UpsertCandidate(ctx context.Context, c model.Candidate) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO candidates
+	_, err := s.execWrite(ctx, `INSERT INTO candidates
 		(candidate_id, run_id, source_sha, expected_worktree_digest, bundle_path, bundle_digest,
 		 release_id, release_tag, status)
 		VALUES (?,?,?,?,?,?,?,?,?)
@@ -478,15 +499,19 @@ func (s *Store) GetCandidate(ctx context.Context, candidateID string) (*model.Ca
 // 与 applied=true（幂等跳过）；否则插入 pending 行返回 applied=false。
 func (s *Store) ClaimEffect(ctx context.Context, e model.ExternalEffect) (externalID string, applied bool, err error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx)
 	if err != nil {
 		return "", false, err
 	}
 	defer tx.Rollback()
-	var existingID, existingStatus string
-	err = tx.QueryRowContext(ctx, `SELECT external_id, status FROM external_effects WHERE effect_key=?`,
-		e.EffectKey).Scan(&existingID, &existingStatus)
+	var existingID, existingStatus, existingType, existingTarget, existingFingerprint string
+	err = tx.QueryRowContext(ctx, `SELECT external_id, status, effect_type, target_repo, request_fingerprint FROM external_effects WHERE effect_key=?`,
+		e.EffectKey).Scan(&existingID, &existingStatus, &existingType, &existingTarget, &existingFingerprint)
 	if err == nil {
+		// 幂等键不能被不同动作重用。 Reject conflicting effect identities.
+		if existingType != e.EffectType || existingTarget != e.TargetRepo || existingFingerprint != e.RequestFingerprint {
+			return "", false, fmt.Errorf("controller store: effect identity mismatch: %s", e.EffectKey)
+		}
 		// 已存在。
 		if existingStatus == string(model.EffectApplied) {
 			return existingID, true, tx.Commit()
@@ -510,7 +535,7 @@ func (s *Store) ClaimEffect(ctx context.Context, e model.ExternalEffect) (extern
 // MarkEffectApplied 标记外部动作为已应用，记录 externalID。
 func (s *Store) MarkEffectApplied(ctx context.Context, effectKey, externalID, summary string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx, `UPDATE external_effects
+	_, err := s.execWrite(ctx, `UPDATE external_effects
 		SET external_id=?, status=?, response_summary=?, updated_at=? WHERE effect_key=?`,
 		externalID, string(model.EffectApplied), summary, now, effectKey)
 	return err
@@ -519,7 +544,7 @@ func (s *Store) MarkEffectApplied(ctx context.Context, effectKey, externalID, su
 // MarkEffectFailed 标记外部动作失败（可重试）。
 func (s *Store) MarkEffectFailed(ctx context.Context, effectKey, summary string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx, `UPDATE external_effects
+	_, err := s.execWrite(ctx, `UPDATE external_effects
 		SET status=?, response_summary=?, updated_at=? WHERE effect_key=?`,
 		string(model.EffectFailed), summary, now, effectKey)
 	return err
@@ -530,54 +555,45 @@ func (s *Store) MarkEffectFailed(ctx context.Context, effectKey, summary string)
 // AcquireLease 尝试获取 repo 的租约。若已有未过期租约且 holder 不同则失败；
 // 过期租约可被新 holder 接管（§14 崩溃恢复）。
 func (s *Store) AcquireLease(ctx context.Context, repoID, holderID string, ttl time.Duration) (bool, error) {
+	if repoID == "" || holderID == "" || ttl <= 0 {
+		return false, fmt.Errorf("controller store: invalid lease identity or TTL")
+	}
 	now := time.Now().UTC()
-	expires := now.Add(ttl)
-	tx, err := s.db.BeginTx(ctx, nil)
+	// 单语句竞争租约，不允许两个连接先读到空行再同时宣称所有权。
+	// A single conditional upsert avoids read-then-write acquisition races.
+	res, err := s.db.ExecContext(ctx, `INSERT INTO repo_leases (repo_id,holder_id,acquired_at,expires_at,heartbeat_at) VALUES(?,?,?,?,?)
+ ON CONFLICT(repo_id) DO UPDATE SET holder_id=excluded.holder_id,acquired_at=excluded.acquired_at,expires_at=excluded.expires_at,heartbeat_at=excluded.heartbeat_at
+ WHERE repo_leases.holder_id=excluded.holder_id OR julianday(repo_leases.expires_at)<=julianday(?)`, repoID, holderID, now.Format(time.RFC3339Nano), now.Add(ttl).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
-	var curHolder, curExpires string
-	err = tx.QueryRowContext(ctx, `SELECT holder_id, expires_at FROM repo_leases WHERE repo_id=?`, repoID).
-		Scan(&curHolder, &curExpires)
-	if err == nil {
-		exp, _ := time.Parse(time.RFC3339, curExpires)
-		if exp.After(now) && curHolder != holderID {
-			return false, tx.Commit() // 仍被占用。
-		}
-		// 过期或同一 holder：接管/续约。
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return false, err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO repo_leases (repo_id, holder_id, acquired_at, expires_at, heartbeat_at)
-		VALUES (?,?,?,?,?)
-		ON CONFLICT(repo_id) DO UPDATE SET holder_id=excluded.holder_id, acquired_at=excluded.acquired_at,
-		 expires_at=excluded.expires_at, heartbeat_at=excluded.heartbeat_at`,
-		repoID, holderID, now.Format(time.RFC3339), expires.Format(time.RFC3339), now.Format(time.RFC3339))
-	if err != nil {
-		return false, err
-	}
-	return true, tx.Commit()
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
-// RenewLease 续约（心跳）。仅 holder 匹配时续约。
+// RenewLease 仅续约尚未过期且仍属于本次执行的租约；过期执行不能复活。
+// Renew only a live lease owned by this execution; expired owners cannot resurrect it.
 func (s *Store) RenewLease(ctx context.Context, repoID, holderID string, ttl time.Duration) error {
+	if ttl <= 0 {
+		return fmt.Errorf("controller store: invalid lease TTL")
+	}
 	now := time.Now().UTC()
-	expires := now.Add(ttl)
-	res, err := s.db.ExecContext(ctx, `UPDATE repo_leases
-		SET expires_at=?, heartbeat_at=? WHERE repo_id=? AND holder_id=?`,
-		expires.Format(time.RFC3339), now.Format(time.RFC3339), repoID, holderID)
+	res, err := s.db.ExecContext(ctx, `UPDATE repo_leases SET expires_at=?,heartbeat_at=? WHERE repo_id=? AND holder_id=? AND julianday(expires_at)>julianday(?)`, now.Add(ttl).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), repoID, holderID, now.Format(time.RFC3339Nano))
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("controller store: lease 续约失败（holder 不匹配或已释放）: repo=%s", repoID)
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("controller store: lease lost or expired: repo=%s", repoID)
 	}
 	return nil
 }
 
-// ReleaseLease 释放租约。
+// ReleaseLease 仅删除本次执行的租约，不影响已接管的新 owner。
+// Release only this execution's ownership.
 func (s *Store) ReleaseLease(ctx context.Context, repoID, holderID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM repo_leases WHERE repo_id=? AND holder_id=?`, repoID, holderID)
 	return err
@@ -588,7 +604,7 @@ func (s *Store) ReleaseLease(ctx context.Context, repoID, holderID string) error
 // ClaimDelivery 声明一个 webhook delivery：已存在则返回 true（重复，不重复入队）。
 func (s *Store) ClaimDelivery(ctx context.Context, deliveryID, eventType, repoID string) (duplicate bool, err error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -612,7 +628,7 @@ func (s *Store) ClaimDelivery(ctx context.Context, deliveryID, eventType, repoID
 // MarkDeliveryProcessed 标记 delivery 已处理。
 func (s *Store) MarkDeliveryProcessed(ctx context.Context, deliveryID, status string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx, `UPDATE webhook_deliveries SET processed_at=?, status=? WHERE delivery_id=?`,
+	_, err := s.execWrite(ctx, `UPDATE webhook_deliveries SET processed_at=?, status=? WHERE delivery_id=?`,
 		now, status, deliveryID)
 	return err
 }
@@ -641,9 +657,9 @@ func scanRepo(s scanner) (*model.ManagedRepo, error) {
 
 func scanRun(s scanner) (*model.Run, error) {
 	r := &model.Run{}
-	var stateStr, started, finished, nextRetry string
+	var stateStr, retryState, started, finished, nextRetry string
 	err := s.Scan(&r.RunID, &r.RepoID, &r.DesiredSourceSHA, &r.BaseBundleDigest,
-		&r.BuilderFingerprint, &stateStr, &r.Attempt, &r.Reason, &r.ReportPath,
+		&r.BuilderFingerprint, &stateStr, &retryState, &r.Attempt, &r.Reason, &r.ReportPath,
 		&r.ErrorCode, &r.ErrorMessage, &started, &finished, &nextRetry)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -652,6 +668,7 @@ func scanRun(s scanner) (*model.Run, error) {
 		return nil, err
 	}
 	r.State = model.RunState(stateStr)
+	r.RetryState = model.RunState(retryState)
 	r.StartedAt = parseTS(started)
 	r.FinishedAt = parseTS(finished)
 	r.NextRetryAt = parseTS(nextRetry)

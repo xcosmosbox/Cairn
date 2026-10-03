@@ -1,7 +1,7 @@
 // Package evolve 是演化观测套件的捕获层（E-2）：每次 cairn-ingest / cairn-incremental /
 // cairn-rebalance 跑完后，作为旁路收尾（R-ev-1）完成——
 //  1. 打开/建立独立的 evolution.db（演化层自己的持久化，绝不写 KG 库，R-ev-2）；
-//  2. 把当前 KG 以 VACUUM INTO 归档为 snapshots/kg-<seq>-<kbver>.db（全部保留，不滚动淘汰）；
+//  2. 把当前 KG 以 VACUUM INTO 归档为 snapshots/kg-<seq>-<kbver>-<attempt>.db（全部保留，不滚动淘汰）；
 //  3. 取上一条 changeset 的快照作 parent，用 observe.Diff 产出血缘感知变更；
 //  4. 采样 core/metrics 哨兵指标 + incremental.stats 的累计改动占比；
 //  5. 写 changesets + metrics 各一行，生成人读 summary 供终端即时打印。
@@ -96,17 +96,26 @@ func Record(ctx context.Context, kgDBPath, evolutionDir, tool string) (summary s
 		return "", err
 	}
 	defer evDB.Close()
+	// seq 选择、快照记录与指标在同一个 IMMEDIATE 事务内串行，避免两个记录者
+	// 为同一 seq 发布产物。读者通过 WAL 的一致事务仍可读取上一代。
+	// Serialize recorders before selecting a parent and publishing artifacts.
+	tx, err := evDB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("evolve.Record: 开事务失败: %w", err)
+	}
+	defer tx.Rollback()
+	committed := false
 
 	// 上一条 changeset → parent（首次运行为空 → Diff(nil, cur) 全 added）。
-	parentSeq, parentFile, parentVersion, err := lastChangeset(ctx, evDB)
+	parentSeq, parentFile, parentVersion, err := lastChangeset(ctx, tx)
 	if err != nil {
 		return "", err
 	}
 	seq := parentSeq + 1
 
-	// 2. 打开当前 KG（只读意图：NewDB 迁移幂等不改数据，仅执行只读查询与
-	//    VACUUM INTO 归档——VACUUM INTO 写的是新快照文件，不是 KG 本身）。
-	kg, err := storage.NewDB(storage.DBOptions{Path: kgDBPath})
+	// 2. 源 KG 只读打开；观测不得隐式迁移旧库或创建缺失的库。
+	// Open the source without any schema or data writes.
+	kg, err := storage.OpenReadOnly(kgDBPath)
 	if err != nil {
 		return "", fmt.Errorf("evolve.Record: 打开 KG 失败: %w", err)
 	}
@@ -118,12 +127,30 @@ func Record(ctx context.Context, kgDBPath, evolutionDir, tool string) (summary s
 	}
 
 	// 3. 归档当前 KG 终态快照（全部保留）+ 完整性校验。
-	snapFile, err := archiveSnapshot(ctx, kg, snapDir, seq, kbVersion)
+	snapFile, err := archiveSnapshot(ctx, kgDBPath, snapDir, seq)
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		if !committed {
+			os.Remove(filepath.Join(snapDir, snapFile))
+		}
+	}()
 
-	// 4. 血缘感知 diff：parent 快照 vs 当前 KG。
+	// 所有观测必须来自同一份快照，避免 WAL 写者在不同查询之间推进版本。
+	// Observe one immutable snapshot, not a moving source across SQL statements.
+	observed, err := storage.OpenReadOnly(filepath.Join(snapDir, snapFile))
+	if err != nil {
+		return "", fmt.Errorf("evolve.Record: 打开归档快照失败: %w", err)
+	}
+	defer observed.Close()
+	kg = observed
+	kbVersion, err = storage.NewKBVersionRepo(kg).Current(ctx)
+	if err != nil {
+		return "", fmt.Errorf("evolve.Record: 读快照版本失败: %w", err)
+	}
+
+	// 4. 血缘感知 diff：parent 快照 vs 本轮快照。
 	var from *storage.DB
 	if parentFile != "" {
 		from, err = storage.OpenReadOnly(filepath.Join(snapDir, parentFile))
@@ -156,12 +183,7 @@ func Record(ctx context.Context, kgDBPath, evolutionDir, tool string) (summary s
 	ts := time.Now().UTC().Format(time.RFC3339)
 	summary = buildSummary(seq, tool, ts, kbVersion, parentVersion, trigger, diff)
 
-	// 6. 写 changesets + metrics（一个事务；只写 evolution.db）。
-	tx, err := evDB.BeginTx(ctx, nil)
-	if err != nil {
-		return "", fmt.Errorf("evolve.Record: 开事务失败: %w", err)
-	}
-	defer tx.Rollback() // 已提交则无操作
+	// 6. 在本轮事务内写 changesets + metrics（只写 evolution.db）。
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO changesets (seq, ts, tool, kb_version, parent_version, snapshot_file,
@@ -187,12 +209,13 @@ func Record(ctx context.Context, kgDBPath, evolutionDir, tool string) (summary s
 	if err := tx.Commit(); err != nil {
 		return "", fmt.Errorf("evolve.Record: 提交失败: %w", err)
 	}
+	committed = true
 	return summary, nil
 }
 
 // openEvolutionDB 打开（不存在则创建）独立演化库并建表。
 func openEvolutionDB(path string) (*sql.DB, error) {
-	conn, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	conn, err := storage.OpenSQLite(path, storage.SQLiteOptions{JournalMode: "WAL", ImmediateTransactions: true})
 	if err != nil {
 		return nil, fmt.Errorf("evolve: 打开 evolution.db 失败: %w", err)
 	}
@@ -208,7 +231,9 @@ func openEvolutionDB(path string) (*sql.DB, error) {
 
 // lastChangeset 返回最新一条 changeset 的 seq / snapshot_file / kb_version；
 // 首次运行（空表）返回零值与空串。
-func lastChangeset(ctx context.Context, evDB *sql.DB) (seq int64, snapshotFile, kbVersion string, err error) {
+func lastChangeset(ctx context.Context, evDB interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (seq int64, snapshotFile, kbVersion string, err error) {
 	err = evDB.QueryRowContext(ctx,
 		`SELECT seq, snapshot_file, COALESCE(kb_version, '')
 		   FROM changesets ORDER BY seq DESC LIMIT 1`).Scan(&seq, &snapshotFile, &kbVersion)
@@ -221,45 +246,56 @@ func lastChangeset(ctx context.Context, evDB *sql.DB) (seq int64, snapshotFile, 
 	return seq, snapshotFile, kbVersion, nil
 }
 
-// archiveSnapshot 用 VACUUM INTO 把 KG 终态复制为独立快照文件（WAL 安全、原子、
-// 不写源库），随后以读写方式打开一次快照做完整性校验（节点/边计数与源一致）。
-// VACUUM INTO 的输出是全新文件；校验打开只触碰快照，不触碰 KG。
-func archiveSnapshot(ctx context.Context, kg *storage.DB, snapDir string, seq int64, kbVersion string) (string, error) {
-	fileName := fmt.Sprintf("kg-%06d-%s.db", seq, sanitizeFilePart(kbVersion))
-	absPath := filepath.Join(snapDir, fileName)
-	if _, err := os.Stat(absPath); err == nil {
-		return "", fmt.Errorf("evolve: 快照文件已存在（seq 冲突）: %s", fileName)
+// archiveSnapshot 保留 WAL 的一致快照，依据快照本身的版本命名并校验。
+// Source KG remains read-only; conflicting targets are never overwritten.
+func archiveSnapshot(ctx context.Context, sourcePath, snapDir string, seq int64) (string, error) {
+	f, err := os.CreateTemp(snapDir, ".evolve-snapshot-*.db")
+	if err != nil {
+		return "", fmt.Errorf("evolve: 建快照临时路径失败: %w", err)
 	}
-	quoted := "'" + strings.ReplaceAll(absPath, "'", "''") + "'"
-	if _, err := kg.Conn().ExecContext(ctx, `VACUUM INTO `+quoted); err != nil {
+	tmpPath := f.Name()
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpPath)
+	if err := storage.SnapshotDatabase(ctx, sourcePath, tmpPath); err != nil {
 		return "", fmt.Errorf("evolve: 归档快照失败: %w", err)
 	}
-
-	// 完整性校验：快照行数必须与源一致（防 WAL 归档残缺静默入账）。
-	srcNodes, err := storage.NewNodeRepo(kg).ListAll(ctx)
-	if err != nil {
-		return "", fmt.Errorf("evolve: 源节点计数失败: %w", err)
-	}
-	srcEdges, err := storage.NewEdgeRepo(kg).ListAll(ctx)
-	if err != nil {
-		return "", fmt.Errorf("evolve: 源边计数失败: %w", err)
-	}
-	snapDB, err := storage.NewDB(storage.DBOptions{Path: absPath})
+	snapDB, err := storage.OpenReadOnly(tmpPath)
 	if err != nil {
 		return "", fmt.Errorf("evolve: 校验打开快照失败: %w", err)
 	}
 	defer snapDB.Close()
-	snapNodes, err := storage.NewNodeRepo(snapDB).ListAll(ctx)
-	if err != nil {
-		return "", fmt.Errorf("evolve: 快照节点计数失败: %w", err)
+	var check string
+	if err := snapDB.Conn().QueryRowContext(ctx, "PRAGMA quick_check").Scan(&check); err != nil || check != "ok" {
+		return "", fmt.Errorf("evolve: 快照完整性校验失败 (%s): %v", check, err)
 	}
-	snapEdges, err := storage.NewEdgeRepo(snapDB).ListAll(ctx)
+	kbVersion, err := storage.NewKBVersionRepo(snapDB).Current(ctx)
 	if err != nil {
-		return "", fmt.Errorf("evolve: 快照边计数失败: %w", err)
+		return "", fmt.Errorf("evolve: 快照版本读取失败: %w", err)
 	}
-	if len(snapNodes) != len(srcNodes) || len(snapEdges) != len(srcEdges) {
-		return "", fmt.Errorf("evolve: 快照不完整（节点 %d/%d 边 %d/%d）",
-			len(snapNodes), len(srcNodes), len(snapEdges), len(srcEdges))
+	// 崩溃可能留下未入账的旧快照。每次尝试有独立名称，绝不覆盖或删除它，
+	// 下次重试仍能记录同一 seq。已提交的路径只由 changesets 表引用。
+	// Unique attempts avoid a crash orphan permanently blocking the next record.
+	attempt := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(tmpPath), ".evolve-snapshot-"), ".db")
+	fileName := fmt.Sprintf("kg-%06d-%s-%s.db", seq, sanitizeFilePart(kbVersion), attempt)
+	if err := os.Link(tmpPath, filepath.Join(snapDir, fileName)); err != nil {
+		return "", fmt.Errorf("evolve: 发布快照失败（不覆盖既有产物）: %w", err)
+	}
+	dir, err := os.Open(snapDir)
+	if err != nil {
+		os.Remove(filepath.Join(snapDir, fileName))
+		return "", fmt.Errorf("evolve: 打开快照目录失败: %w", err)
+	}
+	syncErr := dir.Sync()
+	closeErr := dir.Close()
+	if syncErr != nil || closeErr != nil {
+		os.Remove(filepath.Join(snapDir, fileName))
+		return "", fmt.Errorf("evolve: 同步快照目录失败: sync=%v close=%v", syncErr, closeErr)
 	}
 	return fileName, nil
 }
@@ -452,16 +488,23 @@ func ReadManifest(ctx context.Context, evolutionDir string) (*Manifest, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("evolve.ReadManifest: evolution.db 不存在: %w", err)
 	}
-	conn, err := sql.Open("sqlite", path+"?mode=ro&_query_only=true&_journal_mode=WAL&_busy_timeout=5000")
+	conn, err := storage.OpenSQLite(path, storage.SQLiteOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("evolve.ReadManifest: 打开失败: %w", err)
 	}
 	defer conn.Close()
 	conn.SetMaxOpenConns(1)
+	// 两个列表必须属于同一提交；独立 SELECT 会跨过并发 append 的提交边界。
+	// Both result sets share one read snapshot.
+	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("evolve.ReadManifest: 开只读事务失败: %w", err)
+	}
+	defer tx.Rollback()
 
 	m := &Manifest{Changesets: []ChangesetRow{}, Metrics: []MetricRow{}}
 
-	rows, err := conn.QueryContext(ctx,
+	rows, err := tx.QueryContext(ctx,
 		`SELECT seq, ts, tool, COALESCE(kb_version,''), COALESCE(parent_version,''),
 		        snapshot_file, COALESCE(summary,''), COALESCE(trigger_reason,''),
 		        COALESCE(diff_json,''), COALESCE(docs_affected,''),
@@ -496,7 +539,7 @@ func ReadManifest(ctx context.Context, evolutionDir string) (*Manifest, error) {
 		return nil, fmt.Errorf("evolve.ReadManifest: 遍历 changesets 失败: %w", err)
 	}
 
-	mrows, err := conn.QueryContext(ctx,
+	mrows, err := tx.QueryContext(ctx,
 		`SELECT seq, ts, COALESCE(kb_version,''), modularity_q, singleton_ratio,
 		        edge_node_ratio, node_count, edge_count, cumulative_ratio
 		   FROM metrics ORDER BY seq`)

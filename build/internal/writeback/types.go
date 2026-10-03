@@ -45,7 +45,7 @@ type MemberSource struct {
 // info needed for rendering.
 type nodeView struct {
 	UUID          string   // node.ID（UUID，由 AssignNodeUUIDs 分配）/ node UUID
-	FileSlug     string   // LLM 生成的可读 slug（用于 _shared 文件名）/ LLM-generated readable slug
+	FileSlug      string   // LLM 生成的可读 slug（用于 _shared 文件名）/ LLM-generated readable slug
 	Tag           string   // "Entity" | "Concept" / node label
 	Name          string   // 节点中文名 / node name
 	Domain        string   // domain name（展示用，非 slug）/ domain name (display)
@@ -191,7 +191,7 @@ func makeNodeView(n *extract.Node, tag, domainName, domainSlug, subdomainName, s
 	// 稳定序：来源文档排序，保证输出确定。
 	// Stable order for determinism.
 	sortStrings(v.SourceFiles)
-	v.Shared = len(v.SourceFiles) >= 2
+	v.Shared = IsSharedSourceFiles(v.SourceFiles)
 	v.Span = firstSpan
 	return v
 }

@@ -43,6 +43,19 @@ const nodeColumns = `id, label, name, summary, synonyms, domain, subdomain,
         confidence, provenance, source_refs, file_slug,
         created_at, updated_at`
 
+// readColumns 为旧 v4 Bundle 补上逻辑空 slug，不能为了读取而迁移源库。
+// Inspect the actual column, rather than assuming user_version alone is proof.
+func (r *NodeRepo) readColumns(ctx context.Context) (string, error) {
+	var count int
+	if err := r.db.Conn().QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('nodes') WHERE name='file_slug'").Scan(&count); err != nil {
+		return "", fmt.Errorf("NodeRepo: inspect read columns: %w", err)
+	}
+	if count == 0 {
+		return strings.Replace(nodeColumns, "file_slug,", "NULL AS file_slug,", 1), nil
+	}
+	return nodeColumns, nil
+}
+
 // GetByID 通过主键 ID 查询单个节点。
 // 若未找到匹配节点，返回 nil, nil。
 //
@@ -51,9 +64,13 @@ const nodeColumns = `id, label, name, summary, synonyms, domain, subdomain,
 func (r *NodeRepo) GetByID(ctx context.Context, id string) (*dktypes.Node, error) {
 	r.db.mu.RLock()
 	defer r.db.mu.RUnlock()
+	columns, err := r.readColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	row := r.db.Conn().QueryRowContext(ctx,
-		`SELECT `+nodeColumns+` FROM nodes WHERE id = ?`, id)
+		`SELECT `+columns+` FROM nodes WHERE id = ?`, id)
 
 	n := &dbNode{}
 	if err := scanNodeRow(row, n); err != nil {
@@ -77,6 +94,10 @@ func (r *NodeRepo) GetByIDs(ctx context.Context, ids []string) (map[string]*dkty
 
 	r.db.mu.RLock()
 	defer r.db.mu.RUnlock()
+	columns, err := r.readColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// 构建 IN 子句的占位符 / Build IN clause placeholders
 	placeholders := make([]string, len(ids))
@@ -87,7 +108,7 @@ func (r *NodeRepo) GetByIDs(ctx context.Context, ids []string) (map[string]*dkty
 	}
 
 	query := fmt.Sprintf(
-		`SELECT `+nodeColumns+` FROM nodes WHERE id IN (%s)`, strings.Join(placeholders, ","))
+		`SELECT `+columns+` FROM nodes WHERE id IN (%s)`, strings.Join(placeholders, ","))
 
 	rows, err := r.db.Conn().QueryContext(ctx, query, args...)
 	if err != nil {
@@ -112,9 +133,13 @@ func (r *NodeRepo) GetByIDs(ctx context.Context, ids []string) (map[string]*dkty
 func (r *NodeRepo) ListByDomain(ctx context.Context, domain string) ([]*dktypes.Node, error) {
 	r.db.mu.RLock()
 	defer r.db.mu.RUnlock()
+	columns, err := r.readColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := r.db.Conn().QueryContext(ctx,
-		`SELECT `+nodeColumns+` FROM nodes WHERE domain = ?`, domain)
+		`SELECT `+columns+` FROM nodes WHERE domain = ?`, domain)
 	if err != nil {
 		return nil, fmt.Errorf("NodeRepo.ListByDomain: %w", err)
 	}
@@ -129,9 +154,13 @@ func (r *NodeRepo) ListByDomain(ctx context.Context, domain string) ([]*dktypes.
 func (r *NodeRepo) ListBySubdomain(ctx context.Context, domain, subdomain string) ([]*dktypes.Node, error) {
 	r.db.mu.RLock()
 	defer r.db.mu.RUnlock()
+	columns, err := r.readColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := r.db.Conn().QueryContext(ctx,
-		`SELECT `+nodeColumns+` FROM nodes WHERE domain = ? AND subdomain = ?`, domain, subdomain)
+		`SELECT `+columns+` FROM nodes WHERE domain = ? AND subdomain = ?`, domain, subdomain)
 	if err != nil {
 		return nil, fmt.Errorf("NodeRepo.ListBySubdomain: %w", err)
 	}
@@ -146,8 +175,12 @@ func (r *NodeRepo) ListBySubdomain(ctx context.Context, domain, subdomain string
 func (r *NodeRepo) ListAll(ctx context.Context) ([]*dktypes.Node, error) {
 	r.db.mu.RLock()
 	defer r.db.mu.RUnlock()
+	columns, err := r.readColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := r.db.Conn().QueryContext(ctx,
-		`SELECT `+nodeColumns+` FROM nodes`)
+		`SELECT `+columns+` FROM nodes`)
 	if err != nil {
 		return nil, fmt.Errorf("NodeRepo.ListAll: %w", err)
 	}
@@ -336,9 +369,13 @@ func (r *NodeRepo) SearchByNameSimilarity(ctx context.Context, name string, thre
 
 	r.db.mu.RLock()
 	defer r.db.mu.RUnlock()
+	columns, err := r.readColumns(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := r.db.Conn().QueryContext(ctx,
-		`SELECT `+nodeColumns+` FROM nodes`)
+		`SELECT `+columns+` FROM nodes`)
 	if err != nil {
 		return nil, fmt.Errorf("NodeRepo.SearchByNameSimilarity: %w", err)
 	}

@@ -28,9 +28,11 @@
 package writeback
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"os"
 	"path"
 	"path/filepath"
@@ -294,6 +296,7 @@ func buildSidecar(docRelPath, mdContent string, nodes []nodeView, generatedAt ti
 			Subdomain:       v.Subdomain,
 			DomainSlug:      v.DomainSlug,
 			SubdomainSlug:   v.SubdomainSlug,
+			FileSlug:        v.FileSlug,
 			Shared:          v.Shared,
 			Members:         append([]string(nil), v.Members...),
 			SummaryHash:     sha256Hex(v.Summary),
@@ -316,29 +319,42 @@ func buildSidecar(docRelPath, mdContent string, nodes []nodeView, generatedAt ti
 
 // writeSidecar 把 sidecar 写到 <mdPath>.kg.yaml（整篇覆盖）。
 // writeSidecar writes the sidecar to <mdPath>.kg.yaml (whole-file replace, R6).
-func writeSidecar(mdPath string, sf sidecarFile) error {
+func encodeSidecar(sf sidecarFile) ([]byte, error) {
 	if err := validateSidecarValue(sf, nil); err != nil {
-		return fmt.Errorf("writeback: refuse invalid sidecar for %s: %w", mdPath, err)
+		return nil, fmt.Errorf("writeback: invalid sidecar: %w", err)
 	}
 	var sb strings.Builder
-	sb.WriteString(sidecarHeaderComment)
-	sb.WriteString("\n")
+	sb.WriteString(sidecarHeaderComment + "\n")
 	enc := yaml.NewEncoder(&sb)
 	enc.SetIndent(2)
 	if err := enc.Encode(sf); err != nil {
-		return fmt.Errorf("writeback: encode sidecar yaml: %w", err)
+		return nil, fmt.Errorf("writeback: encode sidecar: %w", err)
 	}
 	if err := enc.Close(); err != nil {
-		return fmt.Errorf("writeback: close sidecar yaml encoder: %w", err)
+		return nil, err
 	}
-	sidecarPath := mdPath + ".kg.yaml"
-	if err := os.MkdirAll(filepath.Dir(sidecarPath), 0o755); err != nil {
-		return fmt.Errorf("writeback: mkdir sidecar dir %s: %w", filepath.Dir(sidecarPath), err)
+	return []byte(sb.String()), nil
+}
+
+func writeSidecar(mdPath string, sf sidecarFile) error {
+	return writeSidecarContext(context.Background(), mdPath, sf)
+}
+
+func writeSidecarContext(ctx context.Context, mdPath string, sf sidecarFile) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
 	}
-	if err := atomicWriteFile(sidecarPath, []byte(sb.String()), 0o644); err != nil {
-		return fmt.Errorf("writeback: write sidecar %s: %w", sidecarPath, err)
+	data, err := encodeSidecar(sf)
+	if err != nil {
+		return err
 	}
-	return nil
+	if err := recoverDocPairContext(ctx, mdPath); err != nil {
+		return err
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
+	return atomicWriteFileContext(ctx, mdPath+".kg.yaml", data, 0o644)
 }
 
 // readSidecar 读取 <mdPath>.kg.yaml 并解析为 sidecarFile。
@@ -346,6 +362,11 @@ func writeSidecar(mdPath string, sf sidecarFile) error {
 // readSidecar reads and parses <mdPath>.kg.yaml. Provided for the incremental
 // batch; not consumed in this batch.
 func readSidecar(mdPath string) (*sidecarFile, error) {
+	if _, err := os.Lstat(mdPath + ".kg-writeback.json"); err == nil {
+		return nil, fmt.Errorf("writeback: unfinished pair journal requires explicit owned recovery: %s", mdPath)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
 	sidecarPath := mdPath + ".kg.yaml"
 	data, err := os.ReadFile(sidecarPath)
 	if err != nil {
@@ -374,7 +395,7 @@ func WriteSidecar(mdPath string, sf sidecarFile) error {
 }
 
 // ReadSidecar 是公开的 sidecar 读取入口（供增量批次用）。
-// ReadSidecar is the public sidecar read entry (for the incremental batch).
+// ReadSidecar performs no writes; incomplete pair journals must be recovered by an owned write stage.
 func ReadSidecar(mdPath string) (*sidecarFile, error) {
 	return readSidecar(mdPath)
 }
@@ -392,3 +413,10 @@ type SidecarNode = sidecarNode
 // SidecarFile 是公开的 sidecar 文件类型（供外部测试断言字段）。
 // SidecarFile is the public sidecar file type (for external test assertions).
 type SidecarFile = sidecarFile
+
+func unmarshalJournalSidecar(data []byte, sf *sidecarFile) error {
+	if err := yaml.Unmarshal(data, sf); err != nil {
+		return err
+	}
+	return validateSidecarValue(*sf, nil)
+}

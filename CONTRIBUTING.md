@@ -6,7 +6,7 @@
 
 ```bash
 go version      # 需要 1.22+
-node -v         # 需要 18+（仅 graph-viewer）
+node -v         # 需要 22+（仅 graph-viewer，与 CI 一致）
 
 make help       # 列出全部命令
 make build      # 构建全部二进制到 bin/
@@ -58,7 +58,8 @@ make verify     # 完整门禁（提 PR 前必跑）
 
 ## 测试
 
-本仓库当前未包含单元测试文件（`make test` 会输出一片 `no test files`），欢迎补充。约定：
+仓库包含缺陷回归测试。提交前运行 `go test -race -count=1 ./...` 与 `make verify`；
+涉及查看器部署路径时还需在 `graph-viewer` 运行 `npm run test:subpath`。约定：
 
 - 新增测试文件命名为 `zz_<主题>_test.go`，与被测源码同目录（Go 的包内测试要求）
 - 修复缺陷时，测试注释里写清**原本的失败模式**，而不只是断言正确行为

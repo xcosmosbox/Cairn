@@ -20,10 +20,10 @@ import (
 // FakeForge 是 githubapp.Forge 的本地 fake 实现。
 type FakeForge struct {
 	mu       sync.Mutex
-	repos    map[string]*fakeRepo // key: owner/repo
+	repos    map[string]*fakeRepo              // key: owner/repo
 	prs      map[string]*githubapp.PullRequest // key: owner/repo#number
-	prByHead map[string]int                       // key: owner/repo:head → number
-	releases map[string]*githubapp.Release       // key: owner/repo:tag
+	prByHead map[string]int                    // key: owner/repo:head → number
+	releases map[string]*githubapp.Release     // key: owner/repo:tag
 	token    string
 }
 
@@ -58,6 +58,19 @@ func (f *FakeForge) CreateRepo(baseDir, owner, repo, baseBranch string) (string,
 	if err := os.MkdirAll(filepath.Dir(barePath), 0o755); err != nil {
 		return "", err
 	}
+	// 新 Forge 实例复用磁盘仓库时只能注册，不重新初始化或推送另一条 initial 历史。
+	// Re-register existing bare repositories without rewriting any branch.
+	if _, err := os.Stat(filepath.Join(barePath, "HEAD")); err == nil {
+		bare, err := gitOutput(barePath, "rev-parse", "--is-bare-repository")
+		if err != nil || strings.TrimSpace(bare) != "true" {
+			return "", fmt.Errorf("fakeforge: existing path is not a bare repository: %s", barePath)
+		}
+		if _, err := gitOutput(barePath, "rev-parse", "--verify", "refs/heads/"+baseBranch); err != nil {
+			return "", fmt.Errorf("fakeforge: existing repository missing branch %s: %w", baseBranch, err)
+		}
+		f.repos[k] = &fakeRepo{barePath: barePath}
+		return barePath, nil
+	}
 	// git init --bare（在已存在的 baseDir 下执行，避免 chdir 到不存在的路径）。
 	if err := runGit(baseDir, "init", "--bare", barePath); err != nil {
 		return "", err
@@ -90,7 +103,9 @@ func (f *FakeForge) CreateRepo(baseDir, owner, repo, baseBranch string) (string,
 		return "", err
 	}
 	// 设 HEAD。
-	runGit(barePath, "symbolic-ref", "HEAD", "refs/heads/"+baseBranch)
+	if err := runGit(barePath, "symbolic-ref", "HEAD", "refs/heads/"+baseBranch); err != nil {
+		return "", err
+	}
 	f.repos[k] = &fakeRepo{barePath: barePath}
 	return barePath, nil
 }
@@ -140,6 +155,10 @@ func (f *FakeForge) EnsurePullRequest(ctx context.Context, spec githubapp.PullRe
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	k := key(spec.Owner, spec.Repo)
+	fr, ok := f.repos[k]
+	if !ok {
+		return githubapp.PullRequest{}, fmt.Errorf("fakeforge: repo %s 未注册", k)
+	}
 	// 幂等：按 head branch 查找已有 PR。
 	if num, ok := f.prByHead[k+":"+spec.HeadBranch]; ok {
 		pr := f.prs[prKey(k, num)]
@@ -160,7 +179,10 @@ func (f *FakeForge) EnsurePullRequest(ctx context.Context, spec githubapp.PullRe
 		}
 		num++
 	}
-	headSHA, _ := gitOutput(f.repos[k].barePath, "rev-parse", "refs/heads/"+spec.HeadBranch)
+	headSHA, err := gitOutput(fr.barePath, "rev-parse", "refs/heads/"+spec.HeadBranch)
+	if err != nil {
+		return githubapp.PullRequest{}, fmt.Errorf("fakeforge: PR head %s: %w", spec.HeadBranch, err)
+	}
 	pr := &githubapp.PullRequest{
 		Owner:      spec.Owner,
 		Repo:       spec.Repo,
@@ -205,7 +227,8 @@ func (f *FakeForge) MergePullRequest(ctx context.Context, owner, repo string, nu
 		return err
 	}
 	pr.Merged = true
-	pr.State = "merged"
+	pr.State = "closed"
+	pr.MergeCommitSHA = pr.HeadSHA
 	return nil
 }
 

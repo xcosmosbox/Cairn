@@ -13,6 +13,22 @@ package writeback
 
 import "fmt"
 
+// IsSharedSourceFiles 使用来源账本中不同且非空的路径判定 shared，不按来源行或
+// member 个数计数；渲染与发布验证必须使用同一个规则。
+// IsSharedSourceFiles reports whether at least two distinct source paths exist.
+func IsSharedSourceFiles(paths []string) bool {
+	seen := make(map[string]bool)
+	for _, path := range paths {
+		if path != "" {
+			seen[path] = true
+			if len(seen) >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // docGroup 是按 file_path 聚合的回写分组：该文档需要渲染的 node 视图集合。
 // 一个 nodeView 可能同时出现在多个 docGroup（shared node 的镜像块在每个来源文档一份）。
 //

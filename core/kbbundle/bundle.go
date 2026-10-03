@@ -15,6 +15,7 @@ package kbbundle
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -34,37 +35,37 @@ const ManifestFormat = "dk-kb-bundle/v1"
 
 // Manifest 是 Bundle 内的不可变 provenance（kb-manifest.json）。
 type Manifest struct {
-	Format             string `json:"format"`
-	KG                 string `json:"kg"`
-	SourceRepo         string `json:"source_repo"`
-	SourceRef          string `json:"source_ref"`
-	SourceCommit       string `json:"source_commit"`
-	BuilderVersion     string `json:"builder_version"`
-	BuilderCommit      string `json:"builder_commit"`
-	SchemaVersion      int    `json:"schema_version"`
-	PromptSetVersion   string `json:"prompt_set_version"`
-	Model              string `json:"model"`
-	ConfigDigest       string `json:"config_digest"`
-	BundleDigest       string `json:"bundle_digest"`
-	KBVersion          string `json:"kb_version"`
-	CreatedAt          string `json:"created_at"`
+	Format               string `json:"format"`
+	KG                   string `json:"kg"`
+	SourceRepo           string `json:"source_repo"`
+	SourceRef            string `json:"source_ref"`
+	SourceCommit         string `json:"source_commit"`
+	BuilderVersion       string `json:"builder_version"`
+	BuilderCommit        string `json:"builder_commit"`
+	SchemaVersion        int    `json:"schema_version"`
+	PromptSetVersion     string `json:"prompt_set_version"`
+	Model                string `json:"model"`
+	ConfigDigest         string `json:"config_digest"`
+	BundleDigest         string `json:"bundle_digest"`
+	KBVersion            string `json:"kb_version"`
+	CreatedAt            string `json:"created_at"`
 	MinimumReaderVersion string `json:"minimum_reader_version"`
 }
 
 // CatalogManifest 是 Catalog Repo 中的发布 manifest（额外含 channel）。
 type CatalogManifest struct {
 	Manifest
-	Channel       string `json:"channel"`        // stable | candidate | preview
-	PublishedAt   string `json:"published_at"`
-	ReleaseTag    string `json:"release_tag,omitempty"`
-	AssetName     string `json:"asset_name,omitempty"`
+	Channel     string `json:"channel"` // stable | candidate | preview
+	PublishedAt string `json:"published_at"`
+	ReleaseTag  string `json:"release_tag,omitempty"`
+	AssetName   string `json:"asset_name,omitempty"`
 }
 
 // Bundle 是打包后的内存表示。
 type Bundle struct {
-	Manifest   Manifest
-	Dir        string   // 临时目录或安装目录
-	Files      []string // 相对 Dir 的文件列表（已排序）
+	Manifest Manifest
+	Dir      string   // 临时目录或安装目录
+	Files    []string // 相对 Dir 的文件列表（已排序）
 }
 
 // DigestFile 计算单个文件的 sha256（hex，不带前缀）。
@@ -97,12 +98,13 @@ func DigestPrefix(hex string) string {
 
 // PackRequest 是 Pack 的输入。
 type PackRequest struct {
-	Manifest      Manifest
-	KGDBPath      string // 必填
-	BuildReport   []byte // 可选（build-report.json）
-	EvolutionDBPath string // 可选
+	Manifest          Manifest
+	KGDBPath          string // 必填
+	BuildReport       []byte // 可选（build-report.json）
+	EvolutionDBPath   string // 可选
 	EvolutionManifest []byte // 可选
-	OutDir        string // 输出目录（Bundle 落盘位置）
+	PreparedSnapshots bool   // Only for private immutable snapshots already produced by storage.SnapshotDatabase.
+	OutDir            string // 输出目录（Bundle 落盘位置）
 }
 
 // Pack 把 KG db + manifest + 可选文件打包到 OutDir，生成 checksums.sha256 与
@@ -120,7 +122,13 @@ func Pack(req PackRequest) (*Bundle, error) {
 		return nil, fmt.Errorf("kbbundle: mkdir %s: %w", req.OutDir, err)
 	}
 	// 复制 knowledge.db。
-	if err := copyFile(req.KGDBPath, filepath.Join(req.OutDir, "knowledge.db")); err != nil {
+	copyDB := func(src, dst string) error {
+		if req.PreparedSnapshots {
+			return copyFile(src, dst)
+		}
+		return SnapshotSQLite(context.Background(), src, dst)
+	}
+	if err := copyDB(req.KGDBPath, filepath.Join(req.OutDir, "knowledge.db")); err != nil {
 		return nil, fmt.Errorf("kbbundle: 复制 knowledge.db: %w", err)
 	}
 	files := []string{"knowledge.db"}
@@ -137,7 +145,7 @@ func Pack(req PackRequest) (*Bundle, error) {
 		if err := os.MkdirAll(evDir, 0o755); err != nil {
 			return nil, fmt.Errorf("kbbundle: mkdir evolution: %w", err)
 		}
-		if err := copyFile(req.EvolutionDBPath, filepath.Join(evDir, "evolution.db")); err != nil {
+		if err := copyDB(req.EvolutionDBPath, filepath.Join(evDir, "evolution.db")); err != nil {
 			return nil, fmt.Errorf("kbbundle: 复制 evolution.db: %w", err)
 		}
 		files = append(files, "evolution/evolution.db")
@@ -152,6 +160,14 @@ func Pack(req PackRequest) (*Bundle, error) {
 		}
 		files = append(files, "evolution/manifest.json")
 	}
+	actualVersion, err := actualSchema(filepath.Join(req.OutDir, "knowledge.db"))
+	if err != nil {
+		return nil, err
+	}
+	if req.Manifest.SchemaVersion != 0 && req.Manifest.SchemaVersion != actualVersion {
+		return nil, fmt.Errorf("kbbundle: manifest schema %d != actual DB schema %d", req.Manifest.SchemaVersion, actualVersion)
+	}
+	req.Manifest.SchemaVersion = actualVersion
 	// 计算每个文件摘要。
 	digests, err := computeDigests(req.OutDir, files)
 	if err != nil {
@@ -213,6 +229,11 @@ func Verify(dir string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, required := range []string{"knowledge.db", "kb-manifest.json"} {
+		if _, ok := stored[required]; !ok {
+			return nil, fmt.Errorf("kbbundle: required artifact %s is not covered by checksums", required)
+		}
+	}
 	// 重算并比对（checksums 中的文件 + manifest 自身）。
 	for name, expected := range stored {
 		actual, err := DigestFile(filepath.Join(dir, name))
@@ -248,6 +269,13 @@ func Verify(dir string) (*Manifest, error) {
 	if DigestPrefix(agg) != m.BundleDigest {
 		return nil, fmt.Errorf("kbbundle: bundle_digest 不匹配（manifest %s 实际 %s）", m.BundleDigest, DigestPrefix(agg))
 	}
+	version, err := actualSchema(filepath.Join(dir, "knowledge.db"))
+	if err != nil {
+		return nil, fmt.Errorf("kbbundle: actual database: %w", err)
+	}
+	if version != m.SchemaVersion {
+		return nil, fmt.Errorf("kbbundle: manifest schema %d != actual DB schema %d", m.SchemaVersion, version)
+	}
 	return &m, nil
 }
 
@@ -262,6 +290,11 @@ type InstallResult struct {
 // Install 把 srcDir 中的 Bundle 校验后原子安装到 installDir/<digest>，
 // 并把 installDir/current 符号链接切换过去，保留上一版用于回滚。
 func Install(srcDir, installDir string) (*InstallResult, error) {
+	var err error
+	installDir, err = filepath.Abs(installDir)
+	if err != nil {
+		return nil, err
+	}
 	m, err := Verify(srcDir)
 	if err != nil {
 		return nil, err
@@ -272,34 +305,89 @@ func Install(srcDir, installDir string) (*InstallResult, error) {
 	// 版本目录 = installDir/<digest 短形>。
 	short := strings.TrimPrefix(m.BundleDigest, "sha256:")[:16]
 	verDir := filepath.Join(installDir, short)
-	if err := os.MkdirAll(verDir, 0o755); err != nil {
+
+	// Published generations are immutable: readers may retain an older directory
+	// while current moves forward or back. Never rewrite an existing generation.
+	if info, err := os.Lstat(verDir); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("kbbundle: existing generation is not an ordinary directory")
+		}
+		existing, err := Verify(verDir)
+		if err != nil {
+			return nil, fmt.Errorf("kbbundle: existing generation is invalid: %w", err)
+		}
+		if *existing != *m {
+			return nil, fmt.Errorf("kbbundle: existing generation identity differs")
+		}
+	} else if !os.IsNotExist(err) {
 		return nil, err
-	}
-	// 复制全部受管文件（knowledge.db / manifest / report / evolution）。
-	for _, name := range []string{"knowledge.db", "kb-manifest.json", "build-report.json", "checksums.sha256"} {
-		src := filepath.Join(srcDir, name)
-		if _, err := os.Stat(src); err == nil {
-			if err := copyFile(src, filepath.Join(verDir, name)); err != nil {
-				return nil, fmt.Errorf("kbbundle: 安装 %s: %w", name, err)
+	} else {
+		stage, err := os.MkdirTemp(installDir, ".install-generation-*")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(stage)
+		for _, name := range []string{"knowledge.db", "kb-manifest.json", "build-report.json", "checksums.sha256"} {
+			src := filepath.Join(srcDir, name)
+			if _, err := os.Stat(src); err == nil {
+				if err := copyFile(src, filepath.Join(stage, name)); err != nil {
+					return nil, fmt.Errorf("kbbundle: install %s: %w", name, err)
+				}
+			} else if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+		evSrc := filepath.Join(srcDir, "evolution")
+		if _, err := os.Stat(evSrc); err == nil {
+			if err := copyTree(evSrc, filepath.Join(stage, "evolution")); err != nil {
+				return nil, err
+			}
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+		staged, err := Verify(stage)
+		if err != nil {
+			return nil, err
+		}
+		if *staged != *m {
+			return nil, fmt.Errorf("kbbundle: source changed while staging installation")
+		}
+		if err := syncDirectoryTree(stage); err != nil {
+			return nil, err
+		}
+		if err := os.Rename(stage, verDir); err != nil {
+			// A concurrent installer may already have published the same generation.
+			existing, verifyErr := Verify(verDir)
+			if verifyErr != nil || *existing != *m {
+				return nil, fmt.Errorf("kbbundle: publish generation: %w", err)
 			}
 		}
 	}
-	evSrc := filepath.Join(srcDir, "evolution")
-	if _, err := os.Stat(evSrc); err == nil {
-		if err := copyTree(evSrc, filepath.Join(verDir, "evolution")); err != nil {
-			return nil, fmt.Errorf("kbbundle: 安装 evolution: %w", err)
-		}
+	if err := syncDirectory(installDir); err != nil {
+		return nil, err
 	}
-	// 原子切换 current 符号链接。
 	currentLink := filepath.Join(installDir, "current")
 	prev, _ := os.Readlink(currentLink)
-	tmpLink := currentLink + ".tmp"
-	os.Remove(tmpLink)
+	linkStage, err := os.MkdirTemp(installDir, ".install-current-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(linkStage)
+	tmpLink := filepath.Join(linkStage, "current")
 	if err := os.Symlink(verDir, tmpLink); err != nil {
-		return nil, fmt.Errorf("kbbundle: 创建临时 current 链接: %w", err)
+		return nil, err
 	}
 	if err := os.Rename(tmpLink, currentLink); err != nil {
-		return nil, fmt.Errorf("kbbundle: 原子切换 current: %w", err)
+		return nil, fmt.Errorf("kbbundle: switch current: %w", err)
+	}
+	directory, err := os.Open(installDir)
+	if err != nil {
+		return nil, err
+	}
+	err = directory.Sync()
+	directory.Close()
+	if err != nil {
+		return nil, err
 	}
 	return &InstallResult{
 		InstallDir: installDir,
@@ -325,8 +413,10 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }
 
 func copyTree(src, dst string) error {
@@ -418,7 +508,31 @@ func readChecksums(dir string) (map[string]string, error) {
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("kbbundle: checksums 行格式非法 %q", line)
 		}
-		out[parts[1]] = parts[0]
+		name := parts[1]
+		if name == "." || filepath.IsAbs(name) || strings.Contains(name, "\\") || filepath.ToSlash(filepath.Clean(name)) != name || name == ".." || strings.HasPrefix(name, "../") {
+			return nil, fmt.Errorf("kbbundle: unsafe checksum path %q", name)
+		}
+		if _, duplicate := out[name]; duplicate {
+			return nil, fmt.Errorf("kbbundle: duplicate checksum path %q", name)
+		}
+		if len(parts[0]) != 64 {
+			return nil, fmt.Errorf("kbbundle: invalid checksum for %s", name)
+		}
+		if _, err := hex.DecodeString(parts[0]); err != nil {
+			return nil, err
+		}
+		path := dir
+		for _, component := range strings.Split(name, "/") {
+			path = filepath.Join(path, component)
+			info, err := os.Lstat(path)
+			if err != nil {
+				return nil, err
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("kbbundle: checksum path traverses symlink: %s", name)
+			}
+		}
+		out[name] = parts[0]
 	}
 	return out, nil
 }
@@ -585,4 +699,41 @@ func IsGzip(path string) (bool, error) {
 		return false, err
 	}
 	return n == 2 && magic[0] == 0x1f && magic[1] == 0x8b, nil
+}
+
+// syncDirectoryTree persists newly copied file names before publishing their parent link.
+func syncDirectoryTree(root string) error {
+	var dirs []string
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			dirs = append(dirs, path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	for i := len(dirs) - 1; i >= 0; i-- {
+		f, err := os.Open(dirs[i])
+		if err != nil {
+			return err
+		}
+		err = f.Sync()
+		f.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncDirectory(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
 }

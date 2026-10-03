@@ -19,10 +19,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xcosmosbox/cairn/core/dkconfig"
 	"github.com/xcosmosbox/cairn/build/internal/controller/githubapp"
+	"github.com/xcosmosbox/cairn/build/internal/controller/model"
 	"github.com/xcosmosbox/cairn/build/internal/controller/reconcile"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
+	"github.com/xcosmosbox/cairn/core/dkconfig"
 )
 
 // Scheduler 周期性推进活跃 run 并为有新 SHA 的 repo 创建新 run。
@@ -134,20 +135,30 @@ func (s *Scheduler) tick(ctx context.Context) {
 		if !repo.Enabled {
 			continue
 		}
-		active, _ := s.hasActiveRun(ctx, repo.ID)
+		active, err := s.hasActiveRun(ctx, repo.ID)
+		if err != nil {
+			log.Printf("[scheduler] 读取 %s 活跃任务失败: %v", repo.ID, err)
+			continue
+		}
 		if active {
 			continue
 		}
-		sha, err := s.forge.GetBranchSHA(ctx, repo.GitHubOwner, repo.GitHubName, repo.Branch)
+		sha, err := githubapp.ReadBranchSHA(ctx, s.forge, repo.GitHubOwner, repo.GitHubName, repo.Branch)
 		if err != nil {
 			log.Printf("[scheduler] 获取 %s SHA 失败: %v", repo.ID, err)
 			continue
 		}
-		// 仅当 source SHA 变化时创建新 run（首次 last_seen 为空自然满足）。
-		// 不再因 last_stable_bundle_digest 为空而反复建 run——否则 stable 从未成功时，
-		// 每个 poll 周期都会新建全量 run（run 一旦进入非活跃态 hasActiveRun 就挡不住），
-		// 形成全量重建风暴。失败/阻塞的 run 应通过 /retry 或人工 unblock 恢复。
-		if sha != repo.LastSeenSourceSHA {
+		// 配置/fingerprint 漂移同样触发构建，但不能绕过任务重试上限无限建新 run。
+		// Retry exhaustion remains durable; a new source/config identity permits a fresh run.
+		if s.recon.NeedsReconcile(&repo, sha) {
+			recent, err := s.store.ListRuns(ctx, repo.ID, 1)
+			if err != nil {
+				log.Printf("[scheduler] 读取 %s 最近任务失败: %v", repo.ID, err)
+				continue
+			}
+			if len(recent) > 0 && recent[0].State.IsTerminal() && recent[0].State != model.StateStable && recent[0].DesiredSourceSHA == sha && recent[0].BuilderFingerprint == s.recon.CurrentFingerprintHex() {
+				continue
+			}
 			if _, err := s.recon.CreateRun(ctx, repo.ID); err != nil {
 				log.Printf("[scheduler] 创建 run for %s 失败: %v", repo.ID, err)
 			} else {
@@ -180,16 +191,11 @@ func (s *Scheduler) stepRunWithTimeout(ctx context.Context, runID string) {
 }
 
 func (s *Scheduler) hasActiveRun(ctx context.Context, repoID string) (bool, error) {
-	runs, err := s.store.ListRuns(ctx, repoID, 10)
+	runID, err := s.store.ActiveRunForRepo(ctx, repoID)
 	if err != nil {
 		return false, err
 	}
-	for _, r := range runs {
-		if r.State.IsActive() {
-			return true, nil
-		}
-	}
-	return false, nil
+	return runID != "", nil
 }
 
 // Wakeup 立即触发一轮调度（webhook 唤醒用）。
@@ -201,10 +207,10 @@ func (s *Scheduler) Wakeup(ctx context.Context) {
 
 // HTTPServer 是管理 API + webhook 入口。
 type HTTPServer struct {
-	cfg        *dkconfig.Config
-	store      *store.Store
-	sched      *Scheduler
-	recon      *reconcile.Reconciler
+	cfg           *dkconfig.Config
+	store         *store.Store
+	sched         *Scheduler
+	recon         *reconcile.Reconciler
 	webhookSecret string
 	adminToken    string
 }
@@ -337,19 +343,19 @@ func (h *HTTPServer) handleRunActions(w http.ResponseWriter, r *http.Request) {
 	runID := parts[0]
 	action := parts[1]
 	switch action {
-	case "retry":
-		// 把 Blocked/Failed 的 run 回到 Idle。
-		if err := h.store.TransitionRun(ctx, runID, "Idle", "manual retry"); err != nil {
-			// Idle 可能不合法（从 Blocked）；用 FailedRetryable 中转。
-			h.store.TransitionRun(ctx, runID, "FailedRetryable", "manual retry")
-			h.store.TransitionRun(ctx, runID, "Idle", "manual retry")
+	case "retry", "unblock":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		retriedID, err := h.recon.RequestRetry(ctx, runID)
+		if err != nil {
+			writeError(w, http.StatusConflict, err)
+			return
 		}
 		h.sched.Wakeup(ctx)
-		writeJSON(w, map[string]string{"status": "retrying"})
-	case "unblock":
-		h.store.TransitionRun(ctx, runID, "Idle", "manual unblock")
-		h.sched.Wakeup(ctx)
-		writeJSON(w, map[string]string{"status": "unblocked"})
+		writeJSON(w, map[string]string{"status": "retrying", "run_id": retriedID})
 	default:
 		http.NotFound(w, r)
 	}

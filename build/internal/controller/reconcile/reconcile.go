@@ -9,7 +9,7 @@ package reconcile
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -19,58 +19,66 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/google/uuid"
 
-	"github.com/xcosmosbox/cairn/core/dkconfig"
-	"github.com/xcosmosbox/cairn/core/kbbundle"
+	buildmeta "github.com/xcosmosbox/cairn/build/internal"
 	"github.com/xcosmosbox/cairn/build/internal/controller/githubapp"
 	"github.com/xcosmosbox/cairn/build/internal/controller/model"
 	"github.com/xcosmosbox/cairn/build/internal/controller/publisher"
 	"github.com/xcosmosbox/cairn/build/internal/controller/runner"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"github.com/xcosmosbox/cairn/build/internal/controller/workspace"
+	"github.com/xcosmosbox/cairn/core/dkconfig"
+	"github.com/xcosmosbox/cairn/core/kbbundle"
+	"github.com/xcosmosbox/cairn/core/repoidentity"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // Reconciler 是控制器的状态机引擎。
 type Reconciler struct {
-	cfg     *dkconfig.Config
-	store   *store.Store
-	forge   githubapp.Forge
-	ws      *workspace.Manager
-	runner  runner.PipelineRunner
-	pub     *publisher.Publisher
+	cfg          *dkconfig.Config
+	store        *store.Store
+	forge        githubapp.Forge
+	ws           *workspace.Manager
+	runner       runner.PipelineRunner
+	pub          *publisher.Publisher
 	prSummarizer runner.PRSummarizer // 可选：LLM PR 摘要器
-	holderID string // 进程实例标识（lease holder）
-	leaseTTL time.Duration
+	holderID     string              // 进程实例标识（lease holder）
+	leaseTTL     time.Duration
 }
 
 // Options 构造 Reconciler 的参数。
 type Options struct {
-	Config   *dkconfig.Config
-	Store    *store.Store
-	Forge    githubapp.Forge
-	WS       *workspace.Manager
-	Runner   runner.PipelineRunner
-	Publisher *publisher.Publisher
+	Config       *dkconfig.Config
+	Store        *store.Store
+	Forge        githubapp.Forge
+	WS           *workspace.Manager
+	Runner       runner.PipelineRunner
+	Publisher    *publisher.Publisher
 	PRSummarizer runner.PRSummarizer // 可选
-	HolderID string
-	LeaseTTL time.Duration
+	HolderID     string
+	LeaseTTL     time.Duration
 }
 
-// transition 包装 TransitionRun，记录迁移失败（避免静默丢失 DB 错误）。
-func (r *Reconciler) transition(ctx context.Context, runID string, to model.RunState, reason string) {
+// transition 将持久化失败向上返回，Step 不能在迁移未提交时宣称成功。
+// Propagate transition failures instead of reporting non-durable progress.
+func (r *Reconciler) transition(ctx context.Context, runID string, to model.RunState, reason string) error {
 	if err := r.store.TransitionRun(ctx, runID, to, reason); err != nil {
-		fmt.Printf("[reconcile] 状态迁移失败 %s → %s: %v\n", runID, to, err)
+		return fmt.Errorf("reconcile: transition %s -> %s: %w", runID, to, err)
 	}
+	return nil
 }
 
 // New 创建 Reconciler。
 func New(opts Options) *Reconciler {
-	if opts.LeaseTTL == 0 {
+	if opts.LeaseTTL <= 0 {
 		opts.LeaseTTL = 30 * time.Minute
 	}
 	if opts.HolderID == "" {
-		opts.HolderID = "cairnd-default"
+		opts.HolderID = "cairnd-" + uuid.NewString()
+	}
+	if opts.Publisher != nil {
+		opts.Publisher.SetEffectJournal(opts.Store)
 	}
 	return &Reconciler{
 		cfg: opts.Config, store: opts.Store, forge: opts.Forge, ws: opts.WS,
@@ -81,7 +89,7 @@ func New(opts Options) *Reconciler {
 
 // StepResult 是一次 Step 的结果。
 type StepResult struct {
-	Advanced bool      // 是否推进了状态
+	Advanced bool // 是否推进了状态
 	From     model.RunState
 	To       model.RunState
 	Message  string
@@ -89,6 +97,30 @@ type StepResult struct {
 
 // Step 推进某 run 一步。若 run 已终态或不需要推进，返回 Advanced=false。
 func (r *Reconciler) Step(ctx context.Context, runID string) (StepResult, error) {
+	run, err := r.store.GetRun(ctx, runID)
+	if err != nil {
+		return StepResult{}, err
+	}
+	result := StepResult{From: run.State, To: run.State}
+	acquired, err := r.withRepoLease(ctx, run.RepoID, func(ownedCtx context.Context) error {
+		var stepErr error
+		result, stepErr = r.step(ownedCtx, runID)
+		return stepErr
+	})
+	if err != nil {
+		result.Advanced = false
+		return result, err
+	}
+	if !acquired {
+		result.Advanced = false
+		result.Message = "repository lease held by another execution"
+	}
+	return result, nil
+}
+
+// step 只在持有租约后重新读取状态，不能沿用获取租约前的快照。
+// Reload durable state after acquiring ownership.
+func (r *Reconciler) step(ctx context.Context, runID string) (StepResult, error) {
 	run, err := r.store.GetRun(ctx, runID)
 	if err != nil {
 		return StepResult{}, err
@@ -104,15 +136,27 @@ func (r *Reconciler) Step(ctx context.Context, runID string) (StepResult, error)
 	repoCfg, ok := r.cfg.RepoByID(run.RepoID)
 	if !ok {
 		// repo 配置已移除；标记 stale。
-		r.transition(ctx, runID, model.StateStale, "repo config removed")
+		if err := r.transition(ctx, runID, model.StateStale, "repo config removed"); err != nil {
+			return res, err
+		}
 		return StepResult{Advanced: true, From: run.State, To: model.StateStale}, nil
 	}
 	rc := *repoCfg
+	// 运行中配置变化不能把旧语义候选标记成新版本，尤其不能继续远端发布。
+	// Stop before external actions when a persisted run no longer matches build semantics.
+	if run.State != model.StateIdle && run.State != model.StateFetchSource && run.BuilderFingerprint != "" && run.BuilderFingerprint != r.fingerprintHex() {
+		if err := r.transition(ctx, runID, model.StateStale, "builder/config fingerprint changed during run"); err != nil {
+			return res, err
+		}
+		return StepResult{Advanced: true, From: run.State, To: model.StateStale}, nil
+	}
 
 	switch run.State {
 	case model.StateIdle:
 		// Idle → FetchSource（严格状态机：先进入 FetchSource 再做实际工作）。
-		r.transition(ctx, runID, model.StateFetchSource, "idle → fetch")
+		if err := r.transition(ctx, runID, model.StateFetchSource, "idle → fetch"); err != nil {
+			return res, err
+		}
 		res.To = model.StateFetchSource
 		res.Advanced = true
 		return res, nil
@@ -147,28 +191,36 @@ func (r *Reconciler) Step(ctx context.Context, runID string) (StepResult, error)
 	case model.StateFailedRetryable:
 		return r.stepRetry(ctx, run, repo, rc, res)
 	}
-	return res, nil
+	return res, fmt.Errorf("reconcile: unknown run state %q", run.State)
 }
 
 // ─── 各状态处理 ──────────────────────────────────────────────────
 
 func (r *Reconciler) stepFetchSource(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
 	// 获取 source branch SHA。
-	sha, err := r.forge.GetBranchSHA(ctx, repo.GitHubOwner, repo.GitHubName, repo.Branch)
+	sha, err := githubapp.ReadBranchSHA(ctx, r.forge, repo.GitHubOwner, repo.GitHubName, repo.Branch)
 	if err != nil {
 		return r.failRetryable(ctx, run, "fetch_source", err, res)
 	}
-	r.store.UpdateRepoSeen(ctx, repo.ID, sha)
-	r.store.UpdateRunDesiredSHA(ctx, run.RunID, sha)
+	if err := r.store.UpdateRepoSeen(ctx, repo.ID, sha); err != nil {
+		return res, err
+	}
+	if err := r.store.UpdateRunDesiredSHA(ctx, run.RunID, sha); err != nil {
+		return res, err
+	}
 	run.DesiredSourceSHA = sha
 	// 计算当前 builder fingerprint 并记录到 run。fingerprint 变化意味着旧 stable 的
 	// 构建语义已过时（模型/schema/builder 升级），须全量重建而非基于旧 base 做增量。
 	curFP := r.fingerprintHex()
-	r.store.UpdateRunFingerprint(ctx, run.RunID, curFP)
+	if err := r.store.UpdateRunFingerprint(ctx, run.RunID, curFP); err != nil {
+		return res, err
+	}
 	run.BuilderFingerprint = curFP
 	// no-op 判定：SHA + fingerprint + stable 都相同（§7 兼容性矩阵）。
 	if sha == repo.LastStableSourceSHA && repo.LastStableBundleDigest != "" && curFP == repo.LastStableFingerprint {
-		r.transition(ctx, run.RunID, model.StateStable, "no-op: SHA + fingerprint unchanged")
+		if err := r.transition(ctx, run.RunID, model.StateStable, "no-op: SHA + fingerprint unchanged"); err != nil {
+			return res, err
+		}
 		res.To = model.StateStable
 		res.Advanced = true
 		return res, nil
@@ -179,10 +231,14 @@ func (r *Reconciler) stepFetchSource(ctx context.Context, run *model.Run, repo *
 		if repo.LastStableBundleDigest != "" {
 			reason = "fingerprint changed: full rebuild"
 		}
-		r.transition(ctx, run.RunID, model.StateFullBuild, reason)
+		if err := r.transition(ctx, run.RunID, model.StateFullBuild, reason); err != nil {
+			return res, err
+		}
 		res.To = model.StateFullBuild
 	} else {
-		r.transition(ctx, run.RunID, model.StateRestoreBase, "has stable base: restore + incremental")
+		if err := r.transition(ctx, run.RunID, model.StateRestoreBase, "has stable base: restore + incremental"); err != nil {
+			return res, err
+		}
 		res.To = model.StateRestoreBase
 	}
 	res.Advanced = true
@@ -198,7 +254,9 @@ func (r *Reconciler) stepRestoreBase(ctx context.Context, run *model.Run, repo *
 	srcDB := filepath.Join(stableDir, "knowledge.db")
 	if _, err := statFile(srcDB); err != nil {
 		// 无 stable bundle 文件 → 降级全量。
-		r.transition(ctx, run.RunID, model.StateFullBuild, "stable bundle missing: full build")
+		if err := r.transition(ctx, run.RunID, model.StateFullBuild, "stable bundle missing: full build"); err != nil {
+			return res, err
+		}
 		res.To = model.StateFullBuild
 		res.Advanced = true
 		return res, nil
@@ -206,7 +264,9 @@ func (r *Reconciler) stepRestoreBase(ctx context.Context, run *model.Run, repo *
 	if err := copyFile(srcDB, candidateDB); err != nil {
 		return r.failRetryable(ctx, run, "restore_base", err, res)
 	}
-	r.transition(ctx, run.RunID, model.StatePlan, "base restored")
+	if err := r.transition(ctx, run.RunID, model.StatePlan, "base restored"); err != nil {
+		return res, err
+	}
 	res.To = model.StatePlan
 	res.Advanced = true
 	return res, nil
@@ -214,7 +274,10 @@ func (r *Reconciler) stepRestoreBase(ctx context.Context, run *model.Run, repo *
 
 func (r *Reconciler) stepPlan(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
 	// 镜像 source repo + checkout worktree。
-	token, _, _ := r.forge.GetInstallToken(ctx)
+	token, _, err := r.forge.GetInstallToken(ctx)
+	if err != nil {
+		return r.failRetryable(ctx, run, "installation_token", err, res)
+	}
 	remoteURL := r.forge.RemoteURL(repo.GitHubOwner, repo.GitHubName)
 	if err := r.ws.EnsureMirror(ctx, repo.ID, remoteURL, token); err != nil {
 		return r.failRetryable(ctx, run, "mirror", err, res)
@@ -222,15 +285,25 @@ func (r *Reconciler) stepPlan(ctx context.Context, run *model.Run, repo *model.M
 	if _, err := r.ws.CheckoutWorktree(ctx, repo.ID, run.RunID, run.DesiredSourceSHA, ""); err != nil {
 		return r.failRetryable(ctx, run, "checkout", err, res)
 	}
-	r.transition(ctx, run.RunID, model.StateIncrementalBuild, "plan: incremental")
+	if err := r.transition(ctx, run.RunID, model.StateIncrementalBuild, "plan: incremental"); err != nil {
+		return res, err
+	}
 	res.To = model.StateIncrementalBuild
 	res.Advanced = true
 	return res, nil
 }
 
 func (r *Reconciler) stepFullBuild(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
+	identity, identityErr := repoidentity.CanonicalGitURL(repo.SourceURL)
+	if identityErr != nil {
+		return r.failRetryable(ctx, run, "repository_identity", identityErr, res)
+	}
+
 	// 镜像 + checkout source SHA。
-	token, _, _ := r.forge.GetInstallToken(ctx)
+	token, _, err := r.forge.GetInstallToken(ctx)
+	if err != nil {
+		return r.failRetryable(ctx, run, "installation_token", err, res)
+	}
 	remoteURL := r.forge.RemoteURL(repo.GitHubOwner, repo.GitHubName)
 	if err := r.ws.EnsureMirror(ctx, repo.ID, remoteURL, token); err != nil {
 		return r.failRetryable(ctx, run, "mirror", err, res)
@@ -245,32 +318,43 @@ func (r *Reconciler) stepFullBuild(ctx context.Context, run *model.Run, repo *mo
 	os.Remove(candidateDB)
 	// 全量构建（RunFullRebuild 内部会 os.Remove(db)）。
 	buildRes, err := r.runner.Full(ctx, runner.FullRequest{
-		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence,
+		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity,
 	})
 	if err != nil {
 		return r.failRetryable(ctx, run, "full_build", err, res)
 	}
-	r.transition(ctx, run.RunID, model.StateValidateCandidate, fmt.Sprintf("full build: %d nodes", buildRes.NodesCreated))
+	if err := r.transition(ctx, run.RunID, model.StateValidateCandidate, fmt.Sprintf("full build: %d nodes", buildRes.NodesCreated)); err != nil {
+		return res, err
+	}
 	res.To = model.StateValidateCandidate
 	res.Advanced = true
 	return res, nil
 }
 
 func (r *Reconciler) stepIncremental(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
+	identity, identityErr := repoidentity.CanonicalGitURL(repo.SourceURL)
+	if identityErr != nil {
+		return r.failRetryable(ctx, run, "repository_identity", identityErr, res)
+	}
+
 	wt := r.ws.SourceWorktree(run.RunID)
 	candidateDB := r.candidateDBPath(run.RunID)
 	buildRes, err := r.runner.Incremental(ctx, runner.IncrementalRequest{
-		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence,
+		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity,
 	})
 	if err != nil {
 		return r.failRetryable(ctx, run, "incremental", err, res)
 	}
 	// 记录是否有回写差异。
 	if buildRes.HasWriteback {
-		r.transition(ctx, run.RunID, model.StateRebalanceCheck, fmt.Sprintf("incremental: %d docs rewritten", buildRes.DocsRewritten))
+		if err := r.transition(ctx, run.RunID, model.StateRebalanceCheck, fmt.Sprintf("incremental: %d docs rewritten", buildRes.DocsRewritten)); err != nil {
+			return res, err
+		}
 		res.To = model.StateRebalanceCheck
 	} else {
-		r.transition(ctx, run.RunID, model.StateRebalanceCheck, "incremental: no writeback")
+		if err := r.transition(ctx, run.RunID, model.StateRebalanceCheck, "incremental: no writeback"); err != nil {
+			return res, err
+		}
 		res.To = model.StateRebalanceCheck
 	}
 	res.Advanced = true
@@ -278,17 +362,26 @@ func (r *Reconciler) stepIncremental(ctx context.Context, run *model.Run, repo *
 }
 
 func (r *Reconciler) stepRebalanceCheck(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
+	identity, identityErr := repoidentity.CanonicalGitURL(repo.SourceURL)
+	if identityErr != nil {
+		return r.failRetryable(ctx, run, "repository_identity", identityErr, res)
+	}
+
 	wt := r.ws.SourceWorktree(run.RunID)
 	candidateDB := r.candidateDBPath(run.RunID)
-	dec, err := r.runner.RebalanceCheck(ctx, runner.RebalanceRequest{RepoPath: wt, DBPath: candidateDB})
+	dec, err := r.runner.RebalanceCheck(ctx, runner.RebalanceRequest{RepositoryIdentity: identity, RepoPath: wt, DBPath: candidateDB})
 	if err != nil {
 		return r.failRetryable(ctx, run, "rebalance_check", err, res)
 	}
 	if dec.Triggered {
-		r.transition(ctx, run.RunID, model.StateRebalance, fmt.Sprintf("rebalance triggered: %v", dec.Reasons))
+		if err := r.transition(ctx, run.RunID, model.StateRebalance, fmt.Sprintf("rebalance triggered: %v", dec.Reasons)); err != nil {
+			return res, err
+		}
 		res.To = model.StateRebalance
 	} else {
-		r.transition(ctx, run.RunID, model.StateValidateCandidate, "rebalance not triggered")
+		if err := r.transition(ctx, run.RunID, model.StateValidateCandidate, "rebalance not triggered"); err != nil {
+			return res, err
+		}
 		res.To = model.StateValidateCandidate
 	}
 	res.Advanced = true
@@ -296,13 +389,20 @@ func (r *Reconciler) stepRebalanceCheck(ctx context.Context, run *model.Run, rep
 }
 
 func (r *Reconciler) stepRebalance(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
+	identity, identityErr := repoidentity.CanonicalGitURL(repo.SourceURL)
+	if identityErr != nil {
+		return r.failRetryable(ctx, run, "repository_identity", identityErr, res)
+	}
+
 	wt := r.ws.SourceWorktree(run.RunID)
 	candidateDB := r.candidateDBPath(run.RunID)
-	_, err := r.runner.Rebalance(ctx, runner.RebalanceRequest{RepoPath: wt, DBPath: candidateDB, Force: true})
+	_, err := r.runner.Rebalance(ctx, runner.RebalanceRequest{RepositoryIdentity: identity, RepoPath: wt, DBPath: candidateDB, Force: true})
 	if err != nil {
 		return r.failRetryable(ctx, run, "rebalance", err, res)
 	}
-	r.transition(ctx, run.RunID, model.StateValidateCandidate, "rebalance done")
+	if err := r.transition(ctx, run.RunID, model.StateValidateCandidate, "rebalance done"); err != nil {
+		return res, err
+	}
 	res.To = model.StateValidateCandidate
 	res.Advanced = true
 	return res, nil
@@ -310,27 +410,34 @@ func (r *Reconciler) stepRebalance(ctx context.Context, run *model.Run, repo *mo
 
 func (r *Reconciler) stepValidate(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
 	candidateDB := r.candidateDBPath(run.RunID)
-	vr, err := r.runner.Validate(ctx, runner.ValidateRequest{DBPath: candidateDB})
+	vr, err := r.runner.Validate(ctx, runner.ValidateRequest{DBPath: candidateDB, RepoPath: r.ws.SourceWorktree(run.RunID)})
 	if err != nil {
 		return r.failRetryable(ctx, run, "validate", err, res)
 	}
 	if !vr.OK {
-		r.store.SetRunError(ctx, run.RunID, "validation_failed", fmt.Sprintf("checks failed: %v", vr.Errors), time.Now().Add(10*time.Minute))
-		r.transition(ctx, run.RunID, model.StateFailedRetryable, "validation failed")
-		res.To = model.StateFailedRetryable
-		res.Advanced = true
-		return res, nil
+		return r.failRetryable(ctx, run, "validation_failed", fmt.Errorf("checks failed: %v", vr.Errors), res)
 	}
 	// 检查是否有回写差异（通过 worktree 状态）。
 	wt := r.ws.SourceWorktree(run.RunID)
-	digest, _ := workspace.ManagedDigest(wt)
+	digest, err := workspace.ManagedDigest(wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "worktree_digest", err, res)
+	}
+	hasUncommitted, err := r.wsHasChanges(ctx, wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "worktree_status", err, res)
+	}
 	// 若 worktree 有未提交变更 → 创建 Source PR；否则直接上传 candidate。
-	if hasUncommitted, _ := r.wsHasChanges(ctx, wt); hasUncommitted {
+	if hasUncommitted {
 		run.Reason = "validate ok, has writeback: " + digest
-		r.transition(ctx, run.RunID, model.StateCreateSourcePR, run.Reason)
+		if err := r.transition(ctx, run.RunID, model.StateCreateSourcePR, run.Reason); err != nil {
+			return res, err
+		}
 		res.To = model.StateCreateSourcePR
 	} else {
-		r.transition(ctx, run.RunID, model.StateUploadCandidate, "validate ok, no writeback")
+		if err := r.transition(ctx, run.RunID, model.StateUploadCandidate, "validate ok, no writeback"); err != nil {
+			return res, err
+		}
 		res.To = model.StateUploadCandidate
 	}
 	res.Advanced = true
@@ -338,61 +445,71 @@ func (r *Reconciler) stepValidate(ctx context.Context, run *model.Run, repo *mod
 }
 
 func (r *Reconciler) stepCreateSourcePR(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
-	if repoCfg.Rewrite.Mode != "pr" {
-		// direct 模式：直接 push 到 source branch（不推荐，但支持）。
-		r.transition(ctx, run.RunID, model.StateReconcileMergedSource, "direct push mode")
+	wt := r.ws.SourceWorktree(run.RunID)
+	expectedDigest, err := workspace.ManagedDigest(wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "digest_writeback", err, res)
+	}
+	// 一次人工调整后可能需要第二个审查 PR；内容与 base SHA 纳入分支/幂等键，
+	// 防止误用同 run 第一轮已经合并的 PR。
+	round := kbbundle.DigestBytes([]byte(run.DesiredSourceSHA + "\n" + expectedDigest))[:12]
+	botBranch := "cairnd/" + repo.ID + "/" + run.RunID + "-" + round
+	runMarker := "cairn-run-id:" + run.RunID + ":source:" + round
+	if err := r.ws.EnsureBranchInWorktree(ctx, wt, botBranch); err != nil {
+		return r.failRetryable(ctx, run, "create_branch", err, res)
+	}
+	msg := fmt.Sprintf("chore(kg): structured writeback\n\n%s\nsource: %s", runMarker, shortSHA(run.DesiredSourceSHA))
+	if err := r.ws.CommitAll(ctx, wt, msg, "cairnd", "cairnd@bot"); err != nil && err != workspace.ErrNoChanges {
+		return r.failRetryable(ctx, run, "commit_writeback", err, res)
+	}
+	headSHA, err := r.ws.HeadSHA(ctx, wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "writeback_head", err, res)
+	}
+	if err := r.store.UpsertCandidate(ctx, model.Candidate{CandidateID: run.RunID + "-cand", RunID: run.RunID, SourceSHA: run.DesiredSourceSHA, ExpectedWorktreeDigest: expectedDigest, Status: model.CandidateBuilding}); err != nil {
+		return res, err
+	}
+	token, _, err := r.forge.GetInstallToken(ctx)
+	if err != nil {
+		return r.failRetryable(ctx, run, "source_token", err, res)
+	}
+	targetBranch := botBranch
+	if repoCfg.Rewrite.Mode == "direct" {
+		targetBranch = repo.Branch
+	}
+	pushRequest := struct{ SourceSHA, HeadSHA, Branch, TargetBranch string }{run.DesiredSourceSHA, headSHA, botBranch, targetBranch}
+	_, err = publisher.Effect(ctx, r.store, "push", repo.GitHubOwner+"/"+repo.GitHubName, pushRequest, func() (string, error) {
+		err := r.ws.PushBranchTo(ctx, repo.ID, repo.SourceURL, botBranch, targetBranch, token)
+		return headSHA, err
+	})
+	if err != nil {
+		return r.failRetryable(ctx, run, "push_branch", err, res)
+	}
+	if repoCfg.Rewrite.Mode == "direct" {
+		if err := r.transition(ctx, run.RunID, model.StateReconcileMergedSource, "direct writeback pushed"); err != nil {
+			return res, err
+		}
 		res.To = model.StateReconcileMergedSource
 		res.Advanced = true
 		return res, nil
 	}
-	runMarker := "cairn-run-id:" + run.RunID
-	botBranch := "cairnd/" + repo.ID + "/" + run.RunID
-	wt := r.ws.SourceWorktree(run.RunID)
-	// 创建 bot 分支（worktree 此前是 detached HEAD）。
-	if err := r.ws.CreateBranchInWorktree(ctx, wt, botBranch); err != nil {
-		return r.failRetryable(ctx, run, "create_branch", err, res)
+	diffStat, err := r.ws.DiffStat(ctx, wt, run.DesiredSourceSHA)
+	if err != nil {
+		return r.failRetryable(ctx, run, "writeback_diff", err, res)
 	}
-	// 提交回写。
-	msg := fmt.Sprintf("chore(kg): structured writeback\n\n%s\nsource: %s", runMarker, run.DesiredSourceSHA[:12])
-	if err := r.ws.CommitAll(ctx, wt, msg, "cairnd", "cairnd@bot"); err != nil && err != workspace.ErrNoChanges {
-		return r.failRetryable(ctx, run, "commit_writeback", err, res)
-	}
-	// 计算 expected worktree digest（提交后的受管文件摘要）。
-	expectedDigest, _ := workspace.ManagedDigest(wt)
-	// 推送 bot 分支。
-	token, _, _ := r.forge.GetInstallToken(ctx)
-	if err := r.ws.PushBranch(ctx, repo.ID, repo.SourceURL, botBranch, token); err != nil {
-		return r.failRetryable(ctx, run, "push_branch", err, res)
-	}
-	headSHA, _ := r.ws.HeadSHA(ctx, wt)
-	// 构建丰富的 PR body。
-	candidateDB := r.candidateDBPath(run.RunID)
-	diffStat, _ := r.ws.DiffStat(ctx, wt, run.DesiredSourceSHA)
-	prBody := r.buildSourcePRBody(ctx, run, repo, repoCfg, expectedDigest, candidateDB, diffStat, runMarker)
-	prTitle := fmt.Sprintf("chore(kg): %s 知识图谱结构化回写 @ %s", repo.KGGroup, run.DesiredSourceSHA[:12])
-	// 创建 PR。
-	pr, err := r.forge.EnsurePullRequest(ctx, githubapp.PullRequestSpec{
-		Owner: repo.GitHubOwner, Repo: repo.GitHubName,
-		HeadBranch: botBranch, BaseBranch: repo.Branch,
-		Title: prTitle,
-		Body:  prBody,
-		RunMarker: runMarker,
-	})
+	prSpec := githubapp.PullRequestSpec{Owner: repo.GitHubOwner, Repo: repo.GitHubName, HeadBranch: botBranch, BaseBranch: repo.Branch, Title: fmt.Sprintf("chore(kg): %s 知识图谱结构化回写 @ %s", repo.KGGroup, shortSHA(run.DesiredSourceSHA)), Body: r.buildSourcePRBody(ctx, run, repo, repoCfg, expectedDigest, r.candidateDBPath(run.RunID), diffStat, runMarker), RunMarker: runMarker}
+	// LLM 摘要只影响展示，不影响请求身份；重试不会因描述文案变化制造重复 PR。
+	identity := struct{ HeadBranch, BaseBranch, HeadSHA, Marker string }{botBranch, repo.Branch, headSHA, runMarker}
+	pr, err := publisher.Effect(ctx, r.store, "create_pr", repo.GitHubOwner+"/"+repo.GitHubName, identity, func() (githubapp.PullRequest, error) { return r.forge.EnsurePullRequest(ctx, prSpec) })
 	if err != nil {
 		return r.failRetryable(ctx, run, "create_pr", err, res)
 	}
-	r.store.UpsertPR(ctx, model.PullRequest{
-		RunID: run.RunID, Kind: model.PRKindSourceWriteback,
-		Owner: repo.GitHubOwner, Repo: repo.GitHubName, Number: pr.Number,
-		Branch: botBranch, HeadSHA: headSHA, BaseBranch: repo.Branch, Status: model.PRStatusOpen,
-	})
-	// 记录 expected digest 供合并后校验。
-	cand := model.Candidate{
-		CandidateID: run.RunID + "-cand", RunID: run.RunID, SourceSHA: run.DesiredSourceSHA,
-		ExpectedWorktreeDigest: expectedDigest, Status: model.CandidateBuilding,
+	if err := r.store.UpsertPR(ctx, model.PullRequest{RunID: run.RunID, Kind: model.PRKindSourceWriteback, Owner: repo.GitHubOwner, Repo: repo.GitHubName, Number: pr.Number, Branch: botBranch, HeadSHA: headSHA, BaseBranch: repo.Branch, Status: model.PRStatusOpen}); err != nil {
+		return res, err
 	}
-	r.store.UpsertCandidate(ctx, cand)
-	r.transition(ctx, run.RunID, model.StateAwaitSourcePR, fmt.Sprintf("PR #%d created", pr.Number))
+	if err := r.transition(ctx, run.RunID, model.StateAwaitSourcePR, fmt.Sprintf("PR #%d created", pr.Number)); err != nil {
+		return res, err
+	}
 	res.To = model.StateAwaitSourcePR
 	res.Advanced = true
 	return res, nil
@@ -400,7 +517,10 @@ func (r *Reconciler) stepCreateSourcePR(ctx context.Context, run *model.Run, rep
 
 func (r *Reconciler) stepAwaitSourcePR(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
 	pr, err := r.store.GetPR(ctx, run.RunID, model.PRKindSourceWriteback)
-	if err != nil || pr == nil {
+	if err != nil {
+		return res, err
+	}
+	if pr == nil {
 		return r.failRetryable(ctx, run, "pr_not_found", fmt.Errorf("source PR not found"), res)
 	}
 	// 查询 PR 状态。
@@ -409,7 +529,10 @@ func (r *Reconciler) stepAwaitSourcePR(ctx context.Context, run *model.Run, repo
 		return r.failRetryable(ctx, run, "get_pr", err, res)
 	}
 	// 提前获取 source branch HEAD：既用于 merged 二次确认，也用于 stale 判定。
-	curSHA, _ := r.forge.GetBranchSHA(ctx, repo.GitHubOwner, repo.GitHubName, repo.Branch)
+	curSHA, err := githubapp.ReadBranchSHA(ctx, r.forge, repo.GitHubOwner, repo.GitHubName, repo.Branch)
+	if err != nil {
+		return r.failRetryable(ctx, run, "get_source_branch", err, res)
+	}
 
 	// Merged 检测：直接 merged 标志，或分支 HEAD 已等于 PR 的 merge_commit_sha。
 	// 后者用于应对 GitHub 最终一致性延迟——合并瞬间分支 ref 已更新，但 merged 标志
@@ -421,26 +544,38 @@ func (r *Reconciler) stepAwaitSourcePR(ctx context.Context, run *model.Run, repo
 		if !observed.Merged {
 			reason = "source PR merged (由 merge_commit_sha 确认，merged 标志延迟)"
 		}
-		r.store.UpsertPR(ctx, model.PullRequest{
+		if err := r.store.UpsertPR(ctx, model.PullRequest{
 			RunID: run.RunID, Kind: model.PRKindSourceWriteback, Owner: pr.Owner, Repo: pr.Repo,
 			Number: pr.Number, Branch: pr.Branch, HeadSHA: observed.HeadSHA, BaseBranch: pr.BaseBranch,
 			Status: model.PRStatusMerged,
-		})
-		r.transition(ctx, run.RunID, model.StateReconcileMergedSource, reason)
+		}); err != nil {
+			return res, err
+		}
+		if err := r.transition(ctx, run.RunID, model.StateReconcileMergedSource, reason); err != nil {
+			return res, err
+		}
 		res.To = model.StateReconcileMergedSource
 		res.Advanced = true
 		return res, nil
 	}
 	if observed.State == "closed" && !observed.Merged {
+		pr.Status = model.PRStatusClosed
+		if err := r.store.UpsertPR(ctx, *pr); err != nil {
+			return res, err
+		}
 		// PR 被关闭未合并 → Blocked（§14）。
-		r.transition(ctx, run.RunID, model.StateBlocked, "source PR closed without merge")
+		if err := r.transition(ctx, run.RunID, model.StateBlocked, "source PR closed without merge"); err != nil {
+			return res, err
+		}
 		res.To = model.StateBlocked
 		res.Advanced = true
 		return res, nil
 	}
 	// 仍 open：检查 source branch 是否已变化（stale 判定）。
 	if curSHA != run.DesiredSourceSHA && curSHA != pr.HeadSHA {
-		r.transition(ctx, run.RunID, model.StateStale, "source branch changed during PR wait")
+		if err := r.transition(ctx, run.RunID, model.StateStale, "source branch changed during PR wait"); err != nil {
+			return res, err
+		}
 		res.To = model.StateStale
 		res.Advanced = true
 		return res, nil
@@ -452,52 +587,117 @@ func (r *Reconciler) stepAwaitSourcePR(ctx context.Context, run *model.Run, repo
 }
 
 func (r *Reconciler) stepReconcileMerged(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
-	// 获取合并后的 source branch HEAD。
-	mergedSHA, err := r.forge.GetBranchSHA(ctx, repo.GitHubOwner, repo.GitHubName, repo.Branch)
+	mergedSHA, err := githubapp.ReadBranchSHA(ctx, r.forge, repo.GitHubOwner, repo.GitHubName, repo.Branch)
 	if err != nil {
-		return r.failRetryable(ctx, run, "get_merged_sha", err, res)
+		return r.failRetryable(ctx, run, "merged_sha", err, res)
 	}
-	// 更新 mirror + checkout 合并后 worktree。
-	token, _, _ := r.forge.GetInstallToken(ctx)
+	token, _, err := r.forge.GetInstallToken(ctx)
+	if err != nil {
+		return r.failRetryable(ctx, run, "merged_token", err, res)
+	}
 	if err := r.ws.EnsureMirror(ctx, repo.ID, repo.SourceURL, token); err != nil {
 		return r.failRetryable(ctx, run, "remirror", err, res)
 	}
-	wt, err := r.ws.CheckoutWorktree(ctx, repo.ID, run.RunID+"-merged", mergedSHA, "")
+	// 仍使用本轮 source worktree，后续新增回写进入同一审查路径。
+	wt, err := r.ws.CheckoutWorktree(ctx, repo.ID, run.RunID, mergedSHA, "")
 	if err != nil {
 		return r.failRetryable(ctx, run, "checkout_merged", err, res)
 	}
-	// 校验合并后 tree digest 与 candidate 期望一致（§7.1 步骤 7）。
-	cand, _ := r.store.GetCandidate(ctx, run.RunID+"-cand")
-	actualDigest, _ := workspace.ManagedDigest(wt)
-	if cand != nil && cand.ExpectedWorktreeDigest != "" && actualDigest != cand.ExpectedWorktreeDigest {
-		// tree 不一致（人在 PR 中调整了内容）→ 重新增量收敛（§7.1 步骤 8）。
-		candidateDB := r.candidateDBPath(run.RunID)
-		_, err := r.runner.Incremental(ctx, runner.IncrementalRequest{RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence})
+	cand, err := r.store.GetCandidate(ctx, run.RunID+"-cand")
+	if err != nil {
+		return res, err
+	}
+	if cand == nil || cand.ExpectedWorktreeDigest == "" {
+		return r.failRetryable(ctx, run, "candidate_missing", fmt.Errorf("merged source has no expected candidate tree"), res)
+	}
+	actualDigest, err := workspace.ManagedDigest(wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "merged_digest", err, res)
+	}
+	// provenance 在两条分支中统一持久化；增量重试也仍以当前合并源为基准。
+	if err := r.store.UpdateRunDesiredSHA(ctx, run.RunID, mergedSHA); err != nil {
+		return res, err
+	}
+	run.DesiredSourceSHA = mergedSHA
+	if actualDigest != cand.ExpectedWorktreeDigest {
+		identity, err := repoidentity.CanonicalGitURL(repo.SourceURL)
+		if err != nil {
+			return r.failRetryable(ctx, run, "repository_identity", err, res)
+		}
+		_, err = r.runner.Incremental(ctx, runner.IncrementalRequest{RepoPath: wt, DBPath: r.candidateDBPath(run.RunID), MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity})
 		if err != nil {
 			return r.failRetryable(ctx, run, "reconverge_incremental", err, res)
 		}
-		r.transition(ctx, run.RunID, model.StateUploadCandidate, "re-converged after merge adjustment")
-		res.To = model.StateUploadCandidate
-		res.Advanced = true
-		return res, nil
 	}
-	// tree 一致 → 直接上传 candidate。
-	run.DesiredSourceSHA = mergedSHA
-	r.store.UpdateRunDesiredSHA(ctx, run.RunID, mergedSHA)
-	r.transition(ctx, run.RunID, model.StateUploadCandidate, "merged tree matches expected")
-	res.To = model.StateUploadCandidate
+	vr, err := r.runner.Validate(ctx, runner.ValidateRequest{DBPath: r.candidateDBPath(run.RunID), RepoPath: wt})
+	if err != nil {
+		return r.failRetryable(ctx, run, "validate_merged", err, res)
+	}
+	if !vr.OK {
+		return r.failRetryable(ctx, run, "validate_merged", fmt.Errorf("checks failed: %v", vr.Errors), res)
+	}
+	changed, err := r.wsHasChanges(ctx, wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "merged_status", err, res)
+	}
+	if changed {
+		// 重新收敛若再次改写源文件，必须审查并合并；不能标记 mergedSHA 发布脏 tree。
+		if err := r.transition(ctx, run.RunID, model.StateCreateSourcePR, "re-converged source needs another writeback review"); err != nil {
+			return res, err
+		}
+		res.To = model.StateCreateSourcePR
+	} else {
+		cand.SourceSHA = mergedSHA
+		cand.ExpectedWorktreeDigest = actualDigest
+		if err := r.store.UpsertCandidate(ctx, *cand); err != nil {
+			return res, err
+		}
+		if err := r.transition(ctx, run.RunID, model.StateUploadCandidate, "merged source and candidate validated"); err != nil {
+			return res, err
+		}
+		res.To = model.StateUploadCandidate
+	}
 	res.Advanced = true
 	return res, nil
 }
 
 func (r *Reconciler) stepUploadCandidate(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
+	observed, err := githubapp.ReadBranchSHA(ctx, r.forge, repo.GitHubOwner, repo.GitHubName, repo.Branch)
+	if err != nil {
+		return r.failRetryable(ctx, run, "source_sha_before_publish", err, res)
+	}
+	if observed != run.DesiredSourceSHA {
+		if err := r.transition(ctx, run.RunID, model.StateStale, "source advanced before publication"); err != nil {
+			return res, err
+		}
+		res.To = model.StateStale
+		res.Advanced = true
+		return res, nil
+	}
+	wt := r.ws.SourceWorktree(run.RunID)
+	changed, err := r.wsHasChanges(ctx, wt)
+	if err != nil {
+		return r.failRetryable(ctx, run, "source_status_before_publish", err, res)
+	}
+	if changed {
+		return r.failRetryable(ctx, run, "source_dirty_before_publish", fmt.Errorf("source worktree contains uncommitted changes"), res)
+	}
+	vr, err := r.runner.Validate(ctx, runner.ValidateRequest{DBPath: r.candidateDBPath(run.RunID), RepoPath: wt})
+	if err != nil {
+		return r.failRetryable(ctx, run, "validate_before_publish", err, res)
+	}
+	if !vr.OK {
+		return r.failRetryable(ctx, run, "validate_before_publish", fmt.Errorf("checks failed: %v", vr.Errors), res)
+	}
+
 	candidateDB := r.candidateDBPath(run.RunID)
 	bundleDir := filepath.Join(r.cfg.Service.BundleDir, repo.KGGroup, "candidates", run.RunID)
 	pub, err := r.pub.EnsureCandidate(ctx, publisher.CandidateSpec{
 		Repo: repoCfg, Catalog: r.cfg.Catalog, SourceSHA: run.DesiredSourceSHA,
 		Fingerprint:  r.currentFingerprint(),
-		ConfigDigest: "sha256:" + run.BuilderFingerprint,
-		KGDBPath: candidateDB, BundleDir: bundleDir,
+		ConfigDigest: r.currentFingerprint().ConfigDigest,
+		CreatedAt:    run.StartedAt,
+		KGDBPath:     candidateDB, BundleDir: bundleDir,
 	})
 	if err != nil {
 		return r.failRetryable(ctx, run, "upload_candidate", err, res)
@@ -505,16 +705,24 @@ func (r *Reconciler) stepUploadCandidate(ctx context.Context, run *model.Run, re
 	// 更新 candidate 记录。保留 stepCreateSourcePR 写入的 ExpectedWorktreeDigest，
 	// 避免 upsert 用零值覆盖（有回写路径下合并校验依赖它）。
 	expectedDigest := ""
-	if existing, _ := r.store.GetCandidate(ctx, run.RunID+"-cand"); existing != nil {
+	existing, err := r.store.GetCandidate(ctx, run.RunID+"-cand")
+	if err != nil {
+		return res, err
+	}
+	if existing != nil {
 		expectedDigest = existing.ExpectedWorktreeDigest
 	}
-	r.store.UpsertCandidate(ctx, model.Candidate{
+	if err := r.store.UpsertCandidate(ctx, model.Candidate{
 		CandidateID: run.RunID + "-cand", RunID: run.RunID, SourceSHA: run.DesiredSourceSHA,
 		ExpectedWorktreeDigest: expectedDigest,
-		BundlePath: bundleDir, BundleDigest: pub.Manifest.BundleDigest,
+		BundlePath:             bundleDir, BundleDigest: pub.Manifest.BundleDigest,
 		ReleaseID: pub.Release.ID, ReleaseTag: pub.Release.Tag, Status: model.CandidateUploaded,
-	})
-	r.transition(ctx, run.RunID, model.StateCreateCatalogPR, fmt.Sprintf("candidate uploaded: %s", pub.Manifest.BundleDigest[:19]))
+	}); err != nil {
+		return res, err
+	}
+	if err := r.transition(ctx, run.RunID, model.StateCreateCatalogPR, fmt.Sprintf("candidate uploaded: %s", pub.Manifest.BundleDigest[:19])); err != nil {
+		return res, err
+	}
 	res.To = model.StateCreateCatalogPR
 	res.Advanced = true
 	return res, nil
@@ -522,18 +730,31 @@ func (r *Reconciler) stepUploadCandidate(ctx context.Context, run *model.Run, re
 
 func (r *Reconciler) stepCreateCatalogPR(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
 	cand, err := r.store.GetCandidate(ctx, run.RunID+"-cand")
-	if err != nil || cand == nil {
+	if err != nil {
+		return res, err
+	}
+	if cand == nil {
 		return r.failRetryable(ctx, run, "candidate_not_found", fmt.Errorf("candidate not found"), res)
 	}
-	token, _, _ := r.forge.GetInstallToken(ctx)
+	token, _, err := r.forge.GetInstallToken(ctx)
+	if err != nil {
+		return r.failRetryable(ctx, run, "catalog_token", err, res)
+	}
 	// 确保 catalog mirror 存在。
 	catalogRef := githubapp.RepoRef{Owner: parseOwner(r.cfg.Catalog.Repo), Name: parseName(r.cfg.Catalog.Repo)}
 	catalogURL := r.forge.RemoteURL(catalogRef.Owner, catalogRef.Name)
 	if err := r.ws.EnsureMirror(ctx, "catalog", catalogURL, token); err != nil {
 		return r.failRetryable(ctx, run, "catalog_mirror", err, res)
 	}
+	manifest, err := kbbundle.Verify(cand.BundlePath)
+	if err != nil {
+		return r.failRetryable(ctx, run, "candidate_verify", err, res)
+	}
+	if manifest.BundleDigest != cand.BundleDigest || manifest.SourceCommit != run.DesiredSourceSHA {
+		return r.failRetryable(ctx, run, "candidate_metadata", fmt.Errorf("candidate digest/source mismatch"), res)
+	}
 	pub := publisher.PublishedBundle{
-		Manifest: kbbundle.Manifest{BundleDigest: cand.BundleDigest, KG: repoCfg.KGGroup, ConfigDigest: "sha256:" + run.BuilderFingerprint},
+		Manifest: *manifest,
 		Release:  githubapp.Release{Owner: catalogRef.Owner, Repo: catalogRef.Name, Tag: cand.ReleaseTag},
 	}
 	// 构建丰富的 Catalog PR body（含可选 LLM 摘要）。
@@ -547,12 +768,16 @@ func (r *Reconciler) stepCreateCatalogPR(ctx context.Context, run *model.Run, re
 	if err != nil {
 		return r.failRetryable(ctx, run, "catalog_pr", err, res)
 	}
-	r.store.UpsertPR(ctx, model.PullRequest{
+	if err := r.store.UpsertPR(ctx, model.PullRequest{
 		RunID: run.RunID, Kind: model.PRKindCatalogPublish,
 		Owner: catalogRef.Owner, Repo: catalogRef.Name, Number: pr.Number,
 		Branch: pr.HeadBranch, HeadSHA: pr.HeadSHA, BaseBranch: r.cfg.Catalog.Branch, Status: model.PRStatusOpen,
-	})
-	r.transition(ctx, run.RunID, model.StateAwaitCatalogPR, fmt.Sprintf("catalog PR #%d created", pr.Number))
+	}); err != nil {
+		return res, err
+	}
+	if err := r.transition(ctx, run.RunID, model.StateAwaitCatalogPR, fmt.Sprintf("catalog PR #%d created", pr.Number)); err != nil {
+		return res, err
+	}
 	res.To = model.StateAwaitCatalogPR
 	res.Advanced = true
 	return res, nil
@@ -560,7 +785,10 @@ func (r *Reconciler) stepCreateCatalogPR(ctx context.Context, run *model.Run, re
 
 func (r *Reconciler) stepAwaitCatalogPR(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
 	pr, err := r.store.GetPR(ctx, run.RunID, model.PRKindCatalogPublish)
-	if err != nil || pr == nil {
+	if err != nil {
+		return res, err
+	}
+	if pr == nil {
 		return r.failRetryable(ctx, run, "catalog_pr_not_found", fmt.Errorf("catalog PR not found"), res)
 	}
 	observed, err := r.forge.GetPullRequest(ctx, pr.Owner, pr.Repo, pr.Number)
@@ -569,17 +797,39 @@ func (r *Reconciler) stepAwaitCatalogPR(ctx context.Context, run *model.Run, rep
 	}
 	if observed.Merged {
 		// Catalog PR 合并 → candidate 提升为 stable（§7.2）。
-		cand, _ := r.store.GetCandidate(ctx, run.RunID + "-cand")
+		cand, err := r.store.GetCandidate(ctx, run.RunID+"-cand")
+		if err != nil {
+			return res, err
+		}
+		if cand == nil || cand.BundleDigest == "" {
+			return r.failRetryable(ctx, run, "candidate_not_found", fmt.Errorf("merged catalog PR has no candidate receipt"), res)
+		}
+		matches, err := r.mergedCatalogMatches(ctx, run, repoCfg, cand)
+		if err != nil {
+			return r.failRetryable(ctx, run, "verify_merged_catalog", err, res)
+		}
+		if !matches {
+			if err := r.transition(ctx, run.RunID, model.StateBlocked, "merged catalog does not reference the immutable candidate"); err != nil {
+				return res, err
+			}
+			res.To = model.StateBlocked
+			res.Advanced = true
+			return res, nil
+		}
 		digest := ""
 		if cand != nil {
 			digest = cand.BundleDigest
 		}
 		// 元数据指针必须与远端 catalog 一致（事实来源）。同时记录本次 fingerprint，
 		// 供下次 no-op / 全量判定使用。
-		r.store.UpdateRepoStable(ctx, repo.ID, run.DesiredSourceSHA, digest, run.BuilderFingerprint)
+		if err := r.store.UpdateRepoStable(ctx, repo.ID, run.DesiredSourceSHA, digest, run.BuilderFingerprint); err != nil {
+			return res, err
+		}
 		if cand != nil {
 			cand.Status = model.CandidateStable
-			r.store.UpsertCandidate(ctx, *cand)
+			if err := r.store.UpsertCandidate(ctx, *cand); err != nil {
+				return res, err
+			}
 			// 将 candidate bundle 落盘为本地 stable 基线，供后续增量构建（stepRestoreBase）恢复。
 			// best-effort：失败不阻塞 stable 状态——下次 stepRestoreBase 找不到文件会自然降级
 			// 全量，不影响正确性（本地 stable bundle 仅是增量优化缓存，非事实来源）。
@@ -587,13 +837,21 @@ func (r *Reconciler) stepAwaitCatalogPR(ctx context.Context, run *model.Run, rep
 				log.Printf("[reconcile] run %s: 提升本地 stable bundle 失败（下次将降级全量重建）: %v", run.RunID, err)
 			}
 		}
-		r.transition(ctx, run.RunID, model.StateStable, "catalog PR merged: stable")
+		if err := r.transition(ctx, run.RunID, model.StateStable, "catalog PR merged: stable"); err != nil {
+			return res, err
+		}
 		res.To = model.StateStable
 		res.Advanced = true
 		return res, nil
 	}
 	if observed.State == "closed" && !observed.Merged {
-		r.transition(ctx, run.RunID, model.StateBlocked, "catalog PR closed without merge")
+		pr.Status = model.PRStatusClosed
+		if err := r.store.UpsertPR(ctx, *pr); err != nil {
+			return res, err
+		}
+		if err := r.transition(ctx, run.RunID, model.StateBlocked, "catalog PR closed without merge"); err != nil {
+			return res, err
+		}
 		res.To = model.StateBlocked
 		res.Advanced = true
 		return res, nil
@@ -605,43 +863,27 @@ func (r *Reconciler) stepAwaitCatalogPR(ctx context.Context, run *model.Run, rep
 }
 
 func (r *Reconciler) stepRetry(ctx context.Context, run *model.Run, repo *model.ManagedRepo, repoCfg dkconfig.RepoConfig, res StepResult) (StepResult, error) {
-	// 最大重试次数：超过后永久失败，不再无限重试。
-	const maxAttempts = 10
-	if run.Attempt >= maxAttempts {
-		msg := fmt.Sprintf("重试次数耗尽（%d 次）: %s", run.Attempt, run.ErrorMessage)
-		r.transition(ctx, run.RunID, model.StateFailedPermanent, msg)
-		res.To = model.StateFailedPermanent
-		res.Advanced = true
-		res.Message = msg
-		return res, nil
+	resumed, advanced, err := r.store.RetryRun(ctx, run.RunID, 10)
+	if err != nil {
+		return res, err
 	}
-	// 指数退避：若 next_retry_at 未到，跳过。
-	if !run.NextRetryAt.IsZero() && time.Now().Before(run.NextRetryAt) {
-		res.To = model.StateFailedRetryable
-		res.Advanced = false
-		return res, nil
-	}
-	run.Attempt++
-	r.transition(ctx, run.RunID, model.StateFetchSource, fmt.Sprintf("retry attempt %d", run.Attempt))
-	res.To = model.StateFetchSource
-	res.Advanced = true
+	res.To = resumed.State
+	res.Advanced = advanced
+	res.Message = resumed.Reason
 	return res, nil
 }
 
 // ─── 辅助 ────────────────────────────────────────────────────────
 
-func (r *Reconciler) failRetryable(ctx context.Context, run *model.Run, code string, err error, res StepResult) (StepResult, error) {
-	backoff := time.Duration(1<<uint(run.Attempt)) * time.Minute
-	if backoff > 30*time.Minute {
-		backoff = 30 * time.Minute
+func (r *Reconciler) failRetryable(ctx context.Context, run *model.Run, code string, cause error, res StepResult) (StepResult, error) {
+	// 状态、错误、恢复阶段与退避必须同事务落盘；写入失败不能宣称推进成功。
+	// A failed checkpoint write is an error, never a successful Step.
+	if err := r.store.FailRunRetryable(ctx, run.RunID, run.State, code, cause.Error()); err != nil {
+		return res, err
 	}
-	msg := fmt.Sprintf("%s: %v", code, err)
-	r.store.SetRunError(ctx, run.RunID, code, err.Error(), time.Now().Add(backoff))
-	r.transition(ctx, run.RunID, model.StateFailedRetryable, msg)
 	res.To = model.StateFailedRetryable
 	res.Advanced = true
-	res.Message = msg
-	// 返回 nil error：失败已记录到 run，调度器继续处理其他 run。
+	res.Message = fmt.Sprintf("%s: %v", code, cause)
 	return res, nil
 }
 
@@ -651,20 +893,19 @@ func (r *Reconciler) candidateDBPath(runID string) string {
 	return p
 }
 
-// builder fingerprint 的稳定输入（§7.3）。任一变化都会改变 fingerprint，
-// 从而触发全量重建（旧 base 与新构建语义不兼容，不能做增量）。
-const (
-	builderVersion  = "v1.0.0"
-	dbSchemaVersion = 4
-)
-
-// currentFingerprint 构造当前 builder 的 fingerprint（模型 / schema / builder 版本等）。
-// 全流程统一由此构造，避免各处硬编码不一致导致 Digest 漂移。
+// currentFingerprint hashes the actual compiled builder and effective build configuration.
 func (r *Reconciler) currentFingerprint() publisher.Fingerprint {
+	version, commit := buildmeta.BuilderVersion()
+	configData, _ := json.Marshal(struct {
+		LLM   dkconfig.LLMConfig
+		Repos []dkconfig.RepoConfig
+	}{r.cfg.LLM, r.cfg.Repos})
 	return publisher.Fingerprint{
-		BuilderVersion:  builderVersion,
-		DBSchemaVersion: dbSchemaVersion,
-		Model:           r.cfg.LLM.Model,
+		BuilderVersion: version, BuilderCommit: commit, ControllerSchemaVer: store.SchemaVersion(),
+		DBSchemaVersion: storage.LatestSchemaVersion(), PromptSetVersion: buildmeta.SourceDigest("annotation/", "extract/", "incremental/"),
+		IdentityAlgorithmVer: buildmeta.SourceDigest("extract/uuid.go"), DiscoveryRulesDigest: buildmeta.SourceDigest("discovery/"),
+		Model: r.cfg.LLM.Model, Provider: r.cfg.LLM.Provider, AnnotationSchemaVer: 1,
+		ConfigDigest: kbbundle.DigestPrefix(kbbundle.DigestBytes(configData)),
 	}
 }
 
@@ -695,12 +936,12 @@ func (r *Reconciler) buildSourcePRBody(ctx context.Context, run *model.Run, repo
 		log.Printf("[reconcile] run %s: 生成 LLM PR 摘要...", run.RunID)
 		nodeCount, edgeCount := r.countKG(candidateDB)
 		input := runner.PRSummaryInput{
-			KGGroup: repo.KGGroup,
-			SourceRepo: repo.GitHubOwner + "/" + repo.GitHubName,
+			KGGroup:      repo.KGGroup,
+			SourceRepo:   repo.GitHubOwner + "/" + repo.GitHubName,
 			SourceCommit: run.DesiredSourceSHA,
-			NodesTotal: nodeCount, // 全图规模，非本次新增（本次改动量由 DiffStat 体现）
-			EdgesTotal: edgeCount,
-			DiffStat: diffStat,
+			NodesTotal:   nodeCount, // 全图规模，非本次新增（本次改动量由 DiffStat 体现）
+			EdgesTotal:   edgeCount,
+			DiffStat:     diffStat,
 		}
 		if summary, err := r.prSummarizer.GeneratePRSummary(ctx, input); err == nil {
 			b.WriteString("## 📝 变更摘要\n\n")
@@ -717,7 +958,7 @@ func (r *Reconciler) buildSourcePRBody(ctx context.Context, run *model.Run, repo
 	b.WriteString("| 项目 | 值 |\n|---|---|\n")
 	b.WriteString(fmt.Sprintf("| 知识库 | `%s` |\n", repo.KGGroup))
 	b.WriteString(fmt.Sprintf("| 源仓库 | `%s/%s` |\n", repo.GitHubOwner, repo.GitHubName))
-	b.WriteString(fmt.Sprintf("| 源提交 | `%s` |\n", run.DesiredSourceSHA[:12]))
+	b.WriteString(fmt.Sprintf("| 源提交 | `%s` |\n", shortSHA(run.DesiredSourceSHA)))
 	b.WriteString(fmt.Sprintf("| 分支 | `%s` → `%s` |\n", "cairnd/"+repo.ID+"/"+run.RunID, repo.Branch))
 	b.WriteString(fmt.Sprintf("| 重试次数 | %d |\n", run.Attempt))
 	nodeCount, edgeCount := r.countKG(candidateDB)
@@ -747,13 +988,13 @@ func (r *Reconciler) buildSourcePRBody(ctx context.Context, run *model.Run, repo
 
 // countKG 从 candidate DB 读取节点/边计数。
 func (r *Reconciler) countKG(dbPath string) (nodes, edges int) {
-	conn, err := sql.Open("sqlite", dbPath+"?mode=ro&query_only=1")
+	db, err := storage.OpenReadOnly(dbPath)
 	if err != nil {
 		return 0, 0
 	}
-	defer conn.Close()
-	conn.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&nodes)
-	conn.QueryRow("SELECT COUNT(*) FROM edges").Scan(&edges)
+	defer db.Close()
+	db.Conn().QueryRow("SELECT COUNT(*) FROM nodes").Scan(&nodes)
+	db.Conn().QueryRow("SELECT COUNT(*) FROM edges").Scan(&edges)
 	return
 }
 
@@ -765,7 +1006,7 @@ func (r *Reconciler) buildCatalogPRBody(ctx context.Context, run *model.Run, rep
 	b.WriteString("<!-- dkg-controller\n")
 	b.WriteString(fmt.Sprintf("cairn-run-id: %s\n", run.RunID))
 	b.WriteString(fmt.Sprintf("bundle_digest: %s\n", cand.BundleDigest))
-	b.WriteString(fmt.Sprintf("config_digest: %s\n", "sha256:"+run.BuilderFingerprint))
+	b.WriteString(fmt.Sprintf("config_digest: %s\n", r.currentFingerprint().ConfigDigest))
 	b.WriteString(fmt.Sprintf("fingerprint: %s\n", r.currentFingerprint().Digest()))
 	b.WriteString(fmt.Sprintf("kg_group: %s\n", repo.KGGroup))
 	b.WriteString(fmt.Sprintf("release_tag: %s\n", cand.ReleaseTag))
@@ -805,7 +1046,7 @@ func (r *Reconciler) buildCatalogPRBody(ctx context.Context, run *model.Run, rep
 	b.WriteString(fmt.Sprintf("| Bundle Digest | `%s` |\n", cand.BundleDigest))
 	b.WriteString(fmt.Sprintf("| Release Tag | `%s` |\n", cand.ReleaseTag))
 	b.WriteString(fmt.Sprintf("| 源仓库 | `%s/%s` |\n", repo.GitHubOwner, repo.GitHubName))
-	b.WriteString(fmt.Sprintf("| 源提交 | `%s` |\n", run.DesiredSourceSHA[:12]))
+	b.WriteString(fmt.Sprintf("| 源提交 | `%s` |\n", shortSHA(run.DesiredSourceSHA)))
 	b.WriteString(fmt.Sprintf("| KG 节点数 | %d |\n", nodeCount))
 	b.WriteString(fmt.Sprintf("| KG 边数 | %d |\n", edgeCount))
 	if repo.LastStableBundleDigest != "" {
@@ -836,13 +1077,24 @@ func (r *Reconciler) buildCatalogPRBody(ctx context.Context, run *model.Run, rep
 
 // CreateRun 为某 repo 创建一条新 run（调度器调用）。
 func (r *Reconciler) CreateRun(ctx context.Context, repoID string) (string, error) {
-	runID := fmt.Sprintf("run-%d-%s", time.Now().UnixNano(), repoID)
-	run := model.Run{
-		RunID: runID, RepoID: repoID, State: model.StateIdle, Attempt: 0,
-		Reason: "created", StartedAt: time.Now().UTC(),
-	}
-	if err := r.store.CreateRun(ctx, run); err != nil {
+	var runID string
+	acquired, err := r.withRepoLease(ctx, repoID, func(ownedCtx context.Context) error {
+		active, err := r.store.ActiveRunForRepo(ownedCtx, repoID)
+		if err != nil {
+			return err
+		}
+		if active != "" {
+			runID = active
+			return nil
+		}
+		runID = "run-" + uuid.NewString() + "-" + repoID
+		return r.store.CreateRun(ownedCtx, model.Run{RunID: runID, RepoID: repoID, State: model.StateIdle, Reason: "created", StartedAt: time.Now().UTC()})
+	})
+	if err != nil {
 		return "", err
+	}
+	if !acquired {
+		return "", ErrLeaseBusy
 	}
 	return runID, nil
 }
@@ -958,4 +1210,20 @@ func workspaceHasChanges(ctx context.Context, wt string) (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(string(out)) != "", nil
+}
+
+// NeedsReconcile 核对 stable 的真实来源及构建语义；同 SHA 的配置变更也需要构建。
+// Compare stable identity rather than only the last observed source commit.
+func (r *Reconciler) NeedsReconcile(repo *model.ManagedRepo, sha string) bool {
+	return sha != repo.LastStableSourceSHA || repo.LastStableBundleDigest == "" || r.fingerprintHex() != repo.LastStableFingerprint
+}
+
+// CurrentFingerprintHex 提供调度器比较最近失败任务的稳定语义身份。
+// Expose the same build identity used by Step and publication.
+func (r *Reconciler) CurrentFingerprintHex() string { return r.fingerprintHex() }
+func shortSHA(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }

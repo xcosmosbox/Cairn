@@ -1,10 +1,11 @@
 // Command cairnd 是 DK Controller daemon 入口（产品化 Prompt §13）。
 //
 // 用法：
-//   cairnd daemon --config config.yaml            # 常驻轮询 + HTTP API
-//   cairnd run --once --config config.yaml        # 跑一轮 reconcile 后退出
-//   cairnd reconcile --config config.yaml --repo payment  # 为指定 repo 创建并推进一个 run
-//   cairnd validate-config --config config.yaml   # 校验配置后退出
+//
+//	cairnd daemon --config config.yaml            # 常驻轮询 + HTTP API
+//	cairnd run --once --config config.yaml        # 跑一轮 reconcile 后退出
+//	cairnd reconcile --config config.yaml --repo payment  # 为指定 repo 创建并推进一个 run
+//	cairnd validate-config --config config.yaml   # 校验配置后退出
 //
 // 本地 fake 模式：加 --fake 使用 FakeForge（无需 GitHub 凭证）。
 package main
@@ -21,9 +22,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xcosmosbox/cairn/core/dkconfig"
-	coregh "github.com/xcosmosbox/cairn/core/githubapp"
-	"github.com/xcosmosbox/cairn/build/internal/controller/fakeforge"
 	"github.com/xcosmosbox/cairn/build/internal/controller/githubapp"
 	"github.com/xcosmosbox/cairn/build/internal/controller/model"
 	"github.com/xcosmosbox/cairn/build/internal/controller/publisher"
@@ -33,6 +31,8 @@ import (
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"github.com/xcosmosbox/cairn/build/internal/controller/workspace"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dkconfig"
+	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 )
 
 func main() {
@@ -43,7 +43,8 @@ func main() {
 	fs := flag.NewFlagSet(sub, flag.ExitOnError)
 	configPath := fs.String("config", "", "配置文件路径 (YAML)")
 	repoID := fs.String("repo", "", "reconcile 子命令：指定 repo id")
-	fake := fs.Bool("fake", false, "使用 FakeForge（本地测试，无需 GitHub 凭证）")
+	fake := fs.Bool("fake", false, "隔离的本地模拟（固定样例知识；无需 GitHub/LLM）")
+	once := fs.Bool("once", false, "run 子命令：单轮推进后退出（run 默认行为）")
 	_ = fs.Parse(os.Args[2:])
 
 	if *configPath == "" && sub != "help" {
@@ -68,14 +69,26 @@ func main() {
 		usage()
 	}
 
+	if *once && sub != "run" {
+		mustNoErr(fmt.Errorf("--once 仅适用于 run 子命令"))
+	}
+	if *fake && sub == "daemon" {
+		mustNoErr(fmt.Errorf("--fake 仅适用于 run/reconcile：本地 PR/Release 生命周期属于单次模拟会话"))
+	}
 	cfg, err := dkconfig.Load(*configPath)
 	mustNoErr(err)
+	var forge githubapp.Forge
+	if *fake {
+		forge, err = bootstrapFake(cfg)
+		mustNoErr(err)
+	} else {
+		forge = buildForge(cfg)
+	}
 
 	// 确保所有目录存在（必须在 store.Open 之前，否则 state_db 父目录不存在 → CANTOPEN）。
-	os.MkdirAll(filepath.Dir(cfg.Service.StateDB), 0o755)
-	os.MkdirAll(cfg.Service.WorkspacesDir, 0o755)
-	os.MkdirAll(cfg.Service.CacheDir, 0o755)
-	os.MkdirAll(cfg.Service.BundleDir, 0o755)
+	for _, dir := range []string{filepath.Dir(cfg.Service.StateDB), cfg.Service.WorkspacesDir, cfg.Service.CacheDir, cfg.Service.BundleDir} {
+		mustNoErr(os.MkdirAll(dir, 0o755))
+	}
 
 	// 打开 store。
 	st, err := store.Open(cfg.Service.StateDB)
@@ -84,17 +97,14 @@ func main() {
 
 	// 同步 repos 到 store。
 	for _, r := range cfg.Repos {
-		st.UpsertRepo(context.Background(), toManagedRepo(r))
+		mustNoErr(st.UpsertRepo(context.Background(), toManagedRepo(r)))
 	}
-
-	// 构造 Forge。
-	forge := buildForge(cfg, *fake, cfg.Service.WorkspacesDir)
 
 	// 构造组件。
 	ws := workspace.New(cfg.Service.WorkspacesDir)
 	var pipelineRunner runner.PipelineRunner
 	if *fake {
-		pipelineRunner = &runner.FakeRunner{}
+		pipelineRunner = fakePipelineRunner()
 	} else {
 		rr, err := runner.NewRunner(cfg.LLM)
 		mustNoErr(err)
@@ -131,41 +141,18 @@ func main() {
 	case "daemon":
 		runDaemon(cfg, st, sched, recon)
 	case "run":
-		if *fake || cfg.Service.Mode == dkconfig.ModeOnce {
-			// --once 模式：用 RunOnce。
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		sched.RunOnce(ctx)
+		mustNoErr(runOnce(ctx, cfg, st, forge, recon, *fake))
 	case "reconcile":
 		if *repoID == "" {
-			fmt.Fprintln(os.Stderr, "错误：reconcile 需要 --repo")
-			os.Exit(1)
+			mustNoErr(fmt.Errorf("reconcile 需要 --repo"))
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		runID, err := recon.CreateRun(ctx, *repoID)
 		mustNoErr(err)
-		// 持续推进直到终态、等待外部、超时或步数耗尽。
-		for i := 0; i < 500; i++ {
-			res, err := recon.Step(ctx, runID)
-			if err != nil {
-				log.Printf("reconcile: %v", err)
-			}
-			if !res.Advanced {
-				break
-			}
-			run, _ := st.GetRun(ctx, runID)
-			if run.State.IsTerminal() {
-				break
-			}
-			if ctx.Err() != nil {
-				log.Printf("reconcile: 超时或取消")
-				break
-			}
-		}
-		run, _ := st.GetRun(ctx, runID)
-		fmt.Printf("run %s 最终状态: %s\n", runID, run.State)
+		mustNoErr(advanceRun(ctx, st, forge, recon, runID, *fake))
 	}
 }
 
@@ -201,10 +188,7 @@ func runDaemon(cfg *dkconfig.Config, st *store.Store, sched *scheduler.Scheduler
 	log.Printf("[cairnd] 已关闭")
 }
 
-func buildForge(cfg *dkconfig.Config, fake bool, wsDir string) githubapp.Forge {
-	if fake {
-		return fakeforge.New()
-	}
+func buildForge(cfg *dkconfig.Config) githubapp.Forge {
 	// 真实 GitHub App。
 	key, err := cfg.GitHub.ResolvePrivateKey()
 	mustNoErr(err)
@@ -271,6 +255,7 @@ func usage() {
 
 通用 flags:
   --config <path>   配置文件路径（或 CAIRND_CONFIG 环境变量）
-  --fake            使用 FakeForge（本地测试）`)
+  --fake            隔离本地模拟：固定知识 + 自动模拟 PR 合并（仅 run/reconcile）
+  --once            run 单轮推进后退出（run 默认行为）`)
 	os.Exit(2)
 }

@@ -23,23 +23,28 @@ package incremental
 import (
 	"context"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
-	"github.com/xcosmosbox/cairn/core/storage"
 	"github.com/xcosmosbox/cairn/build/internal/discovery"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/repoidentity"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // Options 配置 IncrementalOrchestrator 的依赖与参数。
 // Options configures the incremental orchestrator.
 type Options struct {
+	RepositoryIdentity string
+	// AdoptLegacy 显式迁移旧 KG；必须先逐条验证来源与 sidecar 归属，不能凭版本放行。
+	AdoptLegacy bool
 	// Client 是共享 LLM 客户端（标注/语义门/对齐/重融合/重算），不可为 nil。
 	// Client is the shared LLM client. Must not be nil.
 	Client llm.Client
@@ -62,14 +67,16 @@ type Options struct {
 // IncrementalOrchestrator 是增量流水线的编排器。
 // IncrementalOrchestrator orchestrates the incremental pipeline.
 type IncrementalOrchestrator struct {
-	client       llm.Client
-	maxTokens    int
-	maxRetries   int
-	maxRollbacks int
-	maxNameRunes int
-	minConf      float64
-	recallK      int
-	rules        discovery.DiscoveryRules
+	repositoryIdentity string
+	adoptLegacy        bool
+	client             llm.Client
+	maxTokens          int
+	maxRetries         int
+	maxRollbacks       int
+	maxNameRunes       int
+	minConf            float64
+	recallK            int
+	rules              discovery.DiscoveryRules
 	// beforeWriteback is a package-test fault-injection hook. Production
 	// constructors leave it nil.
 	beforeWriteback func(context.Context) error
@@ -90,14 +97,16 @@ func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) 
 		recallK = defaultRecallK
 	}
 	return &IncrementalOrchestrator{
-		client:       opts.Client,
-		maxTokens:    opts.MaxTokens,
-		maxRetries:   opts.MaxRetries,
-		maxRollbacks: maxRollbacks,
-		maxNameRunes: opts.MaxNameRunes,
-		minConf:      opts.MinConfidence,
-		recallK:      recallK,
-		rules:        opts.Rules,
+		repositoryIdentity: opts.RepositoryIdentity,
+		adoptLegacy:        opts.AdoptLegacy,
+		client:             opts.Client,
+		maxTokens:          opts.MaxTokens,
+		maxRetries:         opts.MaxRetries,
+		maxRollbacks:       maxRollbacks,
+		maxNameRunes:       opts.MaxNameRunes,
+		minConf:            opts.MinConfidence,
+		recallK:            recallK,
+		rules:              opts.Rules,
 	}, nil
 }
 
@@ -141,6 +150,14 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	if err := preflightPaths(repoPath, dbPath); err != nil {
 		return nil, err
 	}
+	for _, root := range o.rules.SkillRootPaths {
+		if root == "." {
+			continue
+		}
+		if _, err := writeback.ValidateRepositoryPath(repoPath, root); err != nil {
+			return nil, fmt.Errorf("incremental: unsafe discovery scan root: %w", err)
+		}
+	}
 
 	// 先用严格只读连接验证 schema/版本/repo 归属；只有验证通过后才允许 NewDB
 	// 执行 DDL/迁移。错误、空或拿错的 DB 在拒绝前必须保持字节与 mtime 不变。
@@ -149,13 +166,25 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		return nil, fmt.Errorf("incremental: 只读验证 db %s: %w", dbPath, err)
 	}
 	preflightStores := newStores(preflightDB)
-	preflightErr := o.preflightKG(ctx, preflightStores, repoPath)
+	identity, adopting, preflightErr := o.preflightKG(ctx, preflightStores, repoPath)
+	if preflightErr == nil {
+		preflightErr = recoverOwnedWritebacks(ctx, preflightStores, repoPath, identity)
+	}
 	closeErr := preflightDB.Close()
 	if preflightErr != nil {
 		return nil, preflightErr
 	}
 	if closeErr != nil {
 		return nil, fmt.Errorf("incremental: 关闭只读预检 db %s: %w", dbPath, closeErr)
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return nil, err
+	}
+	if adopting && identity == "" {
+		identity, err = repoidentity.Ensure(ctx, repoPath, o.repositoryIdentity)
+		if err != nil {
+			return nil, fmt.Errorf("incremental: establish adopted repository identity: %w", err)
+		}
 	}
 
 	// 验证通过后才以读写模式打开既有库（局部 upsert，绝不删除重建）。
@@ -165,7 +194,12 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	}
 	defer db.Close()
 	st := newStores(db)
-	repoURL := repoPath // file_states 的 repo 键（全量未写 file_states，增量首轮建 baseline）
+	if adopting {
+		if err := st.identity.Set(ctx, identity); err != nil {
+			return nil, fmt.Errorf("incremental: stamp adopted repository identity: %w", err)
+		}
+	}
+	repoURL := identity // file_states 使用稳定归属，不再绑定临时 worktree 路径。
 
 	// ══════════ I-1 变化检测（粗筛 + 细判）══════════
 	log.Printf("══════════ I-1 变化检测 / detect ══════════")
@@ -522,52 +556,20 @@ func preflightPaths(repoPath, dbPath string) error {
 
 // preflightKG 验证打开的是「这个 repo 的、已构建的 KG」：
 //  1. kb_version 非空（空 schema / 未构建的库 → 拒绝）；
-//  2. 若 repo 有可读 sidecar，其 uuid 与 DB 节点必须有交集——零交集说明
-//     很可能拿错了另一个 repo 的库，拒绝运行而不是「修复」文档。
+//  2. KG 持久化的稳定仓库身份必须与当前 origin/配置/本地标记一致；
+//     无身份旧库只接受显式导入，并完整验证所有 node_sources 归属。
 //
 // preflightKG verifies the DB is a built KG for this repo: non-empty kb_version,
-// and (when readable sidecars exist) a non-zero uuid intersection with DB nodes.
-func (o *IncrementalOrchestrator) preflightKG(ctx context.Context, st *stores, repoPath string) error {
+// and a matching persistent identity, or explicit completely attested legacy adoption.
+func (o *IncrementalOrchestrator) preflightKG(ctx context.Context, st *stores, repoPath string) (string, bool, error) {
 	version, err := st.version.Current(ctx)
 	if err != nil {
-		return fmt.Errorf("incremental: 读取 kb_version 失败: %w", err)
+		return "", false, fmt.Errorf("incremental: 读取 kb_version 失败: %w", err)
 	}
 	if version == "" {
-		return fmt.Errorf("incremental: db 无有效 KB 版本（空库或未构建），拒绝在 %s 上运行增量", repoPath)
+		return "", false, fmt.Errorf("incremental: db 无有效 KB 版本（空库或未构建），拒绝在 %s 上运行增量", repoPath)
 	}
-
-	// sidecar ↔ DB 一致性抽查。
-	sidecarDocs, err := listSidecarDocs(repoPath)
-	if err != nil {
-		return fmt.Errorf("incremental: 枚举 sidecar 失败: %w", err)
-	}
-	var uuids []string
-	for _, rel := range sidecarDocs {
-		if len(uuids) >= 50 { // 抽查上限 / sample cap
-			break
-		}
-		sc, err := writeback.ReadSidecar(filepath.Join(repoPath, rel))
-		if err != nil {
-			continue // 损坏的 sidecar 跳过（由 I-1 的 fail-closed 处理）
-		}
-		for _, n := range sc.Nodes {
-			if n.UUID != "" {
-				uuids = append(uuids, n.UUID)
-			}
-		}
-	}
-	if len(uuids) == 0 {
-		return nil // 无可读 sidecar：无法校验交集（kb_version 已把关），放行
-	}
-	found, err := st.nodes.GetByIDs(ctx, uuids)
-	if err != nil {
-		return fmt.Errorf("incremental: sidecar↔DB 一致性检查失败: %w", err)
-	}
-	if len(found) == 0 {
-		return fmt.Errorf("incremental: repo 的 %d 个 sidecar uuid 与 DB 节点零交集——"+
-			"该 DB 很可能属于另一个 repo，拒绝运行（绝不拿错库「修复」文档）", len(uuids))
-	}
-	return nil
+	return verifyRepositoryIdentity(ctx, st, repoPath, o.repositoryIdentity, o.adoptLegacy)
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -672,6 +674,15 @@ func (o *IncrementalOrchestrator) detect(ctx context.Context, st *stores, repoPa
 	}
 	// KG 权威身份映射：detectOne 据此识别 primary，而非从 slug 文件名反解 UUID。
 	sr.primaryUUIDByPath = primaryUUIDs
+	// Validate the complete candidate set before any block is interpreted as a
+	// deletion/edit. Filesystem sidecars and discovery may add paths not in KG.
+	for _, relPath := range sr.all {
+		for _, path := range []string{relPath, relPath + ".kg.yaml"} {
+			if _, err := writeback.ValidateRepositoryPath(repoPath, path); err != nil {
+				return nil, nil, fmt.Errorf("incremental: unsafe detected path %q: %w", path, err)
+			}
+		}
+	}
 
 	// —— 逐文档粗筛 + 细判 ——
 	var changesets []*DocChangeSet
@@ -1212,10 +1223,13 @@ func listExpectedSharedPrimaryDocs(ctx context.Context, st *stores) ([]string, m
 		// a corrupt node cannot make the scanner escape repoRoot.
 		if node.Domain == "" || strings.ContainsAny(node.Domain, "/\\") ||
 			strings.ContainsAny(node.ID, "/\\") || node.ID == "" {
-			continue
+			return nil, nil, fmt.Errorf("incremental: unsafe KG primary identity for node %q", node.ID)
 		}
 		rel := writeback.PrimaryRelPath(node.Domain, node.FileSlug, node.ID)
-		if !IsSharedPrimaryPath(rel) || seen[rel] {
+		if !IsSharedPrimaryPath(rel) {
+			return nil, nil, fmt.Errorf("incremental: invalid primary path for node %q", node.ID)
+		}
+		if seen[rel] {
 			continue
 		}
 		seen[rel] = true

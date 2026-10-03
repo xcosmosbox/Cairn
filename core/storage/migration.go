@@ -56,7 +56,7 @@ func Migrations() []Migration {
 			Version:     2,
 			Description: "file_states 表添加 repo_url 列，改为 (repo_url, file_path) 复合主键 / add repo_url column, change to (repo_url, file_path) composite PK",
 			Up: "BEGIN IMMEDIATE;\n" +
-			`
+				`
 		-- 创建新的 file_states 表（含 repo_url 复合主键）
 		-- Create new file_states table with repo_url composite primary key
 		CREATE TABLE IF NOT EXISTS file_states_new (
@@ -82,7 +82,7 @@ func Migrations() []Migration {
 		-- Rename new table
 		ALTER TABLE file_states_new RENAME TO file_states;
 		` +
-			"COMMIT;",
+				"COMMIT;",
 			Down: "BEGIN IMMEDIATE;\n" +
 				`
 		-- 回滚到单主键模式（保留 file_path 作为唯一主键）
@@ -389,4 +389,16 @@ func (db *DB) SchemaVersion() (int, error) {
 	var v int
 	err := db.conn.QueryRow("PRAGMA user_version").Scan(&v)
 	return v, err
+}
+
+// LatestSchemaVersion 是迁移定义的唯一版本来源，发布元数据不再另行硬编码。
+// LatestSchemaVersion returns the newest schema version supported by migrations.
+func LatestSchemaVersion() int {
+	latest := 0
+	for _, m := range Migrations() {
+		if m.Version > latest {
+			latest = m.Version
+		}
+	}
+	return latest
 }

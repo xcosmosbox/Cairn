@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 
 	"github.com/xcosmosbox/cairn/service/internal/service"
 )
@@ -22,11 +23,12 @@ import (
 // runSentinel executes the cairn sentinel subcommand: prints the three signals,
 // the cumulative change ratio, and threshold breach status.
 func runSentinel(svc service.KnowledgeService, args []string) error {
-	fs := flag.NewFlagSet("sentinel", flag.ExitOnError)
-	record := fs.Bool("record", false, "把本次快照写入 sentinel.history 时序 / append snapshot to sentinel.history")
-	_ = fs.Parse(args)
+	record, err := parseSentinelRecord(args)
+	if err != nil {
+		return err
+	}
 
-	s, err := svc.Sentinel(context.Background(), *record)
+	s, err := svc.Sentinel(context.Background(), record)
 	if err != nil {
 		return fmt.Errorf("哨兵采样失败 / sentinel sampling failed: %w", err)
 	}
@@ -45,8 +47,23 @@ func runSentinel(svc service.KnowledgeService, args []string) error {
 			fmt.Printf("  - %s\n", r)
 		}
 	}
-	if *record {
+	if record {
 		fmt.Println("已写入 sentinel.history 时序 / snapshot recorded to sentinel.history")
 	}
 	return nil
+}
+
+// parseSentinelRecord 在打开连接前解析真实布尔值，避免 --record=false 意外获得写权限。
+// Parse the boolean before opening the DB so --record=false keeps read-only access.
+func parseSentinelRecord(args []string) (bool, error) {
+	fs := flag.NewFlagSet("sentinel", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	record := fs.Bool("record", false, "append snapshot to sentinel.history")
+	if err := fs.Parse(args); err != nil {
+		return false, fmt.Errorf("sentinel 解析参数失败 / failed to parse arguments: %w", err)
+	}
+	if fs.NArg() != 0 {
+		return false, fmt.Errorf("sentinel 不接受位置参数 / unexpected positional arguments")
+	}
+	return *record, nil
 }

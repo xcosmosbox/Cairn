@@ -1,0 +1,25 @@
+# 无凭证本地模拟；不会访问下面的 GitHub 占位 URL，也不会调用 LLM。
+# 每次运行在 workspaces_dir 下创建独立 fake-session-*，包含本地 Git、状态和 Bundle。
+# 配置里的 state_db/cache_dir/bundle_dir 在 --fake 模式下被替换为该会话内的路径。
+service:
+  mode: once
+  state_db: .local/cairnd-fake/controller.db
+  workspaces_dir: .local/cairnd-fake
+  cache_dir: .local/cairnd-fake/cache
+  bundle_dir: .local/cairnd-fake/bundles
+  listen_addr: 127.0.0.1:7810
+llm:
+  timeout: 60s
+catalog:
+  repo: synthetic/catalog
+  branch: main
+  manifest_dir: knowledge-bases
+repos:
+  - id: demo
+    url: https://github.invalid/synthetic/source.git
+    owner: synthetic
+    name: source
+    branch: main
+    kg_group: demo
+    rewrite:
+      mode: pr

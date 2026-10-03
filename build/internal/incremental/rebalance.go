@@ -34,18 +34,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
-	"github.com/xcosmosbox/cairn/core/storage"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/rebalance/community"
-	"github.com/xcosmosbox/cairn/core/metrics"
 	"github.com/xcosmosbox/cairn/build/internal/rebalance/patch"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/metrics"
+	"github.com/xcosmosbox/cairn/core/repoidentity"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // maxRebalanceRounds 是 R-4 重整判定 LLM 调用的原地重试上限。
@@ -55,6 +57,8 @@ const maxRebalanceRounds = 2
 // RebalanceRunOpts 配置一轮重整运行。
 // RebalanceRunOpts configures one rebalance run.
 type RebalanceRunOpts struct {
+	RepositoryIdentity string
+	AdoptLegacy        bool
 	// Force 跳过哨兵强制重整。
 	Force bool
 	// CheckOnly 只算指标+建议（零 LLM、零改图）。
@@ -124,18 +128,48 @@ func (o *RebalanceOrchestrator) Run(ctx context.Context, repoPath, dbPath string
 	if err != nil {
 		return nil, fmt.Errorf("rebalance: 只读验证 db %s: %w", dbPath, err)
 	}
-	preflightErr := preflightKGForRebalance(ctx, newStores(preflightDB), repoPath)
-	closeErr := preflightDB.Close()
+	preflightStores := newStores(preflightDB)
+	identity, adopting, preflightErr := (&IncrementalOrchestrator{repositoryIdentity: opts.RepositoryIdentity, adoptLegacy: opts.AdoptLegacy}).preflightKG(ctx, preflightStores, repoPath)
+	if preflightErr == nil {
+		if opts.CheckOnly {
+			var journals []string
+			journals, preflightErr = collectOwnedWritebacks(ctx, preflightStores, repoPath, identity)
+			if preflightErr == nil && len(journals) > 0 {
+				preflightErr = fmt.Errorf("rebalance: unfinished writeback requires an owned write run")
+			}
+		} else {
+			preflightErr = recoverOwnedWritebacks(ctx, preflightStores, repoPath, identity)
+		}
+	}
 	if preflightErr != nil {
+		preflightDB.Close()
 		return nil, preflightErr
 	}
-	if closeErr != nil {
-		return nil, fmt.Errorf("rebalance: 关闭只读预检 db %s: %w", dbPath, closeErr)
-	}
-
-	db, err := storage.NewDB(storage.DBOptions{Path: dbPath})
-	if err != nil {
-		return nil, fmt.Errorf("rebalance: open db %s: %w", dbPath, err)
+	db := preflightDB
+	if !opts.CheckOnly {
+		if err := store.CheckLease(ctx); err != nil {
+			preflightDB.Close()
+			return nil, err
+		}
+		if err := preflightDB.Close(); err != nil {
+			return nil, fmt.Errorf("rebalance: close preflight: %w", err)
+		}
+		if adopting && identity == "" {
+			identity, err = repoidentity.Ensure(ctx, repoPath, opts.RepositoryIdentity)
+			if err != nil {
+				return nil, fmt.Errorf("rebalance: adopted repository identity: %w", err)
+			}
+		}
+		db, err = storage.NewDB(storage.DBOptions{Path: dbPath})
+		if err != nil {
+			return nil, fmt.Errorf("rebalance: open db %s: %w", dbPath, err)
+		}
+		if adopting {
+			if err := storage.NewRepositoryIdentityRepo(db).Set(ctx, identity); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("rebalance: stamp adopted identity: %w", err)
+			}
+		}
 	}
 	defer db.Close()
 	st := newStores(db)
@@ -179,6 +213,9 @@ func (o *RebalanceOrchestrator) Run(ctx context.Context, repoPath, dbPath string
 	// FTS 孤儿自愈（在触发判定之后、任何改图之前）：上一轮若在 R-5 之后、I-8
 	// 之前失败，被删 node 的 FTS 行可能残留（上轮 rs.deleted 未及清理）；幂等
 	// DELETE 保证重跑收敛（可重入，坑点 6）。--check / 未触发路径保持只读不经过此处。
+	if err := store.CheckLease(ctx); err != nil {
+		return rpt, err
+	}
 	if err := st.fts.DeleteOrphans(ctx); err != nil {
 		return rpt, fmt.Errorf("rebalance: fts orphan sweep: %w", err)
 	}
@@ -199,6 +236,9 @@ func (o *RebalanceOrchestrator) Run(ctx context.Context, repoPath, dbPath string
 	log.Printf("══════════ R-4 LLM 重整判定 / judge ══════════")
 	rb, err := o.judgeRebalance(ctx, st, graph, comm, snap, cumulative, rs)
 	if err != nil {
+		if guardErr := store.CheckLease(ctx); guardErr != nil {
+			return rpt, guardErr
+		}
 		// LLM 重试耗尽：降级 no-op（不改图，报告失败，绝不半改）。
 		rpt.NoOp = true
 		rpt.NoOpReason = fmt.Sprintf("R-4 LLM 判定失败（降级不改图）: %v", err)
@@ -219,7 +259,13 @@ func (o *RebalanceOrchestrator) Run(ctx context.Context, repoPath, dbPath string
 		st: st, rs: rs, ao: ao, book: rb.book, louvain: comm,
 		membersByUUID: rb.membersByUUID, now: time.Now().UTC(), rpt: rpt,
 	}
+	if err := store.CheckLease(ctx); err != nil {
+		return rpt, err
+	}
 	for i := range rb.p.Ops {
+		if err := store.CheckLease(ctx); err != nil {
+			return rpt, err
+		}
 		op := &rb.p.Ops[i]
 		if err := applier.apply(ctx, op); err != nil {
 			return rpt, fmt.Errorf("rebalance: 应用第 %d 个操作（%s）失败: %w", i+1, op.Op, err)
@@ -289,10 +335,6 @@ func (o *RebalanceOrchestrator) Run(ctx context.Context, repoPath, dbPath string
 
 // preflightKGForRebalance 复用第二块的 KG 预检实现（同包未导出方法，语义零改动）。
 // preflightKGForRebalance reuses the incremental preflight verbatim.
-func preflightKGForRebalance(ctx context.Context, st *stores, repoPath string) error {
-	return (&IncrementalOrchestrator{}).preflightKG(ctx, st, repoPath)
-}
-
 // detectCommunities 在语义边子图上跑 Louvain（边权恒 1；只读，R-louvain-readonly）。
 // detectCommunities runs Louvain over the semantic subgraph (unit weights, read-only).
 func detectCommunities(g *metrics.SemanticGraph) *community.Result {

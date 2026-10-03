@@ -30,9 +30,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
+	"github.com/xcosmosbox/cairn/build/internal/writeback"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/storage"
-	"github.com/xcosmosbox/cairn/build/internal/writeback"
 )
 
 // rewriteReport 是 I-9 的结果摘要（可观测）。
@@ -92,7 +93,7 @@ func applyIncrementalWriteback(ctx context.Context, st *stores, rs *runState,
 		// sidecar cleanup fails. Keeping it in affected would resurrect the
 		// human-deleted document from KG during the same failed run.
 		delete(affected, p)
-		if err := writeback.DeleteSidecar(repoRoot, p); err != nil {
+		if err := writeback.DeleteSidecarContext(ctx, repoRoot, p); err != nil {
 			log.Printf("[incremental-writeback] 删 sidecar %s 失败（下轮重试）: %v", p, err)
 			rs.failDoc(p)
 			rs.warnf(fmt.Sprintf("I-9 删 sidecar %s 失败: %v", p, err))
@@ -129,7 +130,7 @@ func applyIncrementalWriteback(ctx context.Context, st *stores, rs *runState,
 			// md 字节一致：不写 md（R9 最小改动）；但 sidecar 缺失/陈旧时仍要刷新——
 			// 否则「上轮 md 写好、sidecar 写失败」的现场会永远跳过重试（问题 5）。
 			if writeback.SidecarStale(repoRoot, docPath, rendered, updates) {
-				if err := writeback.WriteSidecarForDoc(repoRoot, docPath, rendered, updates, now); err != nil {
+				if err := writeback.WriteSidecarForDocContext(ctx, repoRoot, docPath, rendered, updates, now); err != nil {
 					log.Printf("[incremental-writeback] 补写 sidecar %s 失败（下轮重试）: %v", docPath, err)
 					rs.failDoc(docPath)
 					rs.warnf(fmt.Sprintf("I-9 补写 sidecar %s 失败: %v", docPath, err))
@@ -141,7 +142,7 @@ func applyIncrementalWriteback(ctx context.Context, st *stores, rs *runState,
 			}
 			continue
 		}
-		if err := writeback.WriteDocContent(repoRoot, docPath, rendered, updates, now); err != nil {
+		if err := writeback.WriteDocContentContext(ctx, repoRoot, docPath, rendered, updates, now); err != nil {
 			// 单文档失败降级（不阻断其它文档），记 failedDocs（baseline 不前移，下轮重试）。
 			log.Printf("[incremental-writeback] 写文档 %s 失败（下轮重试）: %v", docPath, err)
 			rs.failDoc(docPath)
@@ -241,7 +242,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 			// 真删：shared node 的 primary 删除（镜像文档已在文档通道重写）。
 			if del.WasShared {
 				primaryRel := writeback.PrimaryRelPath(del.Node.Domain, del.Node.FileSlug, uuid)
-				if err := deletePrimaryArtifacts(repoRoot, del.Node.Domain, uuid, artifactByUUID[uuid]); err != nil {
+				if err := deletePrimaryArtifactsContext(ctx, repoRoot, del.Node.Domain, uuid, artifactByUUID[uuid]); err != nil {
 					log.Printf("[incremental-writeback] 删 primary %s 失败（下轮对账重试）: %v", uuid, err)
 					rs.failDoc(primaryRel)
 					rs.warnf(fmt.Sprintf("I-9 删 primary %s 失败: %v", uuid, err))
@@ -268,7 +269,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 				}
 				primaryAbs := filepath.Join(repoRoot, filepath.FromSlash(primaryRel))
 				if primaryRel != "" && (primaryArtifactsExist(primaryAbs) || len(artifactByUUID[uuid]) > 0) {
-					if err := deletePrimaryArtifacts(repoRoot, domainSlug, uuid, artifactByUUID[uuid]); err != nil {
+					if err := deletePrimaryArtifactsContext(ctx, repoRoot, domainSlug, uuid, artifactByUUID[uuid]); err != nil {
 						log.Printf("[incremental-writeback] 清 stale primary %s 失败（下轮重试）: %v", uuid, err)
 						rs.failDoc(primaryRel)
 						rs.warnf(fmt.Sprintf("I-9 清 stale primary %s 失败: %v", uuid, err))
@@ -291,7 +292,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 			// 翻转为非 shared：primary md 或 sidecar 任一残留都必须删除。不能只看 md，
 			// 否则「md 已删、sidecar 删除失败」的部分现场将永久失去重试机会。
 			if primaryArtifactsExist(primaryAbs) || len(artifactByUUID[uuid]) > 0 {
-				if err := deletePrimaryArtifacts(repoRoot, node.Domain, uuid, artifactByUUID[uuid]); err != nil {
+				if err := deletePrimaryArtifactsContext(ctx, repoRoot, node.Domain, uuid, artifactByUUID[uuid]); err != nil {
 					log.Printf("[incremental-writeback] 删非 shared 残留 primary %s 失败（下轮重试）: %v", uuid, err)
 					rs.failDoc(primaryRel)
 					rs.warnf(fmt.Sprintf("I-9 删非 shared 残留 primary %s 失败: %v", uuid, err))
@@ -313,7 +314,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 			}
 		}
 		if len(staleArtifacts) > 0 {
-			if err := deletePrimaryArtifacts(repoRoot, "", uuid, staleArtifacts); err != nil {
+			if err := deletePrimaryArtifactsContext(ctx, repoRoot, "", uuid, staleArtifacts); err != nil {
 				log.Printf("[incremental-writeback] 清理 stale primary %s 失败（下轮重试）: %v", uuid, err)
 				rs.failDoc(primaryRel)
 				rs.warnf(fmt.Sprintf("I-9 清理 stale primary %s 失败: %v", uuid, err))
@@ -325,7 +326,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 			// primary 内容一致：不写 primary；但 sidecar 缺失/陈旧（如 human_curated
 			// 升级后 provenance/hash 未同步）时仍要刷新——与文档通道同一自愈语义。
 			if writeback.SidecarStale(repoRoot, primaryRel, rendered, []writeback.NodeUpdate{u}) {
-				if err := writeback.WriteSidecarForDoc(repoRoot, primaryRel, rendered,
+				if err := writeback.WriteSidecarForDocContext(ctx, repoRoot, primaryRel, rendered,
 					[]writeback.NodeUpdate{u}, now); err != nil {
 					log.Printf("[incremental-writeback] 补写 primary sidecar %s 失败（下轮重试）: %v", primaryRel, err)
 					rs.failDoc(primaryRel)
@@ -336,7 +337,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 			}
 			continue
 		}
-		if err := writeback.WritePrimaryContent(repoRoot, u, rendered, now); err != nil {
+		if err := writeback.WritePrimaryContentContext(ctx, repoRoot, u, rendered, now); err != nil {
 			// primary 写失败：记 failedDocs（baseline 不前移），不中断（问题 5）。
 			log.Printf("[incremental-writeback] 写 primary %s 失败（下轮重试）: %v", primaryRel, err)
 			rs.failDoc(primaryRel)
@@ -364,6 +365,13 @@ func primaryArtifactsExist(primaryAbs string) bool {
 // in one abnormal directory does not hide removable artifacts elsewhere; the
 // aggregate error keeps the UUID in failedDocs for the next Run retry.
 func deletePrimaryArtifacts(repoRoot, domainSlug, uuid string, artifacts []primaryArtifact) error {
+	return deletePrimaryArtifactsContext(context.Background(), repoRoot, domainSlug, uuid, artifacts)
+}
+
+func deletePrimaryArtifactsContext(ctx context.Context, repoRoot, domainSlug, uuid string, artifacts []primaryArtifact) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	targets := make(map[string]bool)
 	if domainSlug != "" {
 		if rel := writeback.PrimaryRelPath(domainSlug, "", uuid); IsSharedPrimaryPath(rel) {
@@ -382,8 +390,15 @@ func deletePrimaryArtifacts(repoRoot, domainSlug, uuid string, artifacts []prima
 			errs = append(errs, fmt.Errorf("invalid primary artifact path %q", rel))
 			continue
 		}
-		abs := filepath.Join(repoRoot, filepath.FromSlash(rel))
-		for _, p := range []string{abs, abs + ".kg.yaml"} {
+		for _, path := range []string{rel, rel + ".kg.yaml"} {
+			p, err := writeback.ValidateRepositoryPath(repoRoot, path)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if err := store.CheckLease(ctx); err != nil {
+				return err
+			}
 			if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 				errs = append(errs, fmt.Errorf("remove primary artifact %s: %w", p, err))
 			}

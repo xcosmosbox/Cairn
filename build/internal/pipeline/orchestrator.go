@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,14 +31,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
-	"github.com/xcosmosbox/cairn/core/storage"
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/discovery"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/ingest"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/repoidentity"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // DefaultMaxRollbacks 是单篇文档「回退重标注」的默认上限（含首次尝试的总标注轮数）。
@@ -48,29 +50,20 @@ const DefaultMaxRollbacks = 3
 
 // defaultStageTimeout 是 Options.StageTimeout 未设置时的兜底值。
 // 与 LLM client 的 HTTP timeout 独立——stage timeout 约束整个阶段的总耗时
-//（一个阶段可能含多次 LLM 调用 + 并发），HTTP timeout 约束单次请求。
+// （一个阶段可能含多次 LLM 调用 + 并发），HTTP timeout 约束单次请求。
 const defaultStageTimeout = 30 * time.Minute
 
-// stageCtx 为单个 pipeline 阶段创建独立的 context。
-// 关键设计：
-//   - timeout 独立于 parent ctx 的 deadline——parent 的剩余预算不影响本阶段
-//   - parent 的 cancellation（shutdown 信号）会传播——确保优雅退出
-//   - 每个阶段的 timeout 耗尽只影响该阶段，不级联到后续阶段
+// stageCtx gives each stage its own timeout while retaining caller cancellation,
+// deadline and lease ownership. A previous stage's timeout does not affect the next.
 func stageCtx(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	go func() {
-		select {
-		case <-parent.Done():
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	return ctx, cancel
+	return context.WithTimeout(parent, timeout)
 }
 
 // Options 配置 Orchestrator 的依赖与参数。
 // Options configures the orchestrator's dependencies and parameters.
 type Options struct {
+	// RepositoryIdentity 可显式提供稳定 origin 身份；空时从 Git 或本地持久标记解析。
+	RepositoryIdentity string
 	// Client 是共享的 LLM 客户端，供标注 / 语义门 / 提取三处使用。不可为 nil。
 	// Client is the shared LLM client used by annotation, the semantic gate, and extraction.
 	Client llm.Client
@@ -99,17 +92,18 @@ type Options struct {
 // Orchestrator 是新 LLM 流水线的内存态状态机编排器。
 // Orchestrator is the in-memory state-machine orchestrator of the new LLM pipeline.
 type Orchestrator struct {
-	scanner      *discovery.FSScanner
-	annotator    *annotation.LLMAnnotator
-	formatGate   *annotation.FormatGate
-	semanticGate *annotation.SemanticGate
-	extractor    *extract.Extractor
-	client       llm.Client // 供 GenerateFileSlugs 使用 / for GenerateFileSlugs
-	maxRollbacks int
-	minConf      float64
-	rules        discovery.DiscoveryRules
-	dumpDir      string
-	stageTimeout time.Duration // 每个阶段的独立超时（统一值，不分阶段）
+	repositoryIdentity string
+	scanner            *discovery.FSScanner
+	annotator          *annotation.LLMAnnotator
+	formatGate         *annotation.FormatGate
+	semanticGate       *annotation.SemanticGate
+	extractor          *extract.Extractor
+	client             llm.Client // 供 GenerateFileSlugs 使用 / for GenerateFileSlugs
+	maxRollbacks       int
+	minConf            float64
+	rules              discovery.DiscoveryRules
+	dumpDir            string
+	stageTimeout       time.Duration // 每个阶段的独立超时（统一值，不分阶段）
 }
 
 // NewOrchestrator 组装 Orchestrator 及其全部阶段组件。Client 不可为 nil。
@@ -127,17 +121,18 @@ func NewOrchestrator(opts Options) (*Orchestrator, error) {
 		stageTimeout = defaultStageTimeout
 	}
 	return &Orchestrator{
-		scanner:      discovery.NewFSScanner(),
-		annotator:    annotation.NewLLMAnnotator(opts.Client, opts.MaxTokens, opts.MaxRetries),
-		formatGate:   annotation.NewFormatGate(opts.MaxNameRunes),
-		semanticGate: annotation.NewSemanticGate(opts.Client, opts.MaxTokens, opts.MaxRetries),
-		extractor:    extract.NewExtractor(opts.Client, opts.MaxTokens),
-		client:       opts.Client,
-		maxRollbacks: maxRollbacks,
-		minConf:      opts.MinConfidence,
-		rules:        opts.Rules,
-		dumpDir:      opts.DumpDir,
-		stageTimeout: stageTimeout,
+		repositoryIdentity: opts.RepositoryIdentity,
+		scanner:            discovery.NewFSScanner(),
+		annotator:          annotation.NewLLMAnnotator(opts.Client, opts.MaxTokens, opts.MaxRetries),
+		formatGate:         annotation.NewFormatGate(opts.MaxNameRunes),
+		semanticGate:       annotation.NewSemanticGate(opts.Client, opts.MaxTokens, opts.MaxRetries),
+		extractor:          extract.NewExtractor(opts.Client, opts.MaxTokens),
+		client:             opts.Client,
+		maxRollbacks:       maxRollbacks,
+		minConf:            opts.MinConfidence,
+		rules:              opts.Rules,
+		dumpDir:            opts.DumpDir,
+		stageTimeout:       stageTimeout,
 	}, nil
 }
 
@@ -163,9 +158,9 @@ type RunReport struct {
 	Describe      *extract.DescribeReport // description 融合报告（05d 阶段）；nil 表示未执行
 	Relate        *extract.RelateReport   // relation 补充报告（05e 阶段）；nil 表示未执行
 	// Writeback 是 stage 4.5 结构化回写报告（06b 阶段）；nil 表示未执行回写。
-	// 回写失败不阻断流水线：即使失败，KG 已入库的正确性不受影响。
+	// 回写失败保留诊断统计，但阻止发布不完整的源闭环。
 	// Writeback is the stage 4.5 write-back report; nil if not executed.
-	// Write-back failure does not abort the pipeline.
+	// Write-back failure aborts publication while retaining diagnostic stats.
 	Writeback *writeback.Report
 }
 
@@ -181,7 +176,14 @@ type RunReport struct {
 // waits for all to finish, then extracts from all passed documents and materializes
 // the result into a freshly rebuilt database.
 func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath string) (*RunReport, error) {
+	if err := store.CheckLease(ctx); err != nil {
+		return nil, err
+	}
 	report := &RunReport{}
+	identity, err := repoidentity.Ensure(ctx, repoPath, o.repositoryIdentity)
+	if err != nil {
+		return nil, fmt.Errorf("pipeline: repository identity: %w", err)
+	}
 
 	// ——1. 扫描——
 	logStage("1", "扫描 / discovery")
@@ -353,7 +355,7 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	// Build MemberSources from withIDs for both ingest (node_sources) and stage 4.5 (write-back).
 	memberSources := buildMemberSources(withIDs)
 	s4Ctx, s4Cancel := stageCtx(ctx, o.stageTimeout)
-	ingestRes, err := o.fullRebuildIngest(s4Ctx, dbPath, res, skillMetas, memberSources)
+	ingestRes, err := o.fullRebuildIngest(s4Ctx, dbPath, res, skillMetas, memberSources, identity)
 	s4Cancel()
 	if err != nil {
 		return report, fmt.Errorf("pipeline: ingest: %w", err)
@@ -363,19 +365,19 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	log.Printf("[pipeline] 入库完成: %d 节点, %d 边 (跳过 %d), node_sources %d 行",
 		ingestRes.NodesInserted, ingestRes.EdgesInserted, ingestRes.EdgesSkipped, ingestRes.NodeSourcesInserted)
 
-	// ——4.5 结构化回写（ingest 之后；回写失败不阻断流水线）——
+	// ——4.5 结构化回写（ingest 之后；失败阻止发布）——
 	logStage("4.5", "结构化回写 / write-back（md + sidecar + _shared）")
 	// 回写是产物输出：把 KG 结构化回写为每篇 reference 的 md + sidecar + _shared 共享区。
-	// 回写失败只记录错误、返回 report，与其它 stage 的降级风格一致——KG 已入库的正确性不受影响。
+	// MD / sidecar 未闭环的 KG 只能作为诊断结果，不能进入发布或 stable 基线。
 	// ingest.MemberSource 与 writeback.MemberSource 同构但分属两包（避免 import 环），
 	// 故此处转换后再传入。
-	// Write-back is an output: failure is logged and tolerated (degraded, not abort).
+	// A partially materialized KG is diagnostic only; fail the build before publication.
 	wbMemberSources := toWritebackMemberSources(memberSources)
-	wbReport, wbErr := writeback.Writeback(res, wbMemberSources, repoPath)
+	wbReport, wbErr := writeback.WritebackContext(ctx, res, wbMemberSources, repoPath)
 	report.Writeback = wbReport
 	o.dumpJSON("06b_writeback_report.json", wbReport)
 	if wbErr != nil {
-		log.Printf("[pipeline] 回写完成（含错误，不阻断）: %v", wbErr)
+		return report, fmt.Errorf("pipeline: writeback incomplete (candidate not publishable): %w", wbErr)
 	}
 	if wbReport != nil {
 		log.Printf("[pipeline] 回写统计: 文档 %d, 节点块 %d, shared %d, 镜像块 %d, primary %d, sidecar %d",
@@ -494,26 +496,62 @@ func (o *Orchestrator) processDocument(ctx context.Context, skill, path, content
 	return nil, lastReason
 }
 
-// fullRebuildIngest 删除旧库并重建，将提取结果物化入库。
-// fullRebuildIngest removes the old DB and rebuilds it, materializing the result.
-func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res *extract.Result, metas []ingest.SkillMeta, memberSources map[string][]ingest.MemberSource) (*ingest.IngestDomainsResult, error) {
-	// 全量重建：干净删除旧库（与 WAL/SHM 附属文件）。
-	_ = os.Remove(dbPath)
-	_ = os.Remove(dbPath + "-wal")
-	_ = os.Remove(dbPath + "-shm")
-
-	db, err := storage.NewDB(storage.DBOptions{Path: dbPath})
+// fullRebuildIngest 完整建立、checkpoint 并关闭临时库后，原子发布主文件。
+// A failed ingest must preserve the previous DB, including its WAL and ownership.
+func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res *extract.Result, metas []ingest.SkillMeta, memberSources map[string][]ingest.MemberSource, identity string) (*ingest.IngestDomainsResult, error) {
+	if err := store.CheckLease(ctx); err != nil {
+		return nil, err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(dbPath), ".cairn-full-*.db")
+	if err != nil {
+		return nil, fmt.Errorf("pipeline: create temporary DB: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	defer os.Remove(tmpPath + "-wal")
+	defer os.Remove(tmpPath + "-shm")
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("pipeline: close temporary DB file: %w", err)
+	}
+	db, err := storage.NewDB(storage.DBOptions{Path: tmpPath})
 	if err != nil {
 		return nil, fmt.Errorf("open db %s: %w", dbPath, err)
 	}
 	defer db.Close()
 
-	return ingest.IngestDomains(ctx, db, ingest.IngestDomainsOptions{
+	result, err := ingest.IngestDomains(ctx, db, ingest.IngestDomainsOptions{
 		Result:        res,
 		Skills:        metas,
 		MinConfidence: o.minConf,
 		MemberSources: memberSources,
 	})
+	if err != nil {
+		return result, err
+	}
+	if err := storage.NewRepositoryIdentityRepo(db).Set(ctx, identity); err != nil {
+		return result, fmt.Errorf("pipeline: stamp repository identity: %w", err)
+	}
+	var busy, frames, checkpointed int
+	if err := db.Conn().QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &frames, &checkpointed); err != nil || busy != 0 {
+		return result, fmt.Errorf("pipeline: checkpoint candidate (busy=%d): %v", busy, err)
+	}
+	if err := db.Close(); err != nil {
+		return result, fmt.Errorf("pipeline: close candidate: %w", err)
+	}
+	// Replacing a main file while old WAL/SHM connections remain would attach
+	// old pages to a new graph. Never delete those sidecars to force publication.
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if _, err := os.Lstat(dbPath + suffix); !os.IsNotExist(err) {
+			return result, fmt.Errorf("pipeline: cannot replace DB with existing %s sidecar; close/checkpoint existing connections first", suffix)
+		}
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return result, err
+	}
+	if err := os.Rename(tmpPath, dbPath); err != nil {
+		return result, fmt.Errorf("pipeline: publish rebuilt DB: %w", err)
+	}
+	return result, nil
 }
 
 // logStage 输出显著的阶段分隔线，便于在连续日志中辨认阶段边界。

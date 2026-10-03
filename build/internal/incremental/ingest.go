@@ -20,6 +20,7 @@ package incremental
 import (
 	"context"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
 	"strings"
 	"time"
@@ -34,6 +35,9 @@ import (
 // applyIncrementalIngest runs I-8 local upsert in dependency order.
 func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 	ao *alignOutcome, rr *reflowResult, rs *runState) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	if err := normalizePendingForPersistence(ao); err != nil {
 		return err
 	}

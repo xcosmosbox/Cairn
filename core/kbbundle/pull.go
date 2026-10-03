@@ -5,11 +5,13 @@
 //  2. 从 manifest 解析 Release tag。
 //  3. 获取 Release 的 asset 列表（GitHub Releases API）。
 //  4. 下载 Bundle asset 到临时目录。
-//  5. 新格式解包完整 tarball 后 Verify；旧格式（裸 DB）回退重新 Pack。
+//  5. 解包完整 tarball，验证全部 provenance 与 catalog 指针一致。
 //  6. 调 Install 校验 + 原子安装。
 package kbbundle
 
 import (
+	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // PullRemoteSpec 是远程拉取的输入参数。
@@ -33,9 +36,9 @@ type PullRemoteSpec struct {
 
 // PullResult 是远程拉取的结果。
 type PullResult struct {
-	Manifest  CatalogManifest
-	Install   *InstallResult
-	TempDir   string // 临时下载目录（调用方负责清理）
+	Manifest CatalogManifest
+	Install  *InstallResult
+	TempDir  string // 临时下载目录（调用方负责清理）
 }
 
 // PullRemote 从 Catalog Repo 的 GitHub Release 下载 stable Bundle 并安装。
@@ -50,6 +53,17 @@ type PullResult struct {
 //	})
 //	defer os.RemoveAll(res.TempDir)
 func PullRemote(spec PullRemoteSpec) (*PullResult, error) {
+	return PullRemoteContext(context.Background(), spec)
+}
+
+// PullRemoteContext 将取消/超时传递到所有 HTTP 请求，并在安装前再次检查。
+// PullRemoteContext bounds the full network operation and never begins install after cancellation.
+func PullRemoteContext(parent context.Context, spec PullRemoteSpec) (*PullResult, error) {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if spec.APIBaseURL == "" {
 		spec.APIBaseURL = "https://api.github.com"
 	}
@@ -59,85 +73,69 @@ func PullRemote(spec PullRemoteSpec) (*PullResult, error) {
 
 	// 1. 读 stable manifest。
 	manifestPath := fmt.Sprintf("%s/%s/stable.json", spec.ManifestDir, spec.KG)
-	cm, err := FetchCatalogManifest(spec.APIBaseURL, spec.CatalogOwner, spec.CatalogRepo, spec.CatalogBranch, manifestPath, spec.Token)
+	cm, err := FetchCatalogManifestContext(ctx, spec.APIBaseURL, spec.CatalogOwner, spec.CatalogRepo, spec.CatalogBranch, manifestPath, spec.Token)
 	if err != nil {
 		return nil, fmt.Errorf("kbbundle.PullRemote: 读 catalog manifest: %w", err)
 	}
-	if cm.Channel != "stable" {
-		return nil, fmt.Errorf("kbbundle.PullRemote: manifest channel=%s 非 stable", cm.Channel)
+	if err := validateStableCatalog(cm, spec.KG); err != nil {
+		return nil, fmt.Errorf("kbbundle.PullRemote: %w", err)
 	}
 
-	// 2. 临时目录：先下载到临时文件，再用 Pack 重新打包（计算正确的 bundle_digest）。
+	// 2. 下载到私有临时目录后验证完整不可变产物。
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	tmpDir, err := os.MkdirTemp("", "dkb-pull-*")
 	if err != nil {
 		return nil, fmt.Errorf("kbbundle.PullRemote: 创建临时目录: %w", err)
 	}
 
-	// 3. 下载 Release asset。
-	// 优先用 release_tag 查 Release；tag 为空（旧版 stable.json 的 Bug）或 404 时，
-	// 按 bundle_digest 在 body 中搜索匹配的 Release。
-	var assetURL, assetName string
-	if cm.ReleaseTag != "" {
-		assetURL, assetName, err = getReleaseAssetURL(spec.APIBaseURL, spec.CatalogOwner, spec.CatalogRepo, cm.ReleaseTag, spec.Token)
-	}
-	if cm.ReleaseTag == "" || err != nil {
-		// Fallback：列出所有 Release，按 bundle_digest 匹配。
-		assetURL, assetName, err = findReleaseByDigest(spec.APIBaseURL, spec.CatalogOwner, spec.CatalogRepo, cm.Manifest.BundleDigest, spec.Token)
-	}
+	// 3. Catalog fixes both the exact Release and asset; missing pointers fail closed.
+	assetURL, assetName, err := getReleaseAssetURLContext(ctx, spec.APIBaseURL, spec.CatalogOwner, spec.CatalogRepo, cm.ReleaseTag, spec.Token, cm.AssetName)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		return nil, fmt.Errorf("kbbundle.PullRemote: 获取 Release asset: %w", err)
 	}
 	tempAsset := filepath.Join(tmpDir, "asset.bin")
-	if err := downloadFile(assetURL, tempAsset, spec.Token); err != nil {
+	if err := downloadFileContext(ctx, assetURL, tempAsset, spec.Token); err != nil {
 		os.RemoveAll(tmpDir)
 		return nil, fmt.Errorf("kbbundle.PullRemote: 下载 %s: %w", assetName, err)
 	}
 
-	// 4. 组装 Bundle 目录。
-	//   - 新格式：asset 是完整 Bundle tarball（gzip）→ 解包后直接 Verify，digest 天然一致。
-	//   - 旧格式：asset 是裸 knowledge.db → 回退到重新 Pack（文件集缺 build-report 等，
-	//     digest 无法对齐，降级为 warning）。重跑 cairnd 产出新格式 Release 后即消除。
+	if err := ctx.Err(); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, err
+	}
+
+	// 4. Only a complete artifact can prove catalog identity. Bare DB releases
+	// must be republished rather than synthesizing missing provenance locally.
 	bundleDir := filepath.Join(tmpDir, "bundle")
 	isGz, err := IsGzip(tempAsset)
 	if err != nil {
 		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("kbbundle.PullRemote: 探测 asset 格式: %w", err)
+		return nil, err
 	}
-	if isGz {
-		// 新格式：解包完整 Bundle。
-		if err := ExtractTarball(tempAsset, bundleDir); err != nil {
-			os.RemoveAll(tmpDir)
-			return nil, fmt.Errorf("kbbundle.PullRemote: 解包 Bundle tarball: %w", err)
-		}
-		// 5. 完整性校验：Verify 重算包内文件摘要 + bundle_digest（含传输完整性），
-		//    并与 catalog manifest 的指针交叉确认。
-		m, err := Verify(bundleDir)
-		if err != nil {
-			os.RemoveAll(tmpDir)
-			return nil, fmt.Errorf("kbbundle.PullRemote: 校验 Bundle: %w", err)
-		}
-		if cm.Manifest.BundleDigest != "" && m.BundleDigest != cm.Manifest.BundleDigest {
-			// 走到这里说明 catalog stable 指针与 Release 内容不一致（指错了 Release）。
-			// 保持 warning 以便排查，但不阻断（Verify 已确保包自身完整）。
-			fmt.Fprintf(os.Stderr, "[kbbundle] ⚠ bundle_digest 与 catalog 指针不一致（catalog %s 实际 %s）—stable 指针可能指向了错误的 Release\n",
-				cm.Manifest.BundleDigest, m.BundleDigest)
-		}
-	} else {
-		// 旧格式兼容：裸 knowledge.db → 重新 Pack（文件集不同，digest 无法与 catalog 对齐）。
-		packed, err := Pack(PackRequest{
-			Manifest: cm.Manifest,
-			KGDBPath: tempAsset,
-			OutDir:   bundleDir,
-		})
-		if err != nil {
-			os.RemoveAll(tmpDir)
-			return nil, fmt.Errorf("kbbundle.PullRemote: 重新打包: %w", err)
-		}
-		if cm.Manifest.BundleDigest != "" && packed.Manifest.BundleDigest != cm.Manifest.BundleDigest {
-			fmt.Fprintf(os.Stderr, "[kbbundle] ⚠ bundle_digest 不匹配（catalog %s 实际 %s）—旧格式 Release 上传裸 DB 而非完整 tarball，已降级为 warning；重跑 cairnd 产出新 Release 后即消除\n",
-				cm.Manifest.BundleDigest, packed.Manifest.BundleDigest)
-		}
+	if !isGz {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("kbbundle.PullRemote: raw DB cannot prove catalog identity; republish a complete Bundle")
+	}
+	if err := ExtractTarball(tempAsset, bundleDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("kbbundle.PullRemote: unpack Bundle: %w", err)
+	}
+	actual, err := Verify(bundleDir)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("kbbundle.PullRemote: verify Bundle: %w", err)
+	}
+	if *actual != cm.Manifest {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("kbbundle.PullRemote: verified artifact provenance differs from stable catalog pointer")
+	}
+
+	if err := ctx.Err(); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, err
 	}
 
 	// 6. Install（Verify 会校验 checksums + bundle_digest）。
@@ -157,8 +155,19 @@ func PullRemote(spec PullRemoteSpec) (*PullResult, error) {
 // FetchCatalogManifest 从 Catalog Repo 的 Contents API 读取 stable.json。
 // 导出供 MCP Server 等 external caller 直接调用（无需完整 PullRemote）。
 func FetchCatalogManifest(apiBase, owner, repo, branch, path, token string) (*CatalogManifest, error) {
+	return FetchCatalogManifestContext(context.Background(), apiBase, owner, repo, branch, path, token)
+}
+
+// FetchCatalogManifestContext 中止已取消的请求，并给旧调用方设置有界网络等待。
+// FetchCatalogManifestContext propagates cancellation and bounds network waits.
+func FetchCatalogManifestContext(parent context.Context, apiBase, owner, repo, branch, path, token string) (*CatalogManifest, error) {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
 	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", apiBase, owner, repo, path, branch)
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/vnd.github.raw") // 直接返回文件内容
 	resp, err := http.DefaultClient.Do(req)
@@ -183,8 +192,8 @@ func FetchCatalogManifest(apiBase, owner, repo, branch, path, token string) (*Ca
 
 // ghRelease 是 GitHub Release API 响应（只取需要的字段）。
 type ghRelease struct {
-	TagName string   `json:"tag_name"`
-	Body    string   `json:"body"`
+	TagName string    `json:"tag_name"`
+	Body    string    `json:"body"`
 	Assets  []ghAsset `json:"assets"`
 }
 type ghAsset struct {
@@ -194,9 +203,15 @@ type ghAsset struct {
 }
 
 // getReleaseAssetURL 获取 Release 中第一个 asset 的下载 URL。
-func getReleaseAssetURL(apiBase, owner, repo, tag, token string) (url, name string, err error) {
+func getReleaseAssetURL(apiBase, owner, repo, tag, token string, desiredAssets ...string) (url, name string, err error) {
+	return getReleaseAssetURLContext(context.Background(), apiBase, owner, repo, tag, token, desiredAssets...)
+}
+func getReleaseAssetURLContext(ctx context.Context, apiBase, owner, repo, tag, token string, desiredAssets ...string) (url, name string, err error) {
 	releaseURL := fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", apiBase, owner, repo, tag)
-	req, _ := http.NewRequest("GET", releaseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", releaseURL, nil)
+	if err != nil {
+		return "", "", err
+	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := http.DefaultClient.Do(req)
@@ -215,6 +230,14 @@ func getReleaseAssetURL(apiBase, owner, repo, tag, token string) (url, name stri
 	if len(rel.Assets) == 0 {
 		return "", "", fmt.Errorf("Release %s 无 asset", tag)
 	}
+	if len(desiredAssets) > 0 && desiredAssets[0] != "" {
+		for _, asset := range rel.Assets {
+			if asset.Name == desiredAssets[0] {
+				return asset.BrowserDownloadURL, asset.Name, nil
+			}
+		}
+		return "", "", fmt.Errorf("Release %s missing catalog asset %s", tag, desiredAssets[0])
+	}
 	// 优先选 knowledge.db，否则取第一个。
 	for _, a := range rel.Assets {
 		if a.Name == "knowledge.db" || a.Name == "bundle.tar.gz" {
@@ -226,9 +249,15 @@ func getReleaseAssetURL(apiBase, owner, repo, tag, token string) (url, name stri
 
 // findReleaseByDigest 列出所有 Release，按 bundle_digest 在 body 中搜索匹配的 Release。
 // 用于 release_tag 为空（旧版 stable.json Bug）或 tag 查不到时的 fallback。
-func findReleaseByDigest(apiBase, owner, repo, bundleDigest, token string) (string, string, error) {
+func findReleaseByDigest(apiBase, owner, repo, bundleDigest, token string, desiredAssets ...string) (string, string, error) {
+	return findReleaseByDigestContext(context.Background(), apiBase, owner, repo, bundleDigest, token, desiredAssets...)
+}
+func findReleaseByDigestContext(ctx context.Context, apiBase, owner, repo, bundleDigest, token string, desiredAssets ...string) (string, string, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/releases?per_page=30", apiBase, owner, repo)
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", "", err
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -252,6 +281,14 @@ func findReleaseByDigest(apiBase, owner, repo, bundleDigest, token string) (stri
 			if len(rel.Assets) == 0 {
 				continue // 该 Release 无 asset，跳过
 			}
+			if len(desiredAssets) > 0 && desiredAssets[0] != "" {
+				for _, asset := range rel.Assets {
+					if asset.Name == desiredAssets[0] {
+						return asset.BrowserDownloadURL, asset.Name, nil
+					}
+				}
+				continue
+			}
 			for _, a := range rel.Assets {
 				if a.Name == "knowledge.db" || a.Name == "bundle.tar.gz" {
 					return a.BrowserDownloadURL, a.Name, nil
@@ -265,7 +302,13 @@ func findReleaseByDigest(apiBase, owner, repo, bundleDigest, token string) (stri
 
 // downloadFile 下载 URL 到本地文件。
 func downloadFile(url, destPath, token string) error {
-	req, _ := http.NewRequest("GET", url, nil)
+	return downloadFileContext(context.Background(), url, destPath, token)
+}
+func downloadFileContext(ctx context.Context, url, destPath, token string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "token "+token)
 	}
@@ -277,6 +320,9 @@ func downloadFile(url, destPath, token string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
@@ -287,4 +333,40 @@ func downloadFile(url, destPath, token string) error {
 	defer out.Close()
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+func validateStableCatalog(cm *CatalogManifest, expectedKG string) error {
+	if cm == nil || cm.Channel != "stable" {
+		return fmt.Errorf("catalog channel is not stable")
+	}
+	if cm.Format != ManifestFormat || cm.KG == "" || cm.KG != expectedKG {
+		return fmt.Errorf("catalog format or KG identity differs")
+	}
+	if cm.SourceRepo == "" || cm.SourceRef == "" || cm.BuilderVersion == "" || cm.BuilderCommit == "" || cm.PromptSetVersion == "" || cm.Model == "" || cm.KBVersion == "" || cm.SchemaVersion < 4 {
+		return fmt.Errorf("catalog provenance is incomplete; republish a complete Bundle")
+	}
+	if len(cm.SourceCommit) != 40 && len(cm.SourceCommit) != 64 {
+		return fmt.Errorf("catalog source commit is invalid")
+	}
+	if _, err := hex.DecodeString(cm.SourceCommit); err != nil {
+		return fmt.Errorf("catalog source commit is invalid")
+	}
+	for _, digest := range []string{cm.BundleDigest, cm.ConfigDigest} {
+		if !strings.HasPrefix(digest, "sha256:") || len(digest) != len("sha256:")+64 {
+			return fmt.Errorf("catalog digest is missing or invalid")
+		}
+		if _, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:")); err != nil {
+			return fmt.Errorf("catalog digest is invalid")
+		}
+	}
+	if _, err := time.Parse(time.RFC3339, cm.CreatedAt); err != nil {
+		return fmt.Errorf("catalog creation time is invalid")
+	}
+	if _, err := time.Parse(time.RFC3339, cm.PublishedAt); err != nil {
+		return fmt.Errorf("catalog publication time is invalid")
+	}
+	if strings.TrimSpace(cm.ReleaseTag) == "" || strings.TrimSpace(cm.AssetName) == "" {
+		return fmt.Errorf("catalog Release or asset pointer is missing; republish a complete Bundle")
+	}
+	return nil
 }
