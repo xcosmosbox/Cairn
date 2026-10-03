@@ -9,33 +9,30 @@ package runner
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite"
-
-	"github.com/xcosmosbox/cairn/core/dkconfig"
-	"github.com/xcosmosbox/cairn/core/storage"
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/pipeline"
+	"github.com/xcosmosbox/cairn/core/dkconfig"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // BuildResult 是一轮构建（全量/增量）的类型化结果。
 type BuildResult struct {
-	DBPath              string          `json:"-"`
-	NodesCreated        int             `json:"nodes_created"`
-	EdgesCreated        int             `json:"edges_created"`
-	DocsRewritten       int             `json:"docs_rewritten"`
-	Skipped             []string        `json:"skipped,omitempty"`
-	Warnings            []string        `json:"warnings,omitempty"`
-	TriggeredRebalance  bool            `json:"triggered_rebalance"`
-	HasWriteback        bool            `json:"has_writeback"`
-	Report              json.RawMessage `json:"report,omitempty"`
+	DBPath             string          `json:"-"`
+	NodesCreated       int             `json:"nodes_created"`
+	EdgesCreated       int             `json:"edges_created"`
+	DocsRewritten      int             `json:"docs_rewritten"`
+	Skipped            []string        `json:"skipped,omitempty"`
+	Warnings           []string        `json:"warnings,omitempty"`
+	TriggeredRebalance bool            `json:"triggered_rebalance"`
+	HasWriteback       bool            `json:"has_writeback"`
+	Report             json.RawMessage `json:"report,omitempty"`
 }
 
 // RebalanceDecision 是 rebalance --check 的类型化结果（§10）。
@@ -59,28 +56,32 @@ type ValidationReport struct {
 
 // FullRequest 是全量构建输入。
 type FullRequest struct {
-	RepoPath     string
-	DBPath       string
-	MinConfidence float64
+	RepoPath           string
+	DBPath             string
+	MinConfidence      float64
+	RepositoryIdentity string
 }
 
 // IncrementalRequest 是增量构建输入。
 type IncrementalRequest struct {
-	RepoPath      string
-	DBPath        string
-	MinConfidence float64
+	RepoPath           string
+	DBPath             string
+	MinConfidence      float64
+	RepositoryIdentity string
 }
 
 // RebalanceRequest 是重整输入。
 type RebalanceRequest struct {
-	RepoPath string
-	DBPath   string
-	Force    bool
+	RepoPath           string
+	DBPath             string
+	Force              bool
+	RepositoryIdentity string
 }
 
 // ValidateRequest 是验证输入。
 type ValidateRequest struct {
-	DBPath string
+	DBPath   string
+	RepoPath string
 }
 
 // PipelineRunner 是控制器调用的窄接口（§5.1）。
@@ -96,12 +97,12 @@ type PipelineRunner interface {
 
 // Runner 是真实 PipelineRunner 实现，调用现有 pipeline/incremental/rebalance 编排器。
 type Runner struct {
-	client        llm.Client
-	maxTokens     int
-	maxRetries    int
-	maxRollbacks  int
-	recallK       int
-	stageTimeout  time.Duration // 从 config.llm.timeout 传入，统一用于每个 pipeline 阶段
+	client       llm.Client
+	maxTokens    int
+	maxRetries   int
+	maxRollbacks int
+	recallK      int
+	stageTimeout time.Duration // 从 config.llm.timeout 传入，统一用于每个 pipeline 阶段
 }
 
 // NewRunner 从 dkconfig.LLMConfig 构造真实 Runner。
@@ -143,12 +144,13 @@ func NewRunnerWithClient(client llm.Client, cfg dkconfig.LLMConfig) *Runner {
 
 func (r *Runner) Full(ctx context.Context, req FullRequest) (BuildResult, error) {
 	orch, err := pipeline.NewOrchestrator(pipeline.Options{
-		Client:        r.client,
-		MaxTokens:     r.maxTokens,
-		MaxRetries:    r.maxRetries,
-		MaxRollbacks:  r.maxRollbacks,
-		MinConfidence: req.MinConfidence,
-		StageTimeout:  r.stageTimeout,
+		Client:             r.client,
+		MaxTokens:          r.maxTokens,
+		MaxRetries:         r.maxRetries,
+		MaxRollbacks:       r.maxRollbacks,
+		MinConfidence:      req.MinConfidence,
+		RepositoryIdentity: req.RepositoryIdentity,
+		StageTimeout:       r.stageTimeout,
 	})
 	if err != nil {
 		return BuildResult{}, err
@@ -162,12 +164,13 @@ func (r *Runner) Full(ctx context.Context, req FullRequest) (BuildResult, error)
 
 func (r *Runner) Incremental(ctx context.Context, req IncrementalRequest) (BuildResult, error) {
 	orch, err := incremental.NewIncrementalOrchestrator(incremental.Options{
-		Client:        r.client,
-		MaxTokens:     r.maxTokens,
-		MaxRetries:    r.maxRetries,
-		MaxRollbacks:  r.maxRollbacks,
-		MinConfidence: req.MinConfidence,
-		RecallK:       r.recallK,
+		Client:             r.client,
+		MaxTokens:          r.maxTokens,
+		MaxRetries:         r.maxRetries,
+		MaxRollbacks:       r.maxRollbacks,
+		MinConfidence:      req.MinConfidence,
+		RepositoryIdentity: req.RepositoryIdentity,
+		RecallK:            r.recallK,
 	})
 	if err != nil {
 		return BuildResult{}, err
@@ -184,7 +187,7 @@ func (r *Runner) RebalanceCheck(ctx context.Context, req RebalanceRequest) (Reba
 	if err != nil {
 		return RebalanceDecision{}, err
 	}
-	rpt, err := orch.Run(ctx, req.RepoPath, req.DBPath, incremental.RebalanceRunOpts{CheckOnly: true})
+	rpt, err := orch.Run(ctx, req.RepoPath, req.DBPath, incremental.RebalanceRunOpts{CheckOnly: true, RepositoryIdentity: req.RepositoryIdentity})
 	if err != nil {
 		return RebalanceDecision{}, err
 	}
@@ -203,12 +206,12 @@ func (r *Runner) Rebalance(ctx context.Context, req RebalanceRequest) (BuildResu
 	if err != nil {
 		return BuildResult{}, err
 	}
-	rpt, err := orch.Run(ctx, req.RepoPath, req.DBPath, incremental.RebalanceRunOpts{Force: req.Force})
+	rpt, err := orch.Run(ctx, req.RepoPath, req.DBPath, incremental.RebalanceRunOpts{Force: req.Force, RepositoryIdentity: req.RepositoryIdentity})
 	if err != nil {
 		return BuildResult{}, err
 	}
 	res := BuildResult{
-		DBPath: req.DBPath,
+		DBPath:             req.DBPath,
 		TriggeredRebalance: rpt.Triggered,
 	}
 	if rpt.NoOp {
@@ -218,7 +221,7 @@ func (r *Runner) Rebalance(ctx context.Context, req RebalanceRequest) (BuildResu
 }
 
 func (r *Runner) Validate(ctx context.Context, req ValidateRequest) (ValidationReport, error) {
-	return validateDB(req.DBPath)
+	return validateCandidate(ctx, req)
 }
 
 // validateDB 用只读连接校验候选 DB：quick_check + 节点/边计数 + schema 存在性。
@@ -227,11 +230,12 @@ func validateDB(dbPath string) (ValidationReport, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		return vr, fmt.Errorf("runner: db 不存在 %s: %w", dbPath, err)
 	}
-	conn, err := sql.Open("sqlite", dbPath+"?mode=ro&query_only=1")
+	db, err := storage.OpenReadOnly(dbPath)
 	if err != nil {
 		return vr, fmt.Errorf("runner: 打开 db 只读: %w", err)
 	}
-	defer conn.Close()
+	defer db.Close()
+	conn := db.Conn()
 	// quick_check。
 	var qc string
 	if err := conn.QueryRow("PRAGMA quick_check").Scan(&qc); err != nil {
@@ -319,7 +323,7 @@ func (f *FakeRunner) Incremental(ctx context.Context, req IncrementalRequest) (B
 		return f.OnIncremental(ctx, req)
 	}
 	return BuildResult{
-		DBPath: req.DBPath,
+		DBPath:       req.DBPath,
 		HasWriteback: false, // 无回写差异（收敛固定点）。
 	}, nil
 }
@@ -333,7 +337,7 @@ func (f *FakeRunner) Rebalance(ctx context.Context, req RebalanceRequest) (Build
 }
 
 func (f *FakeRunner) Validate(ctx context.Context, req ValidateRequest) (ValidationReport, error) {
-	return validateDB(req.DBPath)
+	return validateCandidate(ctx, req)
 }
 
 // ensureDB 创建一个空 KG 库（若不存在）。

@@ -9,26 +9,26 @@ import "time"
 type RunState string
 
 const (
-	StateIdle                 RunState = "Idle"
-	StateFetchSource          RunState = "FetchSource"
-	StateRestoreBase          RunState = "RestoreBase"
-	StatePlan                 RunState = "Plan"
-	StateFullBuild            RunState = "FullBuild"
-	StateIncrementalBuild     RunState = "IncrementalBuild"
-	StateRebalanceCheck       RunState = "RebalanceCheck"
-	StateRebalance            RunState = "Rebalance"
-	StateValidateCandidate    RunState = "ValidateCandidate"
-	StateCreateSourcePR       RunState = "CreateSourcePR"
-	StateAwaitSourcePR        RunState = "AwaitSourcePR"
+	StateIdle                  RunState = "Idle"
+	StateFetchSource           RunState = "FetchSource"
+	StateRestoreBase           RunState = "RestoreBase"
+	StatePlan                  RunState = "Plan"
+	StateFullBuild             RunState = "FullBuild"
+	StateIncrementalBuild      RunState = "IncrementalBuild"
+	StateRebalanceCheck        RunState = "RebalanceCheck"
+	StateRebalance             RunState = "Rebalance"
+	StateValidateCandidate     RunState = "ValidateCandidate"
+	StateCreateSourcePR        RunState = "CreateSourcePR"
+	StateAwaitSourcePR         RunState = "AwaitSourcePR"
 	StateReconcileMergedSource RunState = "ReconcileMergedSource"
-	StateUploadCandidate      RunState = "UploadCandidate"
-	StateCreateCatalogPR      RunState = "CreateCatalogPR"
-	StateAwaitCatalogPR       RunState = "AwaitCatalogPR"
-	StateStable               RunState = "Stable"
-	StateBlocked              RunState = "Blocked"
-	StateFailedRetryable      RunState = "FailedRetryable"
-	StateFailedPermanent      RunState = "FailedPermanent"
-	StateStale                RunState = "Stale"
+	StateUploadCandidate       RunState = "UploadCandidate"
+	StateCreateCatalogPR       RunState = "CreateCatalogPR"
+	StateAwaitCatalogPR        RunState = "AwaitCatalogPR"
+	StateStable                RunState = "Stable"
+	StateBlocked               RunState = "Blocked"
+	StateFailedRetryable       RunState = "FailedRetryable"
+	StateFailedPermanent       RunState = "FailedPermanent"
+	StateStale                 RunState = "Stale"
 )
 
 // IsTerminal 报告状态是否为终态（不再自动推进，需外部触发）。
@@ -51,25 +51,25 @@ func (s RunState) IsActive() bool {
 
 // allowedTransitions 是状态迁移允许表（§6）。非法迁移直接拒绝。
 var allowedTransitions = map[RunState][]RunState{
-	StateIdle:                  {StateFetchSource},
+	StateIdle:                  {StateFetchSource, StateStale},
 	StateFetchSource:           {StateRestoreBase, StateFullBuild, StatePlan, StateStable, StateStale, StateFailedRetryable},
-	StateRestoreBase:           {StatePlan, StateFullBuild, StateFailedRetryable},
-	StatePlan:                  {StateFullBuild, StateIncrementalBuild, StateStable, StateFailedRetryable},
-	StateFullBuild:             {StateValidateCandidate, StateFailedRetryable},
-	StateIncrementalBuild:      {StateRebalanceCheck, StateValidateCandidate, StateFailedRetryable},
-	StateRebalanceCheck:        {StateRebalance, StateValidateCandidate, StateFailedRetryable},
-	StateRebalance:             {StateValidateCandidate, StateFailedRetryable},
-	StateValidateCandidate:     {StateCreateSourcePR, StateUploadCandidate, StateFailedRetryable, StateFailedPermanent},
-	StateCreateSourcePR:        {StateAwaitSourcePR, StateFailedRetryable},
-	StateAwaitSourcePR:         {StateReconcileMergedSource, StateBlocked, StateStale, StateAwaitSourcePR},
-	StateReconcileMergedSource: {StateUploadCandidate, StateIncrementalBuild, StateFailedRetryable},
-	StateUploadCandidate:       {StateCreateCatalogPR, StateFailedRetryable},
-	StateCreateCatalogPR:       {StateAwaitCatalogPR, StateFailedRetryable},
-	StateAwaitCatalogPR:        {StateStable, StateBlocked, StateAwaitCatalogPR},
-	StateFailedRetryable:       {StateIdle, StateFetchSource, StateRestoreBase, StatePlan, StateFullBuild,
+	StateRestoreBase:           {StatePlan, StateFullBuild, StateFailedRetryable, StateStale},
+	StatePlan:                  {StateFullBuild, StateIncrementalBuild, StateStable, StateFailedRetryable, StateStale},
+	StateFullBuild:             {StateValidateCandidate, StateFailedRetryable, StateStale},
+	StateIncrementalBuild:      {StateRebalanceCheck, StateValidateCandidate, StateFailedRetryable, StateStale},
+	StateRebalanceCheck:        {StateRebalance, StateValidateCandidate, StateFailedRetryable, StateStale},
+	StateRebalance:             {StateValidateCandidate, StateFailedRetryable, StateStale},
+	StateValidateCandidate:     {StateCreateSourcePR, StateUploadCandidate, StateFailedRetryable, StateFailedPermanent, StateStale},
+	StateCreateSourcePR:        {StateAwaitSourcePR, StateReconcileMergedSource, StateFailedRetryable, StateStale},
+	StateAwaitSourcePR:         {StateReconcileMergedSource, StateBlocked, StateStale, StateAwaitSourcePR, StateFailedRetryable},
+	StateReconcileMergedSource: {StateUploadCandidate, StateIncrementalBuild, StateCreateSourcePR, StateValidateCandidate, StateBlocked, StateFailedRetryable, StateStale},
+	StateUploadCandidate:       {StateCreateCatalogPR, StateFailedRetryable, StateStale},
+	StateCreateCatalogPR:       {StateAwaitCatalogPR, StateFailedRetryable, StateStale},
+	StateAwaitCatalogPR:        {StateStable, StateBlocked, StateAwaitCatalogPR, StateFailedRetryable, StateStale},
+	StateFailedRetryable: {StateIdle, StateFetchSource, StateRestoreBase, StatePlan, StateFullBuild,
 		StateIncrementalBuild, StateRebalanceCheck, StateRebalance, StateValidateCandidate,
 		StateCreateSourcePR, StateAwaitSourcePR, StateReconcileMergedSource,
-		StateUploadCandidate, StateCreateCatalogPR, StateAwaitCatalogPR, StateFailedPermanent},
+		StateUploadCandidate, StateCreateCatalogPR, StateAwaitCatalogPR, StateFailedPermanent, StateStale},
 	StateBlocked: {StateIdle},
 }
 
@@ -102,51 +102,51 @@ const (
 type PRStatus string
 
 const (
-	PRStatusOpen    PRStatus = "open"
-	PRStatusMerged  PRStatus = "merged"
-	PRStatusClosed  PRStatus = "closed"
+	PRStatusOpen   PRStatus = "open"
+	PRStatusMerged PRStatus = "merged"
+	PRStatusClosed PRStatus = "closed"
 )
 
 // CandidateStatus 是 candidate Bundle 的状态。
 type CandidateStatus string
 
 const (
-	CandidateBuilding  CandidateStatus = "building"
-	CandidateUploaded  CandidateStatus = "uploaded"
-	CandidateStable    CandidateStatus = "stable"
-	CandidateStale     CandidateStatus = "stale"
-	CandidateRejected  CandidateStatus = "rejected"
+	CandidateBuilding CandidateStatus = "building"
+	CandidateUploaded CandidateStatus = "uploaded"
+	CandidateStable   CandidateStatus = "stable"
+	CandidateStale    CandidateStatus = "stale"
+	CandidateRejected CandidateStatus = "rejected"
 )
 
 // EffectStatus 是外部动作的执行状态（exactly-once 去重）。
 type EffectStatus string
 
 const (
-	EffectPending   EffectStatus = "pending"
-	EffectApplied   EffectStatus = "applied"
-	EffectSkipped   EffectStatus = "skipped"
-	EffectFailed    EffectStatus = "failed"
+	EffectPending EffectStatus = "pending"
+	EffectApplied EffectStatus = "applied"
+	EffectSkipped EffectStatus = "skipped"
+	EffectFailed  EffectStatus = "failed"
 )
 
 // ─── 持久化行类型 ────────────────────────────────────────────────
 
 // ManagedRepo 对应 managed_repositories 表。
 type ManagedRepo struct {
-	ID                   string
-	GitHubOwner          string
-	GitHubName           string
-	GitHubRepositoryID   int64
-	SourceURL            string
-	Branch               string
-	KGGroup              string
-	Enabled              bool
-	ConfigDigest         string
-	LastSeenSourceSHA    string
-	LastStableSourceSHA  string
+	ID                     string
+	GitHubOwner            string
+	GitHubName             string
+	GitHubRepositoryID     int64
+	SourceURL              string
+	Branch                 string
+	KGGroup                string
+	Enabled                bool
+	ConfigDigest           string
+	LastSeenSourceSHA      string
+	LastStableSourceSHA    string
 	LastStableBundleDigest string
 	LastStableFingerprint  string // 上次 stable 对应的 builder fingerprint（变化 → 需全量重建）
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 // Run 对应 runs 表。
@@ -157,6 +157,7 @@ type Run struct {
 	BaseBundleDigest   string
 	BuilderFingerprint string
 	State              RunState
+	RetryState         RunState // 失败前阶段；重试必须恢复此阶段，不能重建已有 PR。 Resume the failed stage.
 	Attempt            int
 	Reason             string
 	ReportPath         string
@@ -183,36 +184,36 @@ type PullRequest struct {
 
 // Candidate 对应 candidates 表。
 type Candidate struct {
-	CandidateID           string
-	RunID                 string
-	SourceSHA             string
+	CandidateID            string
+	RunID                  string
+	SourceSHA              string
 	ExpectedWorktreeDigest string
-	BundlePath            string
-	BundleDigest          string
-	ReleaseID             int64
-	ReleaseTag            string
-	Status                CandidateStatus
+	BundlePath             string
+	BundleDigest           string
+	ReleaseID              int64
+	ReleaseTag             string
+	Status                 CandidateStatus
 }
 
 // ExternalEffect 对应 external_effects 表（at-least-once + 幂等去重）。
 type ExternalEffect struct {
-	EffectKey        string // 幂等键（如 push:<repo>:<branch>:<fingerprint>）
-	EffectType       string // push | create_pr | create_release | upload_asset
-	TargetRepo       string
+	EffectKey          string // 幂等键（如 push:<repo>:<branch>:<fingerprint>）
+	EffectType         string // push | create_pr | create_release | upload_asset
+	TargetRepo         string
 	RequestFingerprint string
-	ExternalID       string
-	Status           EffectStatus
-	ResponseSummary  string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ExternalID         string
+	Status             EffectStatus
+	ResponseSummary    string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // RepoLease 对应 repo_leases 表。
 type RepoLease struct {
-	RepoID     string
-	HolderID   string
-	AcquiredAt time.Time
-	ExpiresAt  time.Time
+	RepoID      string
+	HolderID    string
+	AcquiredAt  time.Time
+	ExpiresAt   time.Time
 	HeartbeatAt time.Time
 }
 

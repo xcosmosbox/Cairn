@@ -14,6 +14,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -63,4 +64,43 @@ func (r *ManifestRepo) Get(ctx context.Context, key string) (string, error) {
 		return "", fmt.Errorf("ManifestRepo.Get %s: %w", key, err)
 	}
 	return value, nil
+}
+
+// UpdateValue 在取得 SQLite 写锁后读取并更新一个观测键，跨连接/进程的追加不会相互覆盖。
+// 回调只处理传入字符串，不得再次访问该 DB；出错或取消会回滚，保留原值。
+// UpdateValue atomically transforms one value under BEGIN IMMEDIATE, including across
+// independent connections/processes. The callback must not re-enter this DB.
+func (r *ManifestRepo) UpdateValue(ctx context.Context, key string, update func(string) (string, error)) error {
+	if update == nil {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: missing transform", key)
+	}
+	r.db.mu.Lock()
+	defer r.db.mu.Unlock()
+	conn, err := r.db.Conn().Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: acquire connection: %w", key, err)
+	}
+	defer conn.Close()
+	// A deferred transaction allows both processes to read the old value before
+	// either writes. Reserve the writer first instead of retrying a stale transform.
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: begin: %w", key, err)
+	}
+	defer conn.ExecContext(context.Background(), "ROLLBACK")
+	var current string
+	err = conn.QueryRowContext(ctx, "SELECT value FROM kg_manifest WHERE key = ?", key).Scan(&current)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: read: %w", key, err)
+	}
+	next, err := update(current)
+	if err != nil {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: transform: %w", key, err)
+	}
+	if _, err := conn.ExecContext(ctx, "INSERT INTO kg_manifest (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, next); err != nil {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: write: %w", key, err)
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("ManifestRepo.UpdateValue %s: commit: %w", key, err)
+	}
+	return nil
 }

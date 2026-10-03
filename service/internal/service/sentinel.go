@@ -108,21 +108,23 @@ func readCumulativeRatio(ctx context.Context, m *storage.ManifestRepo) (float64,
 // appendSentinelHistory appends one snapshot to the sentinel.history ring,
 // evicting the oldest entries beyond cap. Only the dedicated key is written.
 func appendSentinelHistory(ctx context.Context, m *storage.ManifestRepo, pt *SentinelSnapshot, cap int) error {
-	var hist []SentinelSnapshot
-	if raw, err := m.Get(ctx, sentinelHistoryKey); err == nil && raw != "" {
-		// 历史损坏不从零丢弃：解析失败按空历史重启（观测数据，可重建）。
-		_ = json.Unmarshal([]byte(raw), &hist)
-	}
-	hist = append(hist, *pt)
-	if cap > 0 && len(hist) > cap {
-		hist = hist[len(hist)-cap:]
-	}
-	b, err := json.Marshal(hist)
-	if err != nil {
-		return fmt.Errorf("appendSentinelHistory marshal: %w", err)
-	}
-	if err := m.Set(ctx, sentinelHistoryKey, string(b)); err != nil {
-		return fmt.Errorf("appendSentinelHistory set: %w", err)
-	}
-	return nil
+	// 读取与追加必须在同一写事务中；仅锁单次 Get/Set 会丢掉并发成功的快照。
+	// The full read-modify-write operation must be atomic across CLI processes.
+	return m.UpdateValue(ctx, sentinelHistoryKey, func(raw string) (string, error) {
+		var hist []SentinelSnapshot
+		if raw != "" {
+			if err := json.Unmarshal([]byte(raw), &hist); err != nil {
+				return "", fmt.Errorf("invalid existing sentinel history: %w", err)
+			}
+		}
+		hist = append(hist, *pt)
+		if cap > 0 && len(hist) > cap {
+			hist = hist[len(hist)-cap:]
+		}
+		b, err := json.Marshal(hist)
+		if err != nil {
+			return "", fmt.Errorf("marshal sentinel history: %w", err)
+		}
+		return string(b), nil
+	})
 }

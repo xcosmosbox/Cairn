@@ -85,13 +85,21 @@ func NewDB(opts DBOptions) (*DB, error) {
 
 	// 打开 SQLite 连接（通过 DSN 参数设置日志模式和忙等待超时）
 	// Open SQLite connection (journal mode and busy timeout set via DSN parameters)
-	conn, err := sql.Open("sqlite", opts.Path+"?_journal_mode="+opts.JournalMode+"&_busy_timeout="+fmt.Sprint(opts.BusyTimeoutMs))
+	conn, err := OpenSQLite(opts.Path, SQLiteOptions{JournalMode: opts.JournalMode, BusyTimeoutMs: opts.BusyTimeoutMs, MaxOpenConns: opts.MaxOpenConns})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite %s: %w", opts.Path, err)
 	}
 	conn.SetMaxOpenConns(opts.MaxOpenConns)
 
 	db := &DB{conn: conn, path: opts.Path}
+	// 初始化失败也必须释放连接，否则重试会泄漏文件描述符与 SQLite 锁。
+	// Close the connection on every failed initialization path.
+	initialized := false
+	defer func() {
+		if !initialized {
+			conn.Close()
+		}
+	}()
 
 	// 创建数据表 / Create tables
 	for _, ddl := range CreateTablesSQL() {
@@ -112,6 +120,7 @@ func NewDB(opts DBOptions) (*DB, error) {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
+	initialized = true
 	return db, nil
 }
 
@@ -136,7 +145,7 @@ func (db *DB) Conn() *sql.DB {
 
 // OpenReadOnly 以只读模式打开一个已存在的知识库，跳过建表与迁移。
 // 适用于查询端（如 MCP Server）对已构建 .db 的只读访问，保证不会对
-// 数据库产生任何写副作用。底层通过 SQLite mode=ro + _query_only=true
+// 数据库产生任何写副作用。底层通过 SQLite mode=ro + query_only(1)
 // 双重只读保护，且不执行任何 DDL 或 Migrate。
 //
 // 与 NewDB 的区别：NewDB 以读写模式打开并执行建表+索引+迁移（面向构建端）；
@@ -145,20 +154,27 @@ func (db *DB) Conn() *sql.DB {
 // OpenReadOnly opens an existing knowledge base in read-only mode, skipping
 // table creation and migration. Suitable for read-only query frontends (e.g.
 // MCP Server) over an already-built .db, guaranteeing no write side effects.
-// Read-only is enforced doubly via SQLite mode=ro and _query_only=true, and
+// Read-only is enforced doubly via SQLite mode=ro and query_only(1), and
 // no DDL or migration is executed.
 func OpenReadOnly(path string) (*DB, error) {
 	if path == "" {
 		path = "./knowledge.db"
 	}
-	// mode=ro: 只读; _query_only=true: 禁止任何写操作; _journal_mode=WAL: 保持与构建端一致
-	// mode=ro: read-only; _query_only=true: prevent any writes; WAL journal mode
-	dsn := path + "?mode=ro&_query_only=true&_journal_mode=WAL&_busy_timeout=5000"
-	conn, err := sql.Open("sqlite", dsn)
+	conn, err := OpenSQLite(path, SQLiteOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("open readonly sqlite %s: %w", path, err)
 	}
 	conn.SetMaxOpenConns(1)
+	return &DB{conn: conn, path: path}, nil
+}
+
+// OpenExisting 仅用于显式要求写元数据的命令；它不创建文件、不建表、不迁移。
+// OpenExisting opens an existing DB read-write without schema initialization.
+func OpenExisting(path string) (*DB, error) {
+	conn, err := OpenSQLite(path, SQLiteOptions{ExistingOnly: true, PreserveJournalMode: true})
+	if err != nil {
+		return nil, err
+	}
 	return &DB{conn: conn, path: path}, nil
 }
 

@@ -1,20 +1,21 @@
 // transport_http.go — HTTP/SSE 传输层（MCP 协议标准 HTTP+SSE transport）。
 //
 // 协议流程：
-//   1. Client 连接 GET /sse（Server-Sent Events 长连接）
-//   2. Server 立即发送 endpoint 事件，告知 POST 端点 URL：
-//      event: endpoint
-//      data: /rpc?session=<session-id>
-//   3. Client 通过 POST /rpc?session=<id> 发送 JSON-RPC 请求
-//   4. Server 处理后通过 SSE 流推送 JSON-RPC 响应：
-//      data: {"jsonrpc":"2.0","id":1,"result":{...}}
-//   5. SSE 连接保持开放，支持多次请求/响应
-//   6. Client 断开时自动清理 session
+//  1. Client 连接 GET /sse（Server-Sent Events 长连接）
+//  2. Server 立即发送 endpoint 事件，告知 POST 端点 URL：
+//     event: endpoint
+//     data: /rpc?session=<session-id>
+//  3. Client 通过 POST /rpc?session=<id> 发送 JSON-RPC 请求
+//  4. Server 处理后通过 SSE 流推送 JSON-RPC 响应：
+//     data: {"jsonrpc":"2.0","id":1,"result":{...}}
+//  5. SSE 连接保持开放，支持多次请求/响应
+//  6. Client 断开时自动清理 session
 //
 // 端点：
-//   GET  /sse     — SSE 流（每 client 一个 session）
-//   POST /rpc     — JSON-RPC 请求（?session=<id>）
-//   GET  /health  — 健康检查（Docker/K8s liveness probe）
+//
+//	GET  /sse     — SSE 流（每 client 一个 session）
+//	POST /rpc     — JSON-RPC 请求（?session=<id>）
+//	GET  /health  — 健康检查（Docker/K8s liveness probe）
 package main
 
 import (
@@ -32,10 +33,10 @@ import (
 
 // sseSession 表示一个 SSE 客户端连接。
 type sseSession struct {
-	id       string
-	events   chan *jsonRPCResponse // 响应推送通道
-	done     chan struct{}         // 连接关闭信号
-	created  time.Time
+	id      string
+	events  chan *jsonRPCResponse // 响应推送通道
+	done    chan struct{}         // 连接关闭信号
+	created time.Time
 }
 
 // sessionManager 管理所有活跃的 SSE session。
@@ -412,6 +413,12 @@ func writeJSONResponse(w http.ResponseWriter, resp *jsonRPCResponse) {
 		}
 	}
 
+	if result["isError"] == true {
+		// REST 不能在去掉 MCP 包装时把工具错误转成成功 markdown。
+		// Preserve a machine-readable failure when unwrapping MCP for REST.
+		writeJSON(w, map[string]interface{}{"isError": true, "error": strings.Join(texts, "\n")})
+		return
+	}
 	if len(texts) == 0 {
 		writeJSON(w, result)
 		return

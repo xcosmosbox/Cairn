@@ -20,6 +20,7 @@ package incremental
 import (
 	"context"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
 	"time"
 
@@ -32,6 +33,9 @@ import (
 // applyBypass executes the bypass plan (R/D/C3), recording dirty marks and
 // affected docs into rs. Errors are storage-layer failures only.
 func applyBypass(ctx context.Context, st *stores, bp *BypassPlan, rs *runState) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	var c1Applied, c1Phantom, c2Handled int
 	deletedBefore := len(rs.deleted)
 	// —— 旁路 R：C1 块内编辑 ——

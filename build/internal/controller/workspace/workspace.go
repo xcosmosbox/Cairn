@@ -3,7 +3,7 @@
 // 设计：
 //   - bare mirror + 每轮独立 worktree，避免 daemon 等待 PR 时长期持有脏目录。
 //   - 所有 git 命令经 exec.CommandContext，支持 context cancel 与超时。
-//   - 禁止把 token 放进日志或持久化 remote URL；token 经 credential helper 注入。
+//   - 禁止把 token 放进日志或持久化 remote URL；token 经临时环境配置注入。
 //   - 禁止执行源仓库脚本/Makefile/workflow/hook；默认不拉 submodule。
 //   - 受管 worktree digest 用 Git tree 或 canonical 文件清单计算，只含受管 Markdown/sidecar/_shared。
 package workspace
@@ -13,6 +13,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,32 +59,42 @@ func (m *Manager) ReportsDir(runID string) string {
 }
 
 // EnsureMirror 克隆或更新 bare mirror。
-// remoteURL 是 https 远端；token 经 credential helper 注入（不持久化）。
+// remoteURL 是 https 远端；token 经临时环境配置注入（不持久化）。
 func (m *Manager) EnsureMirror(ctx context.Context, repoID, remoteURL, token string) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
+	if err := validateRemoteCredentials(remoteURL); err != nil {
+		return err
+	}
 	mp := m.MirrorPath(repoID)
 	if _, err := os.Stat(filepath.Join(mp, "HEAD")); err == nil {
 		// 已存在：fetch 更新 + prune 已删除的远端分支。
-		return m.git(ctx, mp, "fetch", "--no-tags", "--prune", "origin")
+		return m.authenticatedGit(ctx, mp, token, "fetch", "--no-tags", "--prune", "origin")
 	}
 	if err := os.MkdirAll(filepath.Dir(mp), 0o755); err != nil {
 		return err
 	}
-	// clone --bare。token 通过 -c credential helper 临时注入，不写入 remote URL。
-	if token != "" {
-		return m.git(ctx, filepath.Dir(mp), "-c", credentialHelper(token), "clone", "--bare", remoteURL, mp)
-	}
-	return m.git(ctx, filepath.Dir(mp), "clone", "--bare", remoteURL, mp)
+	// clone --bare。token 通过临时环境配置注入，不写入 remote URL。
+	return m.authenticatedGit(ctx, filepath.Dir(mp), token, "clone", "--bare", remoteURL, mp)
 }
 
 // CheckoutWorktree 在 runDir 下创建指向 sha 的 worktree。
 func (m *Manager) CheckoutWorktree(ctx context.Context, repoID, runID, sha, branch string) (string, error) {
+	if err := store.CheckLease(ctx); err != nil {
+		return "", err
+	}
 	mp := m.MirrorPath(repoID)
 	wt := m.SourceWorktree(runID)
 	// 重试场景：清理可能残留的旧 worktree（目录 + mirror 中的注册）。
 	if _, err := os.Stat(wt); err == nil {
-		os.RemoveAll(wt)
+		if err := os.RemoveAll(wt); err != nil {
+			return "", err
+		}
 	}
-	m.git(ctx, mp, "worktree", "prune") // 清理 mirror 中已失效的 worktree 注册
+	if err := m.git(ctx, mp, "worktree", "prune"); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
 		return "", err
 	}
@@ -92,7 +104,9 @@ func (m *Manager) CheckoutWorktree(ctx context.Context, repoID, runID, sha, bran
 	}
 	// 在 worktree 中创建/切换到 bot 分支（便于 push）。
 	if branch != "" {
-		_ = m.git(ctx, wt, "checkout", "-b", branch)
+		if err := m.git(ctx, wt, "checkout", "-b", branch); err != nil {
+			return "", err
+		}
 	}
 	return wt, nil
 }
@@ -103,7 +117,9 @@ func (m *Manager) CommitAll(ctx context.Context, worktree, message, authorName, 
 		return err
 	}
 	// 若无变更，git commit 会失败；先检查。
-	if changed, _ := m.hasChanges(ctx, worktree); !changed {
+	if changed, err := m.hasChanges(ctx, worktree); err != nil {
+		return err
+	} else if !changed {
 		return ErrNoChanges
 	}
 	return m.git(ctx, worktree,
@@ -113,13 +129,12 @@ func (m *Manager) CommitAll(ctx context.Context, worktree, message, authorName, 
 
 // PushBranch 推送分支到远端（经 token credential helper）。
 func (m *Manager) PushBranch(ctx context.Context, repoID, remoteURL, branch, token string) error {
+	if err := validateRemoteCredentials(remoteURL); err != nil {
+		return err
+	}
 	mp := m.MirrorPath(repoID)
 	// 从 mirror（bare repo）push：worktree 的 commit 和 branch ref 都在 mirror 的共享 git dir 中。
-	if token != "" {
-		return m.git(ctx, mp, "-c", credentialHelper(token),
-			"push", remoteURL, "refs/heads/"+branch+":refs/heads/"+branch)
-	}
-	return m.git(ctx, mp, "push", remoteURL, "refs/heads/"+branch+":refs/heads/"+branch)
+	return m.authenticatedGit(ctx, mp, token, "push", remoteURL, "refs/heads/"+branch+":refs/heads/"+branch)
 }
 
 // HeadSHA 返回 worktree 当前 HEAD 的 SHA。
@@ -260,8 +275,41 @@ func (m *Manager) output(ctx context.Context, dir string, args ...string) (strin
 	return m.run(ctx, dir, args, false)
 }
 
+// URL 中的 HTTPS 用户信息会落进 remote config 和错误，因此必须由独立 token 参数提供。
+// Reject credential-bearing HTTP URLs before spawning Git or persisting remote config.
+func validateRemoteCredentials(remoteURL string) error {
+	if strings.HasPrefix(remoteURL, "http://") || strings.HasPrefix(remoteURL, "https://") {
+		u, err := url.Parse(remoteURL)
+		if err != nil {
+			return fmt.Errorf("workspace: invalid HTTP remote URL")
+		}
+		if u.User != nil {
+			return fmt.Errorf("workspace: pass HTTP credentials as token, not in remote URL")
+		}
+	}
+	return nil
+}
+
+// authenticatedGit 为每次 clone/fetch/push 注入本次 token，避免后续 fetch 丢失鉴权。
+// Authentication is command scoped: no token enters argv, errors or repository config.
+func (m *Manager) authenticatedGit(ctx context.Context, dir, token string, args ...string) error {
+	_, err := m.runWithToken(ctx, dir, args, true, token)
+	return err
+}
+
 func (m *Manager) run(ctx context.Context, dir string, args []string, suppress bool) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	return m.runWithToken(ctx, dir, args, suppress, "")
+}
+
+func (m *Manager) runWithToken(ctx context.Context, dir string, args []string, suppress bool, token string) (string, error) {
+	if err := store.CheckLease(ctx); err != nil {
+		return "", err
+	}
+	// 仓库或全局配置中的 commit/push hook 会执行任意脚本；用最高优先级临时
+	// 配置关闭每个 Manager 命令的 hooks，不能仅靠非交互和 LFS 环境变量。
+	// Disable inherited hooks for every command without persisting configuration.
+	commandArgs := append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)
+	cmd := exec.CommandContext(ctx, "git", commandArgs...)
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -270,6 +318,15 @@ func (m *Manager) run(ctx context.Context, dir string, args []string, suppress b
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_LFS_SKIP_SMUDGE=1",
 	)
+	if token != "" {
+		// Git 的命令级环境配置不会写入 clone 后的 config，也不会进入错误中的命令参数。
+		// Environment configuration is temporary; rotating credentials apply to every fetch.
+		cmd.Env = append(cmd.Env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraheader",
+			"GIT_CONFIG_VALUE_0=Authorization: basic "+basicAuth("x-access-token", token))
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return "", err
+	}
 	var out []byte
 	var err error
 	if suppress {
@@ -280,19 +337,14 @@ func (m *Manager) run(ctx context.Context, dir string, args []string, suppress b
 		out, err = cmd.Output()
 	}
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		command := strings.Join(args, " ")
+		if token != "" {
+			command = strings.ReplaceAll(command, token, "[redacted]")
+			command = strings.ReplaceAll(command, basicAuth("x-access-token", token), "[redacted]")
+		}
+		return "", fmt.Errorf("git %s: %w", command, err)
 	}
 	return string(out), nil
-}
-
-// credentialHelper 返回 -c credential.helper=!f() { ... }; f 的内联 helper，
-// 把 token 注入 git 而不写入 remote URL 或磁盘。token 不出现在 git 参数明文（用 -c 传
-// helper 脚本，脚本内部 echo token）。
-func credentialHelper(token string) string {
-	// 用 -c http.extraheader 注入 Authorization，比 credential helper 更简洁且不落盘。
-	// 注意：token 在进程参数中可见（ps），生产建议用 credential.helper 读写 fd。
-	// 此处用 extraheader 满足「不写入 remote URL」要求；进程级隔离由部署负责。
-	return "http.extraheader=Authorization: basic " + basicAuth("x-access-token", token)
 }
 
 // basicAuth 返回 base64(user:pass)。
@@ -340,3 +392,33 @@ func b64(s string) string {
 
 // touch 确保目录存在。
 var _ = time.Second
+
+// EnsureBranchInWorktree 重入已经提交/推送的同一 worktree 时保留已生成提交，
+// 不重建分支或改变提交时间。已有其他提交的分支则拒绝覆盖。
+// EnsureBranchInWorktree preserves an existing matching branch on replay.
+func (m *Manager) EnsureBranchInWorktree(ctx context.Context, worktree, branch string) error {
+	current, err := m.output(ctx, worktree, "symbolic-ref", "--short", "-q", "HEAD")
+	if err == nil && strings.TrimSpace(current) == branch {
+		return nil
+	}
+	head, err := m.HeadSHA(ctx, worktree)
+	if err != nil {
+		return err
+	}
+	existing, err := m.output(ctx, worktree, "rev-parse", "--verify", "refs/heads/"+branch)
+	if err == nil {
+		if strings.TrimSpace(existing) != head {
+			return fmt.Errorf("workspace: branch %s already has a different commit", branch)
+		}
+		return m.git(ctx, worktree, "checkout", branch)
+	}
+	return m.git(ctx, worktree, "checkout", "-b", branch)
+}
+
+// PushBranchTo pushes an immutable local branch to the configured target ref.
+func (m *Manager) PushBranchTo(ctx context.Context, repoID, remoteURL, branch, targetBranch, token string) error {
+	if err := validateRemoteCredentials(remoteURL); err != nil {
+		return err
+	}
+	return m.authenticatedGit(ctx, m.MirrorPath(repoID), token, "push", remoteURL, "refs/heads/"+branch+":refs/heads/"+targetBranch)
+}

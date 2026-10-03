@@ -12,6 +12,7 @@
 // ============================================================
 
 import initSqlJs, { type Database } from 'sql.js'
+import sqliteWasmURL from '/sql-wasm.wasm?url'
 import type { KGNode, KGEdge, GraphLoadResult, NodeLabel, SentinelSample } from '../types'
 
 // ============================================================
@@ -97,7 +98,9 @@ export class DBLoader {
     // Step 2: 初始化 sql.js / Initialize sql.js
     // 预加载 WASM 二进制文件以避免 Vite 模块转换拦截。
     // Pre-fetch the WASM binary to avoid Vite module transform interception.
-    const wasmResponse = await fetch('/sql-wasm.wasm')
+    // Vite 根据实际部署 base 解析 public 资源，子目录部署不会误请求站点根目录。
+    // The asset URL follows Vite's deployment base, including relative subpaths.
+    const wasmResponse = await fetch(sqliteWasmURL)
     if (!wasmResponse.ok) {
       throw new Error('Failed to fetch SQLite WASM binary. Ensure sql-wasm.wasm is in the public/ directory.')
     }

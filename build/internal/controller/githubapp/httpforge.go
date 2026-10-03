@@ -7,19 +7,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 )
 
 // HTTPForge 通过 GitHub REST API 实现 Forge（生产用）。
 // 需配合 core/githubapp.AppAuth 提供 installation token。
 type HTTPForge struct {
-	auth          *coregh.AppAuth
+	auth           *coregh.AppAuth
 	installationID int64
-	http          *http.Client
+	http           *http.Client
 }
 
 // NewHTTPForge 构造一个指向真实 GitHub（或兼容 API）的 Forge。
@@ -38,6 +41,9 @@ func (h *HTTPForge) token(ctx context.Context) (string, error) {
 }
 
 func (h *HTTPForge) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	if err := store.CheckLease(ctx); err != nil {
+		return nil, err
+	}
 	tok, err := h.token(ctx)
 	if err != nil {
 		return nil, err
@@ -59,6 +65,9 @@ func (h *HTTPForge) do(ctx context.Context, method, path string, body any) (*htt
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if err := store.CheckLease(ctx); err != nil {
+		return nil, err
+	}
 	return h.http.Do(req)
 }
 
@@ -76,7 +85,10 @@ func (h *HTTPForge) GetBranchSHA(ctx context.Context, owner, repo, branch string
 			SHA string `json:"sha"`
 		} `json:"commit"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&b); err != nil {
+	if err := decodeAPIJSON(resp.Body, &b); err != nil {
+		return "", err
+	}
+	if err := ValidateBranchSHA(b.Commit.SHA); err != nil {
 		return "", err
 	}
 	return b.Commit.SHA, nil
@@ -98,86 +110,217 @@ func (h *HTTPForge) CreateBranch(ctx context.Context, owner, repo, branch, baseS
 	return nil
 }
 
-func (h *HTTPForge) EnsurePullRequest(ctx context.Context, spec PullRequestSpec) (PullRequest, error) {
-	// 幂等：先按 head/base 查找已存在 PR。
-	resp, err := h.do(ctx, "GET", "/repos/"+spec.Owner+"/"+spec.Repo+"/pulls?head="+spec.Owner+":"+spec.HeadBranch+"&state=open", nil)
-	if err != nil {
-		return PullRequest{}, err
-	}
-	var existing []struct {
-		Number int    `json:"number"`
-		State  string `json:"state"`
-		Head   struct {
-			SHA string `json:"sha"`
-			Ref string `json:"ref"`
-		} `json:"head"`
-		Base struct {
-			Ref string `json:"ref"`
-		} `json:"base"`
-		HTMLURL string `json:"html_url"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&existing); err != nil {
-		resp.Body.Close()
-		return PullRequest{}, err
-	}
-	resp.Body.Close()
-	if len(existing) > 0 {
-		return PullRequest{
-			Owner: spec.Owner, Repo: spec.Repo, Number: existing[0].Number,
-			HeadBranch: existing[0].Head.Ref, HeadSHA: existing[0].Head.SHA,
-			BaseBranch: existing[0].Base.Ref, State: existing[0].State,
-			HTMLURL: existing[0].HTMLURL,
-		}, nil
-	}
-	// 创建。
-	body := map[string]string{"title": spec.Title, "body": spec.Body, "head": spec.HeadBranch, "base": spec.BaseBranch}
-	resp2, err := h.do(ctx, "POST", "/repos/"+spec.Owner+"/"+spec.Repo+"/pulls", body)
-	if err != nil {
-		return PullRequest{}, err
-	}
-	defer resp2.Body.Close()
-	if resp2.StatusCode != 201 {
-		return PullRequest{}, httpError(resp2)
-	}
-	var pr PullRequest
-	json.NewDecoder(resp2.Body).Decode(&pr)
-	pr.Owner = spec.Owner
-	pr.Repo = spec.Repo
-	return pr, nil
+// apiPullRequest 保留 GitHub 的嵌套响应，所有入口统一转换，不能把 head/base 丢成零值。
+// Decode the wire format once rather than treating nested API fields as the flat domain model.
+type apiPullRequest struct {
+	Number   int        `json:"number"`
+	State    string     `json:"state"`
+	Body     string     `json:"body"`
+	Merged   bool       `json:"merged"`
+	MergedAt *time.Time `json:"merged_at"`
+	Head     struct {
+		SHA   string `json:"sha"`
+		Ref   string `json:"ref"`
+		Label string `json:"label"`
+		User  struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Repo *struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
+	} `json:"head"`
+	Base struct {
+		Ref  string `json:"ref"`
+		Repo *struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
+	} `json:"base"`
+	HTMLURL        string `json:"html_url"`
+	Mergeable      bool   `json:"mergeable"`
+	MergeCommitSHA string `json:"merge_commit_sha"`
 }
 
-func (h *HTTPForge) GetPullRequest(ctx context.Context, owner, repo string, number int) (PullRequest, error) {
-	resp, err := h.do(ctx, "GET", "/repos/"+owner+"/"+repo+"/pulls/"+fmt.Sprint(number), nil)
+func (raw apiPullRequest) convert(owner, repo string) (PullRequest, error) {
+	if raw.Number <= 0 || raw.Head.SHA == "" || raw.Head.Ref == "" || raw.Base.Ref == "" {
+		return PullRequest{}, fmt.Errorf("githubapp: incomplete pull request receipt: number=%d head=%q base=%q", raw.Number, raw.Head.Ref, raw.Base.Ref)
+	}
+	if raw.State != "open" && raw.State != "closed" && raw.State != "merged" {
+		return PullRequest{}, fmt.Errorf("githubapp: invalid pull request state: %q", raw.State)
+	}
+	if raw.Base.Repo != nil && raw.Base.Repo.FullName != "" && !strings.EqualFold(raw.Base.Repo.FullName, owner+"/"+repo) {
+		return PullRequest{}, fmt.Errorf("githubapp: pull request base repository mismatch")
+	}
+	return PullRequest{Owner: owner, Repo: repo, Number: raw.Number, State: raw.State, Merged: raw.Merged || raw.MergedAt != nil || raw.State == "merged", HeadBranch: raw.Head.Ref, HeadSHA: raw.Head.SHA, BaseBranch: raw.Base.Ref, Mergeable: raw.Mergeable, HTMLURL: raw.HTMLURL, MergeCommitSHA: raw.MergeCommitSHA}, nil
+}
+
+// exactReplayMarker 按完整机器标记匹配，不能用子串把 run-1 误认成 run-10。
+// Match whole marker lines/comments, including the dedicated comment added to every new proposal.
+func exactReplayMarker(body, marker string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "<!--") && strings.HasSuffix(line, "-->") {
+			line = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "<!--"), "-->"))
+		}
+		if line == marker || line == "cairn-replay-marker:"+marker {
+			return true
+		}
+	}
+	return false
+}
+
+func (raw apiPullRequest) matches(spec PullRequestSpec) (bool, error) {
+	if raw.Head.Ref != spec.HeadBranch || raw.Base.Ref != spec.BaseBranch || !exactReplayMarker(raw.Body, spec.RunMarker) {
+		return false, nil
+	}
+	// 分支名在不同 fork 里可重复，必须核对响应的仓库身份。
+	// Branch names alone do not identify a proposal from another fork.
+	if raw.Head.Repo == nil || raw.Head.Repo.FullName == "" || raw.Base.Repo == nil || raw.Base.Repo.FullName == "" {
+		return false, fmt.Errorf("githubapp: incomplete pull request repository identity")
+	}
+	if raw.Head.User.Login != "" && !strings.EqualFold(raw.Head.User.Login, spec.Owner) {
+		return false, nil
+	}
+	if raw.Head.Label != "" {
+		owner, branch, ok := strings.Cut(raw.Head.Label, ":")
+		if !ok || !strings.EqualFold(owner, spec.Owner) || branch != spec.HeadBranch {
+			return false, nil
+		}
+	}
+	return strings.EqualFold(raw.Head.Repo.FullName, spec.Owner+"/"+spec.Repo) && strings.EqualFold(raw.Base.Repo.FullName, spec.Owner+"/"+spec.Repo), nil
+}
+
+func decodeAPIJSON(body io.Reader, target any) error {
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("githubapp: response contains multiple JSON values")
+	}
+	return nil
+}
+
+func hasNextPage(link string) bool {
+	for _, part := range strings.Split(link, ",") {
+		for _, attribute := range strings.Split(part, ";")[1:] {
+			if strings.TrimSpace(attribute) == `rel="next"` {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (h *HTTPForge) EnsurePullRequest(ctx context.Context, spec PullRequestSpec) (PullRequest, error) {
+	if spec.Owner == "" || spec.Repo == "" || spec.HeadBranch == "" || spec.BaseBranch == "" || strings.TrimSpace(spec.RunMarker) == "" || strings.ContainsAny(spec.RunMarker, "\r\n") {
+		return PullRequest{}, fmt.Errorf("githubapp: incomplete pull request identity")
+	}
+	// 远端成功后丢失本地回执时，PR 可能已合并/关闭；只查 open 会重复提案。
+	// Search every state and page before creating, using the immutable branch/base/machine identity.
+	var found *PullRequest
+	seenPages := map[string]bool{}
+	for page := 1; ; page++ {
+		q := url.Values{"head": {spec.Owner + ":" + spec.HeadBranch}, "base": {spec.BaseBranch}, "state": {"all"}, "per_page": {"100"}, "page": {strconv.Itoa(page)}, "sort": {"created"}, "direction": {"asc"}}
+		resp, err := h.do(ctx, http.MethodGet, "/repos/"+spec.Owner+"/"+spec.Repo+"/pulls?"+q.Encode(), nil)
+		if err != nil {
+			return PullRequest{}, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			err := httpError(resp)
+			resp.Body.Close()
+			return PullRequest{}, err
+		}
+		var existing []apiPullRequest
+		err = decodeAPIJSON(resp.Body, &existing)
+		next := hasNextPage(resp.Header.Get("Link"))
+		resp.Body.Close()
+		if err != nil {
+			return PullRequest{}, fmt.Errorf("githubapp: decode pull request page %d: %w", page, err)
+		}
+		if len(existing) > 0 {
+			signature := fmt.Sprintf("%d:%d:%d", len(existing), existing[0].Number, existing[len(existing)-1].Number)
+			if seenPages[signature] {
+				return PullRequest{}, fmt.Errorf("githubapp: repeated pull request page %d", page)
+			}
+			seenPages[signature] = true
+		}
+		for _, raw := range existing {
+			matches, err := raw.matches(spec)
+			if err != nil {
+				return PullRequest{}, err
+			}
+			if !matches {
+				continue
+			}
+			pr, err := raw.convert(spec.Owner, spec.Repo)
+			if err != nil {
+				return PullRequest{}, err
+			}
+			if found == nil || pr.Number < found.Number {
+				copy := pr
+				found = &copy
+			}
+		}
+		if !next && len(existing) < 100 {
+			break
+		}
+	}
+	if found != nil {
+		return *found, nil
+	}
+	// 丰富的人类描述可能没有包含 RunMarker；该字段必须实际写入远端才能恢复。
+	// Always persist an exact machine marker independently of the human-readable PR body.
+	bodyText := spec.Body
+	if !exactReplayMarker(bodyText, spec.RunMarker) {
+		bodyText += "\n\n<!-- cairn-replay-marker:" + spec.RunMarker + " -->\n"
+	}
+	body := map[string]string{"title": spec.Title, "body": bodyText, "head": spec.HeadBranch, "base": spec.BaseBranch}
+	resp, err := h.do(ctx, http.MethodPost, "/repos/"+spec.Owner+"/"+spec.Repo+"/pulls", body)
 	if err != nil {
 		return PullRequest{}, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusCreated {
 		return PullRequest{}, httpError(resp)
 	}
-	var raw struct {
-		Number  int    `json:"number"`
-		State   string `json:"state"`
-		Merged  bool   `json:"merged"`
-		Head    struct {
-			SHA string `json:"sha"`
-			Ref string `json:"ref"`
-		} `json:"head"`
-		Base struct {
-			Ref string `json:"ref"`
-		} `json:"base"`
-		HTMLURL        string `json:"html_url"`
-		Mergeable      bool   `json:"mergeable"`
-		MergeCommitSHA string `json:"merge_commit_sha"`
+	var raw apiPullRequest
+	if err := decodeAPIJSON(resp.Body, &raw); err != nil {
+		return PullRequest{}, fmt.Errorf("githubapp: decode created pull request: %w", err)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	matches, err := raw.matches(spec)
+	if err != nil {
 		return PullRequest{}, err
 	}
-	return PullRequest{
-		Owner: owner, Repo: repo, Number: raw.Number, State: raw.State, Merged: raw.Merged,
-		HeadBranch: raw.Head.Ref, HeadSHA: raw.Head.SHA, BaseBranch: raw.Base.Ref,
-		Mergeable: raw.Mergeable, HTMLURL: raw.HTMLURL, MergeCommitSHA: raw.MergeCommitSHA,
-	}, nil
+	if !matches {
+		return PullRequest{}, fmt.Errorf("githubapp: created pull request identity mismatch")
+	}
+	return raw.convert(spec.Owner, spec.Repo)
+}
+
+func (h *HTTPForge) GetPullRequest(ctx context.Context, owner, repo string, number int) (PullRequest, error) {
+	if number <= 0 {
+		return PullRequest{}, fmt.Errorf("githubapp: invalid pull request number %d", number)
+	}
+	resp, err := h.do(ctx, http.MethodGet, "/repos/"+owner+"/"+repo+"/pulls/"+strconv.Itoa(number), nil)
+	if err != nil {
+		return PullRequest{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return PullRequest{}, httpError(resp)
+	}
+	var raw apiPullRequest
+	if err := decodeAPIJSON(resp.Body, &raw); err != nil {
+		return PullRequest{}, fmt.Errorf("githubapp: decode pull request: %w", err)
+	}
+	if raw.Number != number {
+		return PullRequest{}, fmt.Errorf("githubapp: pull request number mismatch: got %d want %d", raw.Number, number)
+	}
+	return raw.convert(owner, repo)
 }
 
 func (h *HTTPForge) MergePullRequest(ctx context.Context, owner, repo string, number int, method string) error {
@@ -196,31 +339,43 @@ func (h *HTTPForge) MergePullRequest(ctx context.Context, owner, repo string, nu
 	return nil
 }
 
+func validateRelease(r Release, spec ReleaseSpec) error {
+	if r.ID <= 0 || r.Tag != spec.Tag {
+		return fmt.Errorf("githubapp: incomplete or mismatched release receipt: id=%d tag=%q", r.ID, r.Tag)
+	}
+	return nil
+}
+
 func (h *HTTPForge) EnsureRelease(ctx context.Context, spec ReleaseSpec) (Release, error) {
-	// 先查 tag 是否已存在。
-	resp, err := h.do(ctx, "GET", "/repos/"+spec.Owner+"/"+spec.Repo+"/releases/tags/"+spec.Tag, nil)
+	if spec.Owner == "" || spec.Repo == "" || spec.Tag == "" {
+		return Release{}, fmt.Errorf("githubapp: incomplete release identity")
+	}
+	resp, err := h.do(ctx, http.MethodGet, "/repos/"+spec.Owner+"/"+spec.Repo+"/releases/tags/"+url.PathEscape(spec.Tag), nil)
 	if err != nil {
 		return Release{}, err
 	}
-	if resp.StatusCode == 200 {
-		// tag 已存在。tag 已内嵌 bundle_digest，故「同 tag 即同内容」。
+	if resp.StatusCode == http.StatusOK {
 		var full struct {
 			Release
 			Assets []struct {
 				Name string `json:"name"`
 			} `json:"assets"`
 		}
-		json.NewDecoder(resp.Body).Decode(&full)
+		err := decodeAPIJSON(resp.Body, &full)
 		resp.Body.Close()
+		if err != nil {
+			return Release{}, fmt.Errorf("githubapp: decode existing release: %w", err)
+		}
 		r := full.Release
+		if err := validateRelease(r, spec); err != nil {
+			return Release{}, err
+		}
 		r.Owner = spec.Owner
 		r.Repo = spec.Repo
-		// 不可变约束：仅当同名 asset 尚不存在时才补传（应对上次上传中断）；
-		// 已存在则直接复用，绝不覆盖——保证 Release 一经发布即冻结。
 		if spec.AssetName != "" {
 			exists := false
-			for _, a := range full.Assets {
-				if a.Name == spec.AssetName {
+			for _, asset := range full.Assets {
+				if asset.Name == spec.AssetName {
 					exists = true
 					break
 				}
@@ -233,25 +388,28 @@ func (h *HTTPForge) EnsureRelease(ctx context.Context, spec ReleaseSpec) (Releas
 		}
 		return r, nil
 	}
-	resp.Body.Close()
-	// 创建。
-	body := map[string]any{
-		"tag_name":   spec.Tag,
-		"target":     spec.Target,
-		"name":       spec.Title,
-		"body":       spec.Body,
-		"prerelease": spec.Prelease,
+	if resp.StatusCode != http.StatusNotFound {
+		err := httpError(resp)
+		resp.Body.Close()
+		return Release{}, err
 	}
-	resp2, err := h.do(ctx, "POST", "/repos/"+spec.Owner+"/"+spec.Repo+"/releases", body)
+	resp.Body.Close()
+	body := map[string]any{"tag_name": spec.Tag, "target_commitish": spec.Target, "name": spec.Title, "body": spec.Body, "prerelease": spec.Prelease}
+	resp, err = h.do(ctx, http.MethodPost, "/repos/"+spec.Owner+"/"+spec.Repo+"/releases", body)
 	if err != nil {
 		return Release{}, err
 	}
-	defer resp2.Body.Close()
-	if resp2.StatusCode != 201 {
-		return Release{}, httpError(resp2)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return Release{}, httpError(resp)
 	}
 	var r Release
-	json.NewDecoder(resp2.Body).Decode(&r)
+	if err := decodeAPIJSON(resp.Body, &r); err != nil {
+		return Release{}, fmt.Errorf("githubapp: decode created release: %w", err)
+	}
+	if err := validateRelease(r, spec); err != nil {
+		return Release{}, err
+	}
 	r.Owner = spec.Owner
 	r.Repo = spec.Repo
 	if spec.AssetName != "" {
@@ -263,6 +421,9 @@ func (h *HTTPForge) EnsureRelease(ctx context.Context, spec ReleaseSpec) (Releas
 }
 
 func (h *HTTPForge) uploadAsset(ctx context.Context, releaseID int64, spec ReleaseSpec) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	tok, err := h.token(ctx)
 	if err != nil {
 		return err
@@ -275,19 +436,34 @@ func (h *HTTPForge) uploadAsset(ctx context.Context, releaseID int64, spec Relea
 	// GitHub Enterprise 则为 <host>/api/uploads。
 	uploadBase := h.uploadsBaseURL()
 	u := fmt.Sprintf("%s/repos/%s/%s/releases/%d/assets?name=%s",
-		uploadBase, spec.Owner, spec.Repo, releaseID, spec.AssetName)
-	req, _ := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(data))
+		uploadBase, spec.Owner, spec.Repo, releaseID, url.QueryEscape(spec.AssetName))
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "token "+tok)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/octet-stream")
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	resp, err := h.http.Do(req)
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
-	if resp.StatusCode != 201 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("githubapp: 上传 asset 失败 %d: %s", resp.StatusCode, string(body))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return httpError(resp)
+	}
+	var asset struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := decodeAPIJSON(resp.Body, &asset); err != nil {
+		return fmt.Errorf("githubapp: decode uploaded asset: %w", err)
+	}
+	if asset.ID <= 0 || asset.Name != spec.AssetName {
+		return fmt.Errorf("githubapp: incomplete or mismatched asset receipt")
 	}
 	return nil
 }

@@ -15,7 +15,7 @@ help:
 	@echo "  make verify     提 PR 前必跑：vet + 构建 + 架构不变量检查"
 	@echo "  make fmt        goimports + gofmt -s"
 	@echo "  make vet        go vet"
-	@echo "  make test       跑单元测试（当前仓库尚未包含测试文件，见 CONTRIBUTING.md）"
+	@echo "  make test       跑单元与缺陷回归测试（见 CONTRIBUTING.md）"
 	@echo "  make lint       golangci-lint（需自行安装，仓库未提供 .golangci.yml）"
 	@echo "  make clean      删除 bin/ 与覆盖率产物"
 	@echo ""
@@ -62,11 +62,11 @@ build-service:
 # ═══════════════════════════════════════════════════════════════════
 # 测试
 #
-# 注意：本仓库当前不包含测试文件，`make test` 会输出一片 "no test files"。
-# 这是已知状态而非故障，欢迎贡献测试（约定见 CONTRIBUTING.md）。
+# 单元与缺陷回归；完整竞态验收见 CONTRIBUTING.md。
+# Unit and defect regressions; see CONTRIBUTING.md for race validation.
 # ═══════════════════════════════════════════════════════════════════
 test:
-	@echo "── go test ./...（当前仓库无测试文件，输出 no test files 属预期）──"
+	@echo "── go test ./...（单元与缺陷回归）──"
 	go test -parallel 8 -count=1 ./...
 
 # ═══════════════════════════════════════════════════════════════════
@@ -97,40 +97,42 @@ verify: vet build check-invariants
 #
 # 这些是**设计约束**而非风格偏好：构建端与查询端严格分离，查询端只读、
 # 零 LLM、零 embedding。任一条被违反都意味着架构被破坏，故以门禁形式固化。
+# 测试的临时数据库构造不属于生产路径；检查仍覆盖所有非测试 Go 文件。
+# Test fixtures are excluded; every production Go source remains checked.
 # 详见 CONTRIBUTING.md 的「架构铁律」一节。
 # ═══════════════════════════════════════════════════════════════════
 check-invariants:
 	@echo "── 架构不变量检查 / architecture invariant checks ──"
 	@# 1. 查询端读侧确实调用了 bundle 版本解析（防止 catalog 热更新退化为死代码）
-	@grep -rn "ResolveLatest" service core/storage --include='*.go' | grep -q . \
+	@grep -rn "ResolveLatest" service core/storage --include='*.go' --exclude='*_test.go' | grep -q . \
 		&& echo "✓ 查询端已接入 bundle 版本解析（ResolveLatest）" \
 		|| (echo "✗ ResolveLatest 无任何调用点：catalog 热更新链路可能已断"; exit 1)
 	@# 2. 查询端零 LLM：检索路径不得依赖大模型
-	@! grep -rn "internal/llm" service/internal/service --include='*.go' | grep -q . \
+	@! grep -rn "internal/llm" service/internal/service --include='*.go' --exclude='*_test.go' | grep -q . \
 		&& echo "✓ 查询端零 LLM" \
 		|| (echo "✗ 查询端不应 import llm 包"; exit 1)
 	@# 3. 零 embedding：本项目走结构化图谱，不引入向量检索
 	@#    只查引号字面量（import 路径等），避免误伤注释里的「零 embedding」声明
-	@! grep -rnE "\"[^\"]*(embedding|faiss|hnsw)[^\"]*\"" service core/metrics --include='*.go' | grep -q . \
+	@! grep -rnE "\"[^\"]*(embedding|faiss|hnsw)[^\"]*\"" service core/metrics --include='*.go' --exclude='*_test.go' | grep -q . \
 		&& echo "✓ 查询端与哨兵零 embedding / 向量库" \
 		|| (echo "✗ 检出 embedding/向量库引用"; exit 1)
 	@# 4. 查询端只读：不得对 KG 结构做写入、删除或重建
 	@#    先剔除注释行（^\s*// 与 ^\s*#），否则文档里提到 RebuildAll 等符号会误报
-	@! grep -rnE "\.Delete\(|\.Insert|\.Update\(|os\.Remove|RebuildAll" service/internal/service --include='*.go' \
+	@! grep -rnE "\.Delete\(|\.Insert|\.Update\(|os\.Remove|RebuildAll" service/internal/service --include='*.go' --exclude='*_test.go' \
 		| grep -vE "^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)" | grep -q . \
 		&& echo "✓ 查询端只读（无 KG 结构写入）" \
 		|| (echo "✗ 查询端检出 KG 结构写入"; \
-		    grep -rnE "\.Delete\(|\.Insert|\.Update\(|os\.Remove|RebuildAll" service/internal/service --include='*.go' \
+		    grep -rnE "\.Delete\(|\.Insert|\.Update\(|os\.Remove|RebuildAll" service/internal/service --include='*.go' --exclude='*_test.go' \
 		      | grep -vE "^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)"; exit 1)
 	@# 5. 演化层不写 KG：只旁路记录，绝不改动图谱本体
-	@! grep -rnE "\.Delete\(|\.Insert\(|\.Update\(" core/evolve --include='*.go' \
+	@! grep -rnE "\.Delete\(|\.Insert\(|\.Update\(" core/evolve --include='*.go' --exclude='*_test.go' \
 		| grep -vE "^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)" | grep -iE "node|edge" | grep -q . \
 		&& echo "✓ 演化层不写 KG（node/edge）" \
 		|| (echo "✗ 演化层检出 KG 结构写入"; exit 1)
 	@# 6. 演化层零 embedding 零 LLM
-	@! grep -rniE "embedding|faiss|hnsw|cosine" core/observe core/evolve build/cmd/cairn-evolve --include='*.go' | grep -q . \
+	@! grep -rniE "embedding|faiss|hnsw|cosine" core/observe core/evolve build/cmd/cairn-evolve --include='*.go' --exclude='*_test.go' | grep -q . \
 		&& echo "✓ 演化层零 embedding / 向量库" \
 		|| (echo "✗ 演化层不应引入 embedding/向量库"; exit 1)
-	@! grep -rn "internal/llm" core/observe core/evolve build/cmd/cairn-evolve --include='*.go' | grep -q . \
+	@! grep -rn "internal/llm" core/observe core/evolve build/cmd/cairn-evolve --include='*.go' --exclude='*_test.go' | grep -q . \
 		&& echo "✓ 演化层零 LLM" \
 		|| (echo "✗ 演化层不应 import LLM 包"; exit 1)

@@ -1,0 +1,44 @@
+name: Correctness
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.22.x', 'stable']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: go.sum
+      - name: Behavioral regressions and race detector
+        run: go test -race -count=1 ./...
+      - name: Build, vet and architecture checks
+        run: make verify
+      - name: MCP smoke script success and failure cases
+        run: |
+          bash -n scripts/dev/smoke-mcp.sh
+          python3 scripts/dev/zz_smoke_mcp_test.py
+  viewer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: graph-viewer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: graph-viewer/package-lock.json
+      - run: npm ci
+      - name: WASM loading from a deployed subdirectory
+        run: npm run test:subpath

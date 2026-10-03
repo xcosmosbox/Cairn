@@ -57,6 +57,9 @@ Cairn 走第三条路：**先把文档蒸馏成结构化知识图谱**（领域 
 
 构建端与查询端**严格分离**：查询端只读、零 LLM、零 embedding（由 `make verify` 的架构不变量检查强制保证）。
 
+普通查询使用真正的只读 SQLite 连接，不创建或迁移数据库。显式执行
+`cairn sentinel --record=true` 时，只追加哨兵观测历史，不修改图谱结构或迁移 schema。
+
 ---
 
 ## 快速开始
@@ -64,7 +67,7 @@ Cairn 走第三条路：**先把文档蒸馏成结构化知识图谱**（领域 
 ### 环境要求
 
 - Go 1.22+
-- Node 18+（仅 graph-viewer 需要）
+- Node 22+（仅 graph-viewer 需要，与 CI 环境一致）
 - 一个 OpenAI/Anthropic 兼容的 LLM 端点
 
 ### 1. 构建
@@ -87,7 +90,7 @@ export CAIRN_LLM_API_KEY="your-key"          # Key 只走环境变量，绝不�
 
 默认模型与端点是 DeepSeek（`--model` / `--endpoint` 可改）。完整参数见 `./bin/cairn-ingest -h`。
 
-产出 `knowledge.db`（SQLite）。用 CLI 查一下（`--db-path` 是全局标志，须置于子命令之前）：
+产出 `knowledge.db`（SQLite）。用 CLI 查一下（`--db-path` 可置于子命令之前或之后）：
 
 ```bash
 ./bin/cairn --db-path ./knowledge.db find "订单聚合根"     # 按名称搜索实体及其入边
@@ -131,13 +134,19 @@ cd graph-viewer && npm install && npm run dev
 
 ### 无凭证试跑整条流水线
 
-`cairnd` 支持 `--fake` 模式，用内存版 Forge 替代 GitHub，无需任何凭证即可走完
-「构建 → PR → Catalog → stable」全流程：
+`cairnd --fake` 为每次运行创建独立的本地 Source/Catalog bare 仓库和状态目录，
+写入固定的演示知识，模拟两次 PR 合并并生成可验证的 Bundle，最终到达 `Stable`。
+它不访问真实 GitHub，不调用 LLM，也不修改配置中的远端仓库；这验证控制器的流程，
+真实抽取质量仍需真实 LLM 测试。
 
 ```bash
-cp configs/cairnd.example.yaml configs/cairnd.yaml
-./bin/cairnd run --once --fake --config configs/dkd.yaml
+./bin/cairnd run --once --fake --config configs/cairnd-fake.example.yaml
+# 日志显示 .local/cairnd-fake/fake-session-*；目录内保留 controller.db、remotes 和 bundles
 ```
+
+`run` 默认执行单轮，`--once` 是显式同义选项。真实运行可能停在等待 PR 的状态；
+模拟运行会明确记录本地自动合并。配置、Git、构建或持久化错误会返回非零退出码。
+真实 GitHub 配置使用 `configs/cairnd.example.yaml` 模板；`--fake` 仅支持 `run/reconcile`。
 
 ---
 
@@ -146,13 +155,16 @@ cp configs/cairnd.example.yaml configs/cairnd.yaml
 | 二进制 | 归属 | 职责 |
 | --- | --- | --- |
 | `cairnd` | build | 持续构建守护进程：轮询源仓库 → 构建 → 开 PR → 发布 Bundle → 提升 stable |
-| `cairnctl` | build | dkd 的运维 CLI（查看 run 状态、重试、解除阻塞） |
+| `cairnctl` | build | cairnd 的运维 CLI（查看 run 状态、重试、解除阻塞） |
 | `cairn-ingest` | build | 全量提取流水线（首次建库 / 指纹变更后重建） |
 | `cairn-incremental` | build | 增量更新（文档改动后最小化重算） |
 | `cairn-rebalance` | build | 结构重整（漂移达阈值时全局化简） |
 | `cairn-evolve` | build | 演化数据 HTTP 服务（供 Viewer 的时间线视图） |
 | `cairn-mcp` | service | MCP Server：stdio / SSE / REST 三种传输，支持 catalog 自动热更新 |
 | `cairn` | service | 命令行只读查询：`find` `impact` `show` `status` `why` `timeline` `sentinel` |
+
+MCP 的 stdio 与 legacy SSE 传输支持 `2024-11-05` 协议，并在初始化时协商版本。
+REST 是独立查询接口。
 
 ### 目录结构
 
@@ -203,6 +215,7 @@ GitHub App 私钥走文件路径或环境变量。
 | 示例配置 | 用途 |
 | --- | --- |
 | `configs/cairnd.example.yaml` | cairnd 守护进程：GitHub App、源仓库、catalog、阈值 |
+| `configs/cairnd-fake.example.yaml` | 无凭证本地完整流程模拟 |
 | `configs/mcp-local.example.yaml` | MCP stdio + 本地静态 db（最简） |
 | `configs/mcp-catalog-watch.example.yaml` | MCP stdio + catalog 自动热更新 |
 | `configs/mcp-http.example.yaml` | MCP HTTP/SSE + REST API |
@@ -224,9 +237,9 @@ make help       # 列出全部命令
 查询端不得写入 KG 结构、演化层不得引入 embedding/向量库。这些是设计约束，
 不是风格偏好。
 
-> **关于测试**：本仓库当前未包含单元测试文件，`make test` 会输出一片
-> `no test files`——这是已知状态而非故障。欢迎贡献测试，约定见
-> [CONTRIBUTING.md](CONTRIBUTING.md)。
+缺陷回归运行 `go test -race -count=1 ./...`；查看器部署验证运行
+`cd graph-viewer && npm run test:subpath`。18 项正确性修复的行为、回归对应和兼容性变化见
+[CORRECTNESS.md](CORRECTNESS.md)，贡献约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## License
 

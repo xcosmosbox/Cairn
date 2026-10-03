@@ -47,9 +47,9 @@ import (
 
 	_ "modernc.org/sqlite" // SQLite driver (纯 Go 实现 / pure Go implementation)
 
+	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 	"github.com/xcosmosbox/cairn/core/kbbundle"
 	"github.com/xcosmosbox/cairn/core/storage"
-	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 	"github.com/xcosmosbox/cairn/service/internal/config"
 	"github.com/xcosmosbox/cairn/service/internal/service"
 )
@@ -88,6 +88,7 @@ type jsonRPCError struct {
 // toolResult is the return value of tools/call.
 type toolResult struct {
 	Content []toolContent `json:"content"`
+	IsError bool          `json:"isError,omitempty"`
 }
 
 // toolContent 是工具调用结果的内容项。
@@ -114,18 +115,23 @@ type kbMeta struct {
 }
 
 // serverState 保存 MCP Server 的运行时状态。
-// 所有字段通过 mu（RWMutex）保护：
-//   - 查询路径（getSvc/getSvcs/handlers）持 RLock
-//   - 热切换（hotSwapDB）持 Lock，等所有查询完成后才替换
+// 路由与读者引用数通过 mu 保护；一个业务请求持有的旧代际在 release 前不会关闭。
+// Routing and reader leases are protected by mu; retired generations close only after release.
 type serverState struct {
-	mu           sync.RWMutex                         // 并发访问保护
-	svcs         map[string]service.KnowledgeService  // 元能力抽象（一库一实例）
-	meta         map[string]kbMeta                    // kgName → metadata
-	storages     map[string]*storage.DB               // DB 连接（热切换时关闭旧连接）
-	digests      map[string]string                    // kgName → 当前 bundle_digest（检测变更）
-	watchConfigs map[string]config.KBConfig           // kgName → catalog watch 配置（仅含配置了 catalog_repo 的 KB）
-	appAuth      *coregh.AppAuth                      // GitHub App 鉴权（复用 cairnd 的同一 App），nil 时回退 PAT
-	catalogInstID int64                               // catalog repo 的 installation ID（GitHub App 模式）
+	readers        map[*storage.DB]int
+	retired        map[*storage.DB]bool
+	closed         bool
+	watchCancel    context.CancelFunc
+	watchWG        sync.WaitGroup
+	catalogAPIBase string
+	mu             sync.RWMutex                        // 并发访问保护
+	svcs           map[string]service.KnowledgeService // 元能力抽象（一库一实例）
+	meta           map[string]kbMeta                   // kgName → metadata
+	storages       map[string]*storage.DB              // DB 连接（热切换时关闭旧连接）
+	digests        map[string]string                   // kgName → 当前 bundle_digest（检测变更）
+	watchConfigs   map[string]config.KBConfig          // kgName → catalog watch 配置（仅含配置了 catalog_repo 的 KB）
+	appAuth        *coregh.AppAuth                     // GitHub App 鉴权（复用 cairnd 的同一 App），nil 时回退 PAT
+	catalogInstID  int64                               // catalog repo 的 installation ID（GitHub App 模式）
 	// rewriter 是共享的查询改写器（无状态只读）。
 	// 热切换重建 KnowledgeService 时必须复用它，否则热更新后缩写扩展会静默失效。
 	// rewriter must be reused when hot-swapping rebuilds a KnowledgeService,
@@ -171,23 +177,23 @@ func main() {
 	// service.KnowledgeService 元能力实例（一库一实例）。
 	svcs := make(map[string]service.KnowledgeService)
 	meta := make(map[string]kbMeta)
-	storages := make(map[string]*storage.DB)               // 本地：仅用于 defer 关闭
-	digests := make(map[string]string)                     // kgName → bundle_digest
-	watchConfigs := make(map[string]config.KBConfig)       // kgName → catalog watch 配置
+	storages := make(map[string]*storage.DB)         // 本地：仅用于 defer 关闭
+	digests := make(map[string]string)               // kgName → bundle_digest
+	watchConfigs := make(map[string]config.KBConfig) // kgName → catalog watch 配置
 
 	// openKB 打开一个知识库并装配 KnowledgeService（复用同一底层连接）。
 	// rewriter 为无状态只读，多库共享同一实例。
 	openKB := func(name, path, desc string) error {
-		sdb, err := storage.OpenReadOnly(path)
+		sdb, svc, resolvedPath, err := openValidatedKB(path, rewriter)
 		if err != nil {
 			return err
 		}
 		storages[name] = sdb
-		svcs[name] = service.NewKnowledgeService(sdb, nil, rewriter)
+		svcs[name] = svc
 		if desc == "" {
 			desc = fmt.Sprintf("知识库 %s / Knowledge base %s", name, name)
 		}
-		meta[name] = kbMeta{Name: name, Path: path, Description: desc}
+		meta[name] = kbMeta{Name: name, Path: resolvedPath, Description: desc}
 		digests[name] = "" // 初始无 digest（首次启动不知道当前 bundle 版本）
 		return nil
 	}
@@ -219,30 +225,21 @@ func main() {
 				continue
 			}
 
-		if err := openKB(name, kb.Path, kb.Description); err != nil {
-			fmt.Fprintf(os.Stderr, "打开知识库失败 / Failed to open KB: %s (%s): %v\n", name, kb.Path, err)
-			continue
+			if err := openKB(name, kb.Path, kb.Description); err != nil {
+				fmt.Fprintf(os.Stderr, "打开知识库失败 / Failed to open KB: %s (%s): %v\n", name, kb.Path, err)
+				continue
+			}
+			// 收集 catalog watch 配置（仅含配置了 catalog_repo 的 KB）。
+			if kb.CatalogRepo != "" {
+				watchConfigs[name] = kb
+			}
 		}
-		// 收集 catalog watch 配置（仅含配置了 catalog_repo 的 KB）。
-		if kb.CatalogRepo != "" {
-			watchConfigs[name] = kb
-		}
-	}
 
 		if len(storages) == 0 && len(watchConfigs) == 0 {
 			fmt.Fprintln(os.Stderr, "没有可用的知识库，退出 / No knowledge bases available, exiting")
 			os.Exit(1)
 		}
 	}
-
-	// 关闭所有数据库连接 / Close all database connections on exit
-	defer func() {
-		for name, sdb := range storages {
-			if err := sdb.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "关闭数据库失败 / Failed to close DB %s: %v\n", name, err)
-			}
-		}
-	}()
 
 	// 创建 GitHub App 鉴权（复用 cairnd 的同一 App），用于 catalog 自动更新。
 	var appAuth *coregh.AppAuth
@@ -278,12 +275,14 @@ func main() {
 	state := &serverState{
 		svcs: svcs, meta: meta,
 		storages: storages, digests: digests, watchConfigs: watchConfigs,
-		appAuth: appAuth, catalogInstID: catalogInstID,
+		appAuth: appAuth, catalogInstID: catalogInstID, catalogAPIBase: cfg.GitHub.APIBaseURL,
 		rewriter: rewriter,
 	}
 
+	defer state.close()
+
 	// 启动 catalog 自动更新 watcher（后台 goroutine，仅对配置了 catalog_repo 的 KB 生效）。
-	state.startCatalogWatcher()
+	state.startCatalogWatcher(context.Background())
 
 	// 选择传输模式：--listen 非空 → HTTP/SSE，否则 → stdio
 	transport := *listenAddr
@@ -293,7 +292,7 @@ func main() {
 
 	if transport != "" {
 		// HTTP/SSE 模式
-		fmt.Fprintf(os.Stderr, "MCP Server 就绪 — %d 个知识库 / %d KBs loaded", len(svcs), len(svcs))
+		fmt.Fprintf(os.Stderr, "MCP Server 就绪 — %d 个知识库 / %d KBs loaded", state.svcsCount(), state.svcsCount())
 		if len(watchConfigs) > 0 {
 			fmt.Fprintf(os.Stderr, "（%d 个 KB 启用 catalog 自动更新）", len(watchConfigs))
 		}
@@ -301,7 +300,7 @@ func main() {
 		runHTTPServer(state, transport)
 	} else {
 		// stdio 模式（默认）
-		fmt.Fprintf(os.Stderr, "MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — %d 个知识库 / %d KBs loaded", len(svcs), len(svcs))
+		fmt.Fprintf(os.Stderr, "MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — %d 个知识库 / %d KBs loaded", state.svcsCount(), state.svcsCount())
 		if len(watchConfigs) > 0 {
 			fmt.Fprintf(os.Stderr, "（%d 个 KB 启用 catalog 自动更新）", len(watchConfigs))
 		}
@@ -314,57 +313,114 @@ func main() {
 // KB 路由辅助函数 / KB Routing Helpers
 // ——————————————————————————————————————————————————————————————————————————————
 
-// getSvc 根据 kg 名称返回对应的 KnowledgeService。
-// 如果 kg 为空且只有一个库，返回该库；否则要求显式指定 kg。
-// 线程安全：持 RLock，与 hotSwapDB 的 Lock 互斥。
-func (s *serverState) getSvc(kg string) (service.KnowledgeService, string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+// getSvc 为整个业务调用取得读者租约，调用方必须 defer release。只复制接口不够：
+// 多条 SQL 之间也可能发生热切换，因此引用数覆盖完整调用而非一次 SQL。
+// getSvc leases a service generation until the caller releases its complete operation.
+func (s *serverState) getSvc(kg string) (service.KnowledgeService, string, func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, "", nil, fmt.Errorf("MCP server is closed")
+	}
 	if kg == "" {
-		if len(s.svcs) == 1 {
-			for name, svc := range s.svcs {
-				return svc, name, nil // only one KB, return it
-			}
+		if len(s.svcs) != 1 {
+			return nil, "", nil, fmt.Errorf("kg parameter required (multiple KBs available: %d)", len(s.svcs))
 		}
-		return nil, "", fmt.Errorf("kg parameter required (multiple KBs available: %d)", len(s.svcs))
+		for name := range s.svcs {
+			kg = name
+		}
 	}
 	svc, ok := s.svcs[kg]
 	if !ok {
-		return nil, "", fmt.Errorf("未找到知识库 / Knowledge base not found: %s", kg)
+		return nil, "", nil, fmt.Errorf("未找到知识库 / Knowledge base not found: %s", kg)
 	}
-	return svc, kg, nil
+	return svc, kg, s.leaseLocked([]*storage.DB{s.storages[kg]}), nil
 }
 
-// getSvcs 返回需要查询的 KnowledgeService 集合。
-// 返回 map 的副本（安全迭代，不受 hotSwapDB 影响）。
-func (s *serverState) getSvcs(kg string) map[string]service.KnowledgeService {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if kg != "" {
-		if svc, ok := s.svcs[kg]; ok {
-			return map[string]service.KnowledgeService{kg: svc}
+// svcsSnapshot 同时租用快照中的所有代际；联邦 goroutine 和多步清单读取共享该租约。
+// svcsSnapshot leases all generations in the snapshot, including federated workers.
+func (s *serverState) svcsSnapshot() (map[string]service.KnowledgeService, func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]service.KnowledgeService)
+	var dbs []*storage.DB
+	if !s.closed {
+		for name, svc := range s.svcs {
+			out[name] = svc
+			dbs = append(dbs, s.storages[name])
 		}
-		return nil
 	}
-	// 返回副本，调用方可安全迭代。
-	out := make(map[string]service.KnowledgeService, len(s.svcs))
-	for k, v := range s.svcs {
-		out[k] = v
-	}
-	return out
+	return out, s.leaseLocked(dbs)
 }
 
-// svcsSnapshot 返回 svcs map 的副本（供 handler 安全迭代）。
-func (s *serverState) svcsSnapshot() map[string]service.KnowledgeService {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make(map[string]service.KnowledgeService, len(s.svcs))
-	for k, v := range s.svcs {
-		out[k] = v
+func (s *serverState) leaseLocked(dbs []*storage.DB) func() {
+	if s.readers == nil {
+		s.readers = make(map[*storage.DB]int)
 	}
-	return out
+	for _, db := range dbs {
+		if db != nil {
+			s.readers[db]++
+		}
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			var closing []*storage.DB
+			s.mu.Lock()
+			for _, db := range dbs {
+				if db == nil {
+					continue
+				}
+				s.readers[db]--
+				if s.readers[db] == 0 {
+					delete(s.readers, db)
+					if s.retired[db] {
+						delete(s.retired, db)
+						closing = append(closing, db)
+					}
+				}
+			}
+			s.mu.Unlock()
+			closeStorages(closing)
+		})
+	}
+}
+
+func closeStorages(dbs []*storage.DB) {
+	for _, db := range dbs {
+		if err := db.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP: close retired database: %v\n", err)
+		}
+	}
+}
+
+// close 停止后续路由与 watcher；进行中的读者释放后回收其连接。
+// close rejects new readers and reclaims active generations after their last lease.
+func (s *serverState) close() {
+	var closing []*storage.DB
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		s.watchWG.Wait()
+		return
+	}
+	s.closed = true
+	if s.watchCancel != nil {
+		s.watchCancel()
+	}
+	if s.retired == nil {
+		s.retired = make(map[*storage.DB]bool)
+	}
+	for _, db := range s.storages {
+		if s.readers[db] > 0 {
+			s.retired[db] = true
+		} else {
+			closing = append(closing, db)
+		}
+	}
+	s.mu.Unlock()
+	s.watchWG.Wait()
+	closeStorages(closing)
 }
 
 // svcsCount 返回当前知识库数量。
@@ -388,15 +444,28 @@ func (s *serverState) metaLookup(kg string) (kbMeta, bool) {
 
 // startCatalogWatcher 启动后台 goroutine，定期轮询 catalog repo 检测新 stable bundle。
 // 仅对配置了 catalog_repo 的知识库生效。发现新 digest 时自动拉取并热切换。
-func (s *serverState) startCatalogWatcher() {
+func (s *serverState) startCatalogWatcher(parent context.Context) {
 	if len(s.watchConfigs) == 0 {
 		return // 无 catalog watch 配置，跳过
 	}
 
+	s.mu.Lock()
+	if s.closed || s.watchCancel != nil {
+		s.mu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(parent)
+	s.watchCancel = cancel
+	s.watchWG.Add(1)
+	s.mu.Unlock()
 	go func() {
+		defer s.watchWG.Done()
 		// 启动时立即检查一次（不等第一个 ticker 周期，确保首次启动快速拉取）。
 		for name, cfg := range s.watchConfigs {
-			s.checkAndPullUpdate(name, cfg)
+			if ctx.Err() != nil {
+				return
+			}
+			s.checkAndPullUpdate(ctx, name, cfg)
 		}
 
 		// 每个 KB 独立 ticker（间隔可能不同）。
@@ -421,25 +490,40 @@ func (s *serverState) startCatalogWatcher() {
 			}
 		}()
 
+		poll := time.NewTicker(100 * time.Millisecond)
+		defer poll.Stop()
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-poll.C:
+			}
 			for _, t := range tickers {
 				select {
 				case <-t.ticker.C:
-					s.checkAndPullUpdate(t.name, t.cfg)
+					s.checkAndPullUpdate(ctx, t.name, t.cfg)
 				default:
 				}
 			}
-			time.Sleep(100 * time.Millisecond) // 避免忙等待
 		}
 	}()
 }
 
 // checkAndPullUpdate 检查单个 KB 的 catalog 是否有新 stable，有则拉取并热切换。
-func (s *serverState) checkAndPullUpdate(name string, kbCfg config.KBConfig) {
+func (s *serverState) checkAndPullUpdate(parent context.Context, name string, kbCfg config.KBConfig) {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Minute)
+	defer cancel()
+	if ctx.Err() != nil {
+		return
+	}
+	apiBase := s.catalogAPIBase
+	if apiBase == "" {
+		apiBase = "https://api.github.com"
+	}
 	// 鉴权：优先 GitHub App installation token，回退 PAT（token_env）。
 	var token string
 	if s.appAuth != nil {
-		tok, _, err := s.appAuth.InstallToken(context.Background(), s.catalogInstID)
+		tok, _, err := s.appAuth.InstallToken(ctx, s.catalogInstID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 获取 installation token 失败: %v\n", name, err)
 			return
@@ -463,7 +547,7 @@ func (s *serverState) checkAndPullUpdate(name string, kbCfg config.KBConfig) {
 
 	// 读取 catalog repo 的 stable.json 获取当前 stable digest。
 	manifestPath := fmt.Sprintf("%s/%s/stable.json", kbCfg.ManifestDir, name)
-	cm, err := kbbundle.FetchCatalogManifest("https://api.github.com", owner, repo, kbCfg.CatalogBranch, manifestPath, token)
+	cm, err := kbbundle.FetchCatalogManifestContext(ctx, apiBase, owner, repo, kbCfg.CatalogBranch, manifestPath, token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 读取 catalog manifest 失败: %v\n", name, err)
 		return
@@ -485,14 +569,14 @@ func (s *serverState) checkAndPullUpdate(name string, kbCfg config.KBConfig) {
 		name, currentDigest, cm.Manifest.BundleDigest)
 
 	// 拉取并安装新 Bundle。
-	res, err := kbbundle.PullRemote(kbbundle.PullRemoteSpec{
+	res, err := kbbundle.PullRemoteContext(ctx, kbbundle.PullRemoteSpec{
 		CatalogOwner:  owner,
 		CatalogRepo:   repo,
 		CatalogBranch: kbCfg.CatalogBranch,
 		ManifestDir:   kbCfg.ManifestDir,
 		KG:            name,
 		Token:         token,
-		APIBaseURL:    "https://api.github.com",
+		APIBaseURL:    apiBase,
 		InstallDir:    kbCfg.InstallDir,
 	})
 	if err != nil {
@@ -500,56 +584,109 @@ func (s *serverState) checkAndPullUpdate(name string, kbCfg config.KBConfig) {
 		return
 	}
 	defer os.RemoveAll(res.TempDir)
+	if ctx.Err() != nil {
+		return
+	}
 
-	// 新 DB 路径：installDir/current/knowledge.db。
-	newDBPath := filepath.Join(kbCfg.InstallDir, "current", "knowledge.db")
+	// 使用本次安装结果的不可变代际，避免 current 再次切换时延迟连接读到另一版本。
+	// Bind the installed generation rather than the mutable current symlink.
+	newDBPath := filepath.Join(res.Install.Current, "knowledge.db")
 	if _, err := os.Stat(newDBPath); err != nil {
 		fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 安装后 DB 文件不存在: %s\n", name, newDBPath)
 		return
 	}
 
 	// 热切换。
-	if err := s.hotSwapDB(name, newDBPath, cm.Manifest.BundleDigest); err != nil {
+	if err := s.hotSwapDB(name, newDBPath, res.Install.Digest); err != nil {
 		fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 热切换失败: %v\n", name, err)
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 热切换完成（digest=%s）\n", name, cm.Manifest.BundleDigest)
+	fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 热切换完成（digest=%s）\n", name, res.Install.Digest)
 }
 
-// hotSwapDB 关闭旧 DB 连接，打开新 DB，原子替换 serverState 中的 service。
-// 持写锁：等待所有进行中的查询（持读锁）完成后才执行替换。
+// hotSwapDB 先验证候选再原子换代；旧连接在最后一个完整请求释放后关闭。
+// hotSwapDB validates before publishing, and reclaims the retired generation after readers finish.
 func (s *serverState) hotSwapDB(name, newDBPath, newDigest string) error {
-	// 先在新 DB 上打开（在锁外，避免长时间持锁）。
-	newDB, err := storage.OpenReadOnly(newDBPath)
+	newDB, newSvc, resolvedPath, err := openValidatedKB(newDBPath, s.rewriter)
 	if err != nil {
-		return fmt.Errorf("打开新 DB %s: %w", newDBPath, err)
+		return fmt.Errorf("hotSwapDB: validate %s: %w", newDBPath, err)
 	}
-	// 复用共享 rewriter，保证热切换后缩写扩展依然生效。
-	newSvc := service.NewKnowledgeService(newDB, nil, s.rewriter)
-
+	var closing []*storage.DB
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// 关闭旧 DB 连接（首次拉取时不存在旧连接，跳过）。
-	if oldDB, ok := s.storages[name]; ok {
-		oldDB.Close()
+	if s.closed {
+		s.mu.Unlock()
+		newDB.Close()
+		return fmt.Errorf("hotSwapDB: server is closed")
 	}
-
-	// 原子替换（或首次插入）。
+	if s.retired == nil {
+		s.retired = make(map[*storage.DB]bool)
+	}
+	if oldDB := s.storages[name]; oldDB != nil {
+		if s.readers[oldDB] > 0 {
+			s.retired[oldDB] = true
+		} else {
+			closing = append(closing, oldDB)
+		}
+	}
+	if s.storages == nil {
+		s.storages = make(map[string]*storage.DB)
+	}
+	if s.svcs == nil {
+		s.svcs = make(map[string]service.KnowledgeService)
+	}
+	if s.digests == nil {
+		s.digests = make(map[string]string)
+	}
+	if s.meta == nil {
+		s.meta = make(map[string]kbMeta)
+	}
 	s.storages[name] = newDB
 	s.svcs[name] = newSvc
 	s.digests[name] = newDigest
-
-	// 更新 meta（首次拉取时创建 meta 条目）。
-	if m, ok := s.meta[name]; ok {
-		m.Path = newDBPath
-		s.meta[name] = m
-	} else {
-		s.meta[name] = kbMeta{Name: name, Path: newDBPath, Description: name}
+	m, ok := s.meta[name]
+	if !ok {
+		m = kbMeta{Name: name, Description: name}
 	}
-
+	m.Path = resolvedPath
+	s.meta[name] = m
+	s.mu.Unlock()
+	closeStorages(closing)
 	return nil
+}
+
+// openValidatedKB 不迁移候选库：损坏、不兼容或缺失必需查询结构都必须在切换前失败。
+// Resolving current before opening also pins future pooled connections to this generation.
+func openValidatedKB(path string, rewriter *service.QueryRewriter) (*storage.DB, service.KnowledgeService, string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("resolve database generation: %w", err)
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	db, err := storage.OpenReadOnly(resolved)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	fail := func(err error) (*storage.DB, service.KnowledgeService, string, error) {
+		db.Close()
+		return nil, nil, "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := db.Conn().PingContext(ctx); err != nil {
+		return fail(fmt.Errorf("ping database: %w", err))
+	}
+	if err := storage.ValidateQueryContract(ctx, db); err != nil {
+		return fail(fmt.Errorf("validate query contract: %w", err))
+	}
+	svc := service.NewKnowledgeService(db, nil, rewriter)
+	if _, err := svc.Status(ctx); err != nil {
+		return fail(fmt.Errorf("validate status: %w", err))
+	}
+	return db, svc, resolved, nil
 }
 
 // extractKG 从工具参数中提取 kg 字段。
@@ -586,7 +723,8 @@ type searchHit struct {
 // federatedSearch performs concurrent KnowledgeService.Search across multiple
 // knowledge bases, merges results, and sorts by normalized FinalScore.
 func (s *serverState) federatedSearch(keyword string, limit int) ([]searchHit, error) {
-	svcs := s.svcsSnapshot()
+	svcs, release := s.svcsSnapshot()
+	defer release()
 	if len(svcs) == 0 {
 		return nil, fmt.Errorf("没有可用的知识库 / No knowledge bases available")
 	}
@@ -605,6 +743,9 @@ func (s *serverState) federatedSearch(keyword string, limit int) ([]searchHit, e
 		go func(name string, ks service.KnowledgeService) {
 			defer wg.Done()
 			hits, err := searchServiceToHits(ks, keyword, limit, name)
+			if err != nil {
+				err = fmt.Errorf("%s: %w", name, err)
+			}
 			ch <- kgResult{hits: hits, err: err}
 		}(kgName, svc)
 	}
@@ -616,8 +757,7 @@ func (s *serverState) federatedSearch(keyword string, limit int) ([]searchHit, e
 	var allHits []searchHit
 	for res := range ch {
 		if res.err != nil {
-			fmt.Fprintf(os.Stderr, "联邦搜索警告 / Federated search warning: %v\n", res.err)
-			continue
+			return nil, fmt.Errorf("federatedSearch: knowledge base query failed: %w", res.err)
 		}
 		allHits = append(allHits, res.hits...)
 	}
@@ -697,15 +837,15 @@ type kbStats struct {
 // manifestEntry 表示知识库清单中的一个条目。
 // manifestEntry represents an entry in the knowledge base manifest.
 type manifestEntry struct {
-	SchemaVersion    int               `json:"schema_version"`
-	BuildTimestamp   string            `json:"build_timestamp,omitempty"`
-	KGName           string            `json:"kg_name"`
-	Description      string            `json:"description"`
-	Stats            kbStats           `json:"stats"`
-	CrossKGLinks     []crossKGLink     `json:"cross_kg_links,omitempty"`
-	Domains          []string          `json:"domains"`
-	TopLabels        []labelCount      `json:"top_labels,omitempty"`
-	TopRelationships []relationCount   `json:"top_relationships,omitempty"`
+	SchemaVersion    int             `json:"schema_version"`
+	BuildTimestamp   string          `json:"build_timestamp,omitempty"`
+	KGName           string          `json:"kg_name"`
+	Description      string          `json:"description"`
+	Stats            kbStats         `json:"stats"`
+	CrossKGLinks     []crossKGLink   `json:"cross_kg_links,omitempty"`
+	Domains          []string        `json:"domains"`
+	TopLabels        []labelCount    `json:"top_labels,omitempty"`
+	TopRelationships []relationCount `json:"top_relationships,omitempty"`
 }
 
 type crossKGLink struct {
@@ -771,7 +911,12 @@ func handleRequest(state *serverState, req *jsonRPCRequest) *jsonRPCResponse {
 		return handleToolsCall(state, req)
 	case "notifications/initialized":
 		return nil
+	case "ping":
+		return &jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]interface{}{}}
 	default:
+		if len(req.ID) == 0 {
+			return nil
+		}
 		return &jsonRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -785,12 +930,22 @@ func handleRequest(state *serverState, req *jsonRPCRequest) *jsonRPCResponse {
 
 // handleInitialize 处理初始化握手。
 // handleInitialize handles the initialization handshake.
+// This server implements the 2024-11-05 stdio/HTTP+SSE protocol. Returning our
+// supported version for a newer request follows MCP's version negotiation rule.
+const mcpProtocolVersion = "2024-11-05"
+
 func handleInitialize(req *jsonRPCRequest) *jsonRPCResponse {
+	var params struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil || params.ProtocolVersion == "" {
+		return &jsonRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: &jsonRPCError{Code: -32602, Message: "initialize requires a non-empty protocolVersion"}}
+	}
 	return &jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
 		Result: map[string]interface{}{
-			"protocolVersion": "0.1",
+			"protocolVersion": mcpProtocolVersion,
 			"serverInfo": map[string]interface{}{
 				"name":    "cairn",
 				"version": "2.0.0",
@@ -958,6 +1113,7 @@ func handleToolsCall(state *serverState, req *jsonRPCRequest) *jsonRPCResponse {
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result: &toolResult{
+				IsError: true,
 				Content: []toolContent{
 					{Type: "text", Text: fmt.Sprintf("错误 / Error: %s", errMsg)},
 				},
@@ -993,10 +1149,11 @@ func toolDomainSearch(state *serverState, args map[string]interface{}) (*toolRes
 
 	if kg != "" {
 		// 单库查询 / Single-KB query
-		svc, dbName, err := state.getSvc(kg)
+		svc, dbName, release, err := state.getSvc(kg)
 		if err != nil {
 			return nil, err.Error()
 		}
+		defer release()
 
 		hits, qErr := searchServiceToHits(svc, keyword, limit, dbName)
 		if qErr != nil {
@@ -1058,10 +1215,11 @@ func formatSearchHitsFed(sb *strings.Builder, hits []searchHit) {
 // toolDomainStatus returns a knowledge base status summary, supporting kg parameter.
 func toolDomainStatus(state *serverState, args map[string]interface{}) (*toolResult, string) {
 	kg := extractKG(args)
-	svc, dbName, err := state.getSvc(kg)
+	svc, dbName, release, err := state.getSvc(kg)
 	if err != nil {
 		return nil, err.Error()
 	}
+	defer release()
 
 	res, err := svc.Status(context.Background())
 	if err != nil {
@@ -1106,10 +1264,11 @@ func toolResolveNode(state *serverState, args map[string]interface{}) (*toolResu
 		return nil, "uuid 参数不能为空 / uuid parameter must not be empty"
 	}
 
-	svc, dbName, err := state.getSvc(extractKG(args))
+	svc, dbName, release, err := state.getSvc(extractKG(args))
 	if err != nil {
 		return nil, err.Error()
 	}
+	defer release()
 
 	detail, gErr := svc.GetNode(context.Background(), uuid)
 	if gErr != nil {
@@ -1195,10 +1354,11 @@ func toolDomainImpact(state *serverState, args map[string]interface{}) (*toolRes
 	}
 
 	kg := extractKG(args)
-	svc, dbName, err := state.getSvc(kg)
+	svc, dbName, release, err := state.getSvc(kg)
 	if err != nil {
 		return nil, err.Error()
 	}
+	defer release()
 
 	// 委托元能力：FTS5 起点定位 + 正向 BFS 遍历全部由 service.Impact 完成。
 	res, err := svc.Impact(context.Background(), entityName, service.ImpactOptions{MaxDepth: maxDepth})
@@ -1292,7 +1452,9 @@ func toolListKnowledgeBases(state *serverState, args map[string]interface{}) (*t
 	var kbs []kbInfo
 	totalNodes, totalEdges := 0, 0
 
-	for name, svc := range state.svcsSnapshot() {
+	svcs, release := state.svcsSnapshot()
+	defer release()
+	for name, svc := range svcs {
 		description := ""
 		if m, ok := state.metaLookup(name); ok {
 			description = m.Description
@@ -1300,8 +1462,7 @@ func toolListKnowledgeBases(state *serverState, args map[string]interface{}) (*t
 
 		res, err := svc.Status(context.Background())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "扫描知识库统计失败 / Failed to scan KB stats: %s: %v\n", name, err)
-			continue
+			return nil, fmt.Sprintf("扫描知识库统计失败 / Failed to scan KB stats: %s: %v", name, err)
 		}
 
 		// Domains 从 NodesByDomain 派生（排序，排除空域以与原 DISTINCT domain ... WHERE domain != '' 对齐）
@@ -1390,10 +1551,12 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 	if kg != "" {
 		// 指定 KG：返回该知识库的完整 manifest
 		// Specific KG: return full manifest for that KB
-		svc, ok := state.svcsSnapshot()[kg]
+		svc, _, release, acquireErr := state.getSvc(kg)
+		ok := acquireErr == nil
 		if !ok {
-			return nil, fmt.Sprintf("未找到知识库 / Knowledge base not found: %s", kg)
+			return nil, acquireErr.Error()
 		}
+		defer release()
 
 		// 委托元能力：Status 提供统计/版本/分布，ListCrossKGLinks 提供跨KG链接。
 		res, err := svc.Status(context.Background())
@@ -1402,8 +1565,7 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 		}
 		links, lErr := svc.ListCrossKGLinks(context.Background())
 		if lErr != nil {
-			fmt.Fprintf(os.Stderr, "读取跨KG链接失败 / Failed to read cross-KG links: %v\n", lErr)
-			links = nil
+			return nil, fmt.Sprintf("读取跨KG链接失败 / Failed to read cross-KG links: %s: %v", kg, lErr)
 		}
 
 		// 域列表（排序，排除空域，与原 DISTINCT domain ... WHERE domain != '' 对齐）
@@ -1527,7 +1689,9 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 	totalNodes, totalEdges := 0, 0
 	crossKGLinksSummary := map[string]int{}
 
-	for name, svc := range state.svcsSnapshot() {
+	svcs, release := state.svcsSnapshot()
+	defer release()
+	for name, svc := range svcs {
 		description := ""
 		if m, ok := state.metaLookup(name); ok {
 			description = m.Description
@@ -1535,8 +1699,7 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 
 		res, err := svc.Status(context.Background())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "status for %s: %v\n", name, err)
-			continue
+			return nil, fmt.Sprintf("读取状态失败 / Failed to read status: %s: %v", name, err)
 		}
 		totalNodes += res.TotalNodes
 		totalEdges += res.TotalEdges
@@ -1558,9 +1721,11 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 		})
 
 		// 统计跨 KG 链接 / Count cross-KG links
-		if links, lErr := svc.ListCrossKGLinks(context.Background()); lErr == nil {
-			crossKGLinksSummary[name] = len(links)
+		links, lErr := svc.ListCrossKGLinks(context.Background())
+		if lErr != nil {
+			return nil, fmt.Sprintf("读取跨KG链接失败 / Failed to read cross-KG links: %s: %v", name, lErr)
 		}
+		crossKGLinksSummary[name] = len(links)
 	}
 	sort.Slice(overviews, func(i, j int) bool { return overviews[i].Name < overviews[j].Name })
 
@@ -1593,7 +1758,7 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 
 	if verbose {
 		resultMap := map[string]interface{}{
-			"overview":              overviews,
+			"overview":               overviews,
 			"cross_kg_links_summary": crossKGLinksSummary,
 		}
 		jsonBytes, _ := json.MarshalIndent(resultMap, "", "  ")

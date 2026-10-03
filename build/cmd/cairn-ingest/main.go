@@ -24,12 +24,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/xcosmosbox/cairn/core/evolve"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/pipeline"
+	"github.com/xcosmosbox/cairn/core/evolve"
 )
 
 func main() {
+	repositoryIdentity := flag.String("repository-identity", "", "稳定仓库身份（默认 Git origin / 本地持久标记）/ stable repository identity")
 	repo := flag.String("repo", "", "待扫描的仓库工作区路径 / workspace repo path to scan")
 	dbPath := flag.String("db", "knowledge.db", "输出 SQLite 库路径 / output .db path")
 	model := flag.String("model", "deepseek-v4-pro", "LLM 模型 / LLM model")
@@ -66,12 +67,13 @@ func main() {
 	}
 
 	orch, err := pipeline.NewOrchestrator(pipeline.Options{
-		Client:        client,
-		MaxTokens:     *maxTokens,
-		MaxRetries:    *maxRetries,
-		MaxRollbacks:  *maxRollbacks,
-		MinConfidence: *minConf,
-		DumpDir:       *dumpDir,
+		RepositoryIdentity: *repositoryIdentity,
+		Client:             client,
+		MaxTokens:          *maxTokens,
+		MaxRetries:         *maxRetries,
+		MaxRollbacks:       *maxRollbacks,
+		MinConfidence:      *minConf,
+		DumpDir:            *dumpDir,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "创建编排器失败: %v\n", err)

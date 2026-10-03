@@ -68,6 +68,8 @@ npm run preview    # 本地预览生产构建
 ```
 
 `public/sql-wasm.wasm` 是 sql.js 的 WebAssembly 运行时，必须随产物一起部署。
+构建会根据 Vite 的相对 `base` 定位此文件；部署到 `/cairn/` 等子目录时，将完整 `dist/` 放在该目录并使用带尾部 `/` 的入口 URL。
+可运行 `npm run test:subpath`，验证子目录中的构建资源与真实 SQLite WASM 加载。
 
 ## 技术栈
 

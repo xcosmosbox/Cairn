@@ -17,8 +17,10 @@
 package writeback
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +81,13 @@ func DisplaySummary(s string) string {
 // atomicWriteFile writes via a temp file in the same directory + rename, so a
 // mid-write failure never leaves a half-written target file.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	return atomicWriteFileContext(context.Background(), path, data, perm)
+}
+
+func atomicWriteFileContext(ctx context.Context, path string, data []byte, perm os.FileMode) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".kg-atomic-*")
 	if err != nil {
@@ -91,16 +100,23 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		tmp.Close()
 		return fmt.Errorf("writeback: write temp %s: %w", tmpName, err)
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("writeback: close temp %s: %w", tmpName, err)
 	}
 	if err := os.Chmod(tmpName, perm); err != nil {
 		return fmt.Errorf("writeback: chmod temp %s: %w", tmpName, err)
 	}
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("writeback: rename %s → %s: %w", tmpName, path, err)
 	}
-	return nil
+	return syncDir(dir)
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -114,7 +130,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 // during incremental write-back (I-9). Isomorphic to the private nodeView.
 type NodeUpdate struct {
 	UUID          string   // node UUID（只读锚点）/ node UUID (read-only anchor)
-	FileSlug     string   // LLM 生成的可读 slug（用于 _shared 文件名）/ LLM slug for _shared filename
+	FileSlug      string   // LLM 生成的可读 slug（用于 _shared 文件名）/ LLM slug for _shared filename
 	Tag           string   // "Entity" | "Concept"（大小写不敏感，渲染时归一小写）
 	Name          string   // 只读 / read-only
 	Domain        string   // 展示用中文名 / display name
@@ -175,18 +191,15 @@ func RewriteDoc(repoRoot, docRelPath string, nodes []NodeUpdate, generatedAt tim
 	}
 	mdContent := renderDoc(views, isMirrorForDoc)
 
-	mdAbsPath := filepath.Join(repoRoot, docRelPath)
+	mdAbsPath, pathErr := safeRepoPath(repoRoot, docRelPath)
+	if pathErr != nil {
+		return pathErr
+	}
 	if err := os.MkdirAll(filepath.Dir(mdAbsPath), 0o755); err != nil {
 		return fmt.Errorf("writeback: mkdir %s: %w", filepath.Dir(mdAbsPath), err)
 	}
-	if err := atomicWriteFile(mdAbsPath, []byte(mdContent), 0o644); err != nil {
-		return fmt.Errorf("writeback: write doc %s: %w", docRelPath, err)
-	}
 	sf := buildSidecar(docRelPath, mdContent, views, generatedAt)
-	if err := writeSidecar(mdAbsPath, sf); err != nil {
-		return fmt.Errorf("writeback: write sidecar %s: %w", docRelPath, err)
-	}
-	return nil
+	return writeDocPair(mdAbsPath, []byte(mdContent), sf)
 }
 
 // RenderDoc 只渲染不写盘：返回该文档（含头注释）的整篇 md 文本。
@@ -215,41 +228,55 @@ func RenderPrimary(u NodeUpdate) string {
 // WriteDocContent writes pre-rendered md content and its sidecar (used after a
 // byte-compare decided the write is necessary).
 func WriteDocContent(repoRoot, docRelPath, mdContent string, nodes []NodeUpdate, generatedAt time.Time) error {
+	return WriteDocContentContext(context.Background(), repoRoot, docRelPath, mdContent, nodes, generatedAt)
+}
+
+func WriteDocContentContext(ctx context.Context, repoRoot, docRelPath, mdContent string, nodes []NodeUpdate, generatedAt time.Time) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	views := make([]nodeView, 0, len(nodes))
 	for _, u := range nodes {
 		views = append(views, u.toNodeView())
 	}
-	mdAbsPath := filepath.Join(repoRoot, docRelPath)
+	mdAbsPath, pathErr := safeRepoPath(repoRoot, docRelPath)
+	if pathErr != nil {
+		return pathErr
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(mdAbsPath), 0o755); err != nil {
 		return fmt.Errorf("writeback: mkdir %s: %w", filepath.Dir(mdAbsPath), err)
 	}
-	if err := atomicWriteFile(mdAbsPath, []byte(mdContent), 0o644); err != nil {
-		return fmt.Errorf("writeback: write doc %s: %w", docRelPath, err)
-	}
 	sf := buildSidecar(docRelPath, mdContent, views, generatedAt)
-	if err := writeSidecar(mdAbsPath, sf); err != nil {
-		return fmt.Errorf("writeback: write sidecar %s: %w", docRelPath, err)
-	}
-	return nil
+	return writeDocPairContext(ctx, mdAbsPath, []byte(mdContent), sf)
 }
 
 // WritePrimaryContent 把「已渲染的 primary 内容」整篇覆盖写入并同步重写 sidecar。
 // WritePrimaryContent writes pre-rendered primary content and its sidecar.
 func WritePrimaryContent(repoRoot string, u NodeUpdate, primaryContent string, generatedAt time.Time) error {
+	return WritePrimaryContentContext(context.Background(), repoRoot, u, primaryContent, generatedAt)
+}
+
+func WritePrimaryContentContext(ctx context.Context, repoRoot string, u NodeUpdate, primaryContent string, generatedAt time.Time) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	v := u.toNodeView()
 	primaryRel := primaryFilePath(v)
-	primaryAbs := filepath.Join(repoRoot, primaryRel)
+	primaryAbs, pathErr := safeRepoPath(repoRoot, primaryRel)
+	if pathErr != nil {
+		return pathErr
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(primaryAbs), 0o755); err != nil {
 		return fmt.Errorf("writeback: mkdir primary dir %s: %w", filepath.Dir(primaryAbs), err)
 	}
-	if err := atomicWriteFile(primaryAbs, []byte(primaryContent), 0o644); err != nil {
-		return fmt.Errorf("writeback: write primary %s: %w", primaryRel, err)
-	}
 	sf := buildSidecar(primaryRel, primaryContent, []nodeView{v}, generatedAt)
-	if err := writeSidecar(primaryAbs, sf); err != nil {
-		return fmt.Errorf("writeback: write primary sidecar %s: %w", primaryRel, err)
-	}
-	return nil
+	return writeDocPairContext(ctx, primaryAbs, []byte(primaryContent), sf)
 }
 
 // SidecarStale 报告一篇文档的 sidecar 是否与给定 md 内容/节点视图不一致
@@ -332,7 +359,7 @@ func sidecarNodesEqual(a, b []sidecarNode) bool {
 	}
 	for i := range a {
 		x, y := a[i], b[i]
-		if x.UUID != y.UUID || x.Tag != y.Tag || x.Name != y.Name ||
+		if x.UUID != y.UUID || x.FileSlug != y.FileSlug || x.Tag != y.Tag || x.Name != y.Name ||
 			x.Domain != y.Domain || x.Subdomain != y.Subdomain ||
 			x.DomainSlug != y.DomainSlug || x.SubdomainSlug != y.SubdomainSlug ||
 			x.Shared != y.Shared || x.SummaryHash != y.SummaryHash ||
@@ -366,13 +393,23 @@ func sidecarSpansEqual(a, b *sidecarSpan) bool {
 // WriteSidecarForDoc 只重写一篇文档的 sidecar（md 已是最新、sidecar 需要刷新时用）。
 // WriteSidecarForDoc rewrites only the sidecar for a doc whose md is current.
 func WriteSidecarForDoc(repoRoot, docRelPath, mdContent string, nodes []NodeUpdate, generatedAt time.Time) error {
+	return WriteSidecarForDocContext(context.Background(), repoRoot, docRelPath, mdContent, nodes, generatedAt)
+}
+
+func WriteSidecarForDocContext(ctx context.Context, repoRoot, docRelPath, mdContent string, nodes []NodeUpdate, generatedAt time.Time) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	views := make([]nodeView, 0, len(nodes))
 	for _, u := range nodes {
 		views = append(views, u.toNodeView())
 	}
 	sf := buildSidecar(docRelPath, mdContent, views, generatedAt)
-	mdAbsPath := filepath.Join(repoRoot, docRelPath)
-	if err := writeSidecar(mdAbsPath, sf); err != nil {
+	mdAbsPath, pathErr := safeRepoPath(repoRoot, docRelPath)
+	if pathErr != nil {
+		return pathErr
+	}
+	if err := writeSidecarContext(ctx, mdAbsPath, sf); err != nil {
 		return fmt.Errorf("writeback: write sidecar %s: %w", docRelPath, err)
 	}
 	return nil
@@ -385,19 +422,16 @@ func WriteSidecarForDoc(repoRoot, docRelPath, mdContent string, nodes []NodeUpda
 func RewritePrimary(repoRoot string, u NodeUpdate, generatedAt time.Time) error {
 	v := u.toNodeView()
 	primaryRel := primaryFilePath(v)
-	primaryAbs := filepath.Join(repoRoot, primaryRel)
+	primaryAbs, pathErr := safeRepoPath(repoRoot, primaryRel)
+	if pathErr != nil {
+		return pathErr
+	}
 	primaryContent := docHeaderComment + "\n\n" + renderFullBlock(v) + "\n"
 	if err := os.MkdirAll(filepath.Dir(primaryAbs), 0o755); err != nil {
 		return fmt.Errorf("writeback: mkdir primary dir %s: %w", filepath.Dir(primaryAbs), err)
 	}
-	if err := atomicWriteFile(primaryAbs, []byte(primaryContent), 0o644); err != nil {
-		return fmt.Errorf("writeback: write primary %s: %w", primaryRel, err)
-	}
 	sf := buildSidecar(primaryRel, primaryContent, []nodeView{v}, generatedAt)
-	if err := writeSidecar(primaryAbs, sf); err != nil {
-		return fmt.Errorf("writeback: write primary sidecar %s: %w", primaryRel, err)
-	}
-	return nil
+	return writeDocPair(primaryAbs, []byte(primaryContent), sf)
 }
 
 // PrimaryRelPath 返回 shared node primary 文档相对 repoRoot 的路径。
@@ -430,7 +464,10 @@ func validPrimaryComponent(s string) bool {
 // DeletePrimary removes a shared node's primary doc and its sidecar. Missing
 // files are ignored (idempotent).
 func DeletePrimary(repoRoot, domainSlug, fileSlug, uuid string) error {
-	primaryAbs := filepath.Join(repoRoot, PrimaryRelPath(domainSlug, fileSlug, uuid))
+	primaryAbs, pathErr := safeRepoPath(repoRoot, PrimaryRelPath(domainSlug, fileSlug, uuid))
+	if pathErr != nil {
+		return pathErr
+	}
 	var errs []error
 	if err := os.Remove(primaryAbs); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, fmt.Errorf("writeback: remove primary %s: %w", primaryAbs, err))
@@ -447,7 +484,21 @@ func DeletePrimary(repoRoot, domainSlug, fileSlug, uuid string) error {
 // DeleteSidecar removes a doc's sidecar (the md itself was deleted by the human).
 // Missing files are ignored (idempotent).
 func DeleteSidecar(repoRoot, docRelPath string) error {
-	p := filepath.Join(repoRoot, docRelPath) + ".kg.yaml"
+	return DeleteSidecarContext(context.Background(), repoRoot, docRelPath)
+}
+
+func DeleteSidecarContext(ctx context.Context, repoRoot, docRelPath string) error {
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
+	mdPath, pathErr := safeRepoPath(repoRoot, docRelPath)
+	if pathErr != nil {
+		return pathErr
+	}
+	p := mdPath + ".kg.yaml"
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
 	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("writeback: remove sidecar %s: %w", p, err)
 	}

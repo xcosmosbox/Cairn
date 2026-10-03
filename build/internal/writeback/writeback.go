@@ -7,8 +7,7 @@
 //   - R6：.md 整篇覆盖写入（os.WriteFile，非追加）；原文由 git 历史留档。
 //   - R7：只 summary/description 可编辑；其余只读展示；镜像块整体只读。
 //
-// 回写失败不阻断流水线：Writeback 返回 (report, error)，error 非 nil 时 report 仍含已完成的
-// 部分统计，调用方（orchestrator）记录错误但继续（KG 已入库的正确性不受回写影响）。
+// 部分失败返回诊断统计及 error；流水线必须阻止发布未闭环的 MD / sidecar / KG。
 //
 // This file implements the write-back entry Writeback: walks all entity/concept
 // nodes, detects shared, groups by file_path, writes each source doc (whole-file
@@ -17,11 +16,9 @@
 package writeback
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/xcosmosbox/cairn/build/internal/extract"
@@ -36,12 +33,17 @@ import (
 //   - repoRoot：仓库根目录的绝对路径，回写的 .md 相对它定位。
 //
 // 返回 (report, error)：error 非 nil 表示回写过程中有错误（可能是部分错误），report 含
-// 已完成统计。调用方应容忍 error（回写是产物输出，不影响 KG 已入库的正确性）。
+// 已完成统计。调用方必须阻止发布，不能把部分回写结果提升为 stable。
 //
 // Writeback materializes the KG into structured md + sidecar. Returns (report, err);
 // err is non-nil on any failure but report still carries partial stats. Callers
-// should tolerate err (write-back is an output, not a KG-correctness concern).
+// must not publish a partially materialized candidate.
 func Writeback(res *extract.Result, memberSources map[string][]MemberSource, repoRoot string) (*Report, error) {
+	return WritebackContext(context.Background(), res, memberSources, repoRoot)
+}
+
+// WritebackContext fences every managed pair write with the caller lease.
+func WritebackContext(ctx context.Context, res *extract.Result, memberSources map[string][]MemberSource, repoRoot string) (*Report, error) {
 	report := &Report{}
 	if res == nil {
 		return report, fmt.Errorf("writeback: result is nil")
@@ -58,7 +60,7 @@ func Writeback(res *extract.Result, memberSources map[string][]MemberSource, rep
 	groups, primaries := groupByDoc(views)
 
 	// errs 累积所有非致命的部分失败：单文档/单 primary 写失败被降级（继续处理其余），
-	// 但收集为返回 error 以便可观测（回写失败不阻断流水线，但要让调用方看得见）。
+	// 并返回 error，阻止把部分产物发布为 stable。
 	// errs accumulates non-fatal per-doc/per-primary failures: each is degraded
 	// (continue) but collected into the returned error for observability.
 	var errs []error
@@ -66,19 +68,18 @@ func Writeback(res *extract.Result, memberSources map[string][]MemberSource, rep
 	// 3. 逐来源文档：渲染其所有 node 块 → 整篇覆盖写 .md + 写 sidecar。
 	//    shared node 在文档中渲染为镜像块；非 shared 渲染为完整块。
 	for _, g := range groups {
-		mdAbsPath := filepath.Join(repoRoot, g.FilePath)
+		mdAbsPath, pathErr := safeRepoPath(repoRoot, g.FilePath)
+		if pathErr != nil {
+			errs = append(errs, pathErr)
+			continue
+		}
 		// 渲染整篇 md：shared node 在该文档渲染为镜像块，非 shared 渲染完整块。
 		mdContent := renderDoc(g.Nodes, isMirrorForDoc)
 
-		// 整篇覆盖写入（R6：非追加）。
-		if err := os.MkdirAll(filepath.Dir(mdAbsPath), 0o755); err != nil {
-			log.Printf("[writeback] mkdir %s 失败（跳过该文档）: %v", filepath.Dir(mdAbsPath), err)
-			errs = append(errs, fmt.Errorf("mkdir %s: %w", filepath.Dir(mdAbsPath), err))
-			continue
-		}
-		if err := os.WriteFile(mdAbsPath, []byte(mdContent), 0o644); err != nil {
-			log.Printf("[writeback] 写文档 %s 失败（跳过）: %v", mdAbsPath, err)
-			errs = append(errs, fmt.Errorf("write doc %s: %w", g.FilePath, err))
+		// 先验证并准备两份内容；普通错误回滚，崩溃由持久化 journal 恢复。
+		sf := buildSidecar(g.FilePath, mdContent, g.Nodes, generatedAt)
+		if err := writeDocPairContext(ctx, mdAbsPath, []byte(mdContent), sf); err != nil {
+			errs = append(errs, fmt.Errorf("write doc pair %s: %w", g.FilePath, err))
 			continue
 		}
 		report.DocsWritten++
@@ -91,42 +92,27 @@ func Writeback(res *extract.Result, memberSources map[string][]MemberSource, rep
 			}
 		}
 
-		// 写该文档的 sidecar：含该文档全部 node（镜像块也算，供 diff 定位）。
-		sf := buildSidecar(g.FilePath, mdContent, g.Nodes, generatedAt)
-		if err := writeSidecar(mdAbsPath, sf); err != nil {
-			log.Printf("[writeback] 写 sidecar %s 失败（跳过）: %v", mdAbsPath, err)
-			errs = append(errs, fmt.Errorf("write sidecar %s: %w", g.FilePath, err))
-			continue
-		}
 		report.SidecarsWritten++
 	}
 
 	// 4. 逐 shared node：写 _shared/<domain-slug>/<uuid>.md primary + sidecar。
 	for _, v := range primaries {
-		primaryAbs := primaryAbsPath(repoRoot, v)
-		// primary 渲染为完整可编辑块（与非 shared 同结构）。
-		primaryContent := docHeaderComment + "\n\n" + renderFullBlock(v) + "\n"
-		if err := os.MkdirAll(filepath.Dir(primaryAbs), 0o755); err != nil {
-			log.Printf("[writeback] mkdir _shared %s 失败（跳过该 primary）: %v", filepath.Dir(primaryAbs), err)
-			errs = append(errs, fmt.Errorf("mkdir primary dir %s: %w", filepath.Dir(primaryAbs), err))
+		primaryAbs, pathErr := safeRepoPath(repoRoot, primaryFilePath(v))
+		if pathErr != nil {
+			errs = append(errs, pathErr)
 			continue
 		}
-		if err := os.WriteFile(primaryAbs, []byte(primaryContent), 0o644); err != nil {
-			log.Printf("[writeback] 写 primary %s 失败（跳过）: %v", primaryAbs, err)
-			errs = append(errs, fmt.Errorf("write primary %s: %w", primaryFilePath(v), err))
+		// primary 渲染为完整可编辑块（与非 shared 同结构）。
+		primaryContent := docHeaderComment + "\n\n" + renderFullBlock(v) + "\n"
+		primaryRel := primaryFilePath(v)
+		sf := buildSidecar(primaryRel, primaryContent, []nodeView{v}, generatedAt)
+		if err := writeDocPairContext(ctx, primaryAbs, []byte(primaryContent), sf); err != nil {
+			errs = append(errs, fmt.Errorf("write primary pair %s: %w", primaryRel, err))
 			continue
 		}
 		report.PrimaryFiles++
 		report.SharedNodes++
 
-		// primary 的 sidecar：primary 文档只含这一个 node（完整块）。
-		primaryRel := primaryFilePath(v) // 相对 repoRoot
-		sf := buildSidecar(primaryRel, primaryContent, []nodeView{v}, generatedAt)
-		if err := writeSidecar(primaryAbs, sf); err != nil {
-			log.Printf("[writeback] 写 primary sidecar %s 失败（跳过）: %v", primaryAbs, err)
-			errs = append(errs, fmt.Errorf("write primary sidecar %s: %w", primaryRel, err))
-			continue
-		}
 		report.SidecarsWritten++
 	}
 
