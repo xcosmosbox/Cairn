@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -161,33 +162,102 @@ func TestSameInstanceStepLeaseContention(t *testing.T) {
 	}
 }
 
-func TestLeaseRenewsAndLossCancelsAction(t *testing.T) {
-	t.Parallel()
+// Wait for persisted renewal evidence instead of sleeping past a subsecond lease.
+// CI may legitimately deschedule a 120 ms lease: expiry is then fail-closed, not a renewal bug.
+func waitForLeaseRenewal(t *testing.T, ctx context.Context, s *store.Store) {
+	t.Helper()
+	poll := time.NewTicker(time.Millisecond)
+	defer poll.Stop()
+	for {
+		var renewals int
+		if err := s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM test_lease_heartbeats`).Scan(&renewals); err != nil {
+			t.Fatal(err)
+		}
+		if renewals > 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("heartbeat never committed: %v", ctx.Err())
+		case <-poll.C:
+		}
+	}
+}
+
+func controlledLeaseAction(t *testing.T) (*store.Store, context.Context, chan<- time.Time, <-chan error) {
+	t.Helper()
 	started := make(chan struct{})
 	f := &recoveryForge{FakeForge: fakeforge.New(), branch: func(ctx context.Context) (string, error) { close(started); <-ctx.Done(); return "", ctx.Err() }}
 	r, s := recoverySetup(t, model.StateFetchSource, f)
-	r.leaseTTL = 120 * time.Millisecond
-	done := make(chan error, 1)
-	go func() { _, err := r.Step(context.Background(), "run"); done <- err }()
-	<-started
-	timer := time.NewTimer(300 * time.Millisecond)
-	defer timer.Stop()
-	<-timer.C
-	if won, err := s.AcquireLease(context.Background(), "repo", "contender", time.Second); err != nil || won {
-		t.Fatalf("long action lost lease: won=%t err=%v", won, err)
+	// Production-sized TTL keeps expiration separate from CI goroutine scheduling.
+	// Force expiry explicitly in its own test rather than assuming a wall-clock delay.
+	if _, err := s.DB().Exec(`CREATE TABLE test_lease_heartbeats (holder TEXT NOT NULL);
+ CREATE TRIGGER test_lease_heartbeat AFTER UPDATE OF heartbeat_at ON repo_leases
+ BEGIN INSERT INTO test_lease_heartbeats VALUES (NEW.holder_id); END`); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.DB().Exec(`UPDATE repo_leases SET holder_id='successor' WHERE repo_id='repo'`); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ticks := make(chan time.Time)
+	done := make(chan error, 1)
+	finished := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-finished:
+		case <-time.After(10 * time.Second):
+			t.Error("lease action did not shut down")
+		}
+	})
+	go func() {
+		defer close(finished)
+		_, err := r.withRepoLeaseTicks(ctx, "repo", func(ownedCtx context.Context) error {
+			result, err := r.step(ownedCtx, "run")
+			if err == nil || result.Advanced {
+				return fmt.Errorf("lost lease action reported successful progress: result=%+v error=%v", result, err)
+			}
+			return err
+		}, ticks)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("lease action never started")
+	}
+	return s, ctx, ticks, done
+}
+
+func TestLeaseRenewsAndLossCancelsAction(t *testing.T) {
+	t.Parallel()
+	s, ctx, ticks, done := controlledLeaseAction(t)
+	// Exercise the complete acquisition/heartbeat/action/cancellation/release wrapper with real SQL.
+	// The injected tick only chooses when the real renewal happens; lease timestamps stay real.
+	select {
+	case ticks <- time.Time{}:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	waitForLeaseRenewal(t, ctx, s)
+	if won, err := s.AcquireLease(ctx, "repo", "contender", time.Minute); err != nil || won {
+		t.Fatalf("renewed lease was not exclusive: won=%t err=%v", won, err)
+	}
+	if _, err := s.DB().ExecContext(ctx, `UPDATE repo_leases SET holder_id='successor' WHERE repo_id='repo'`); err != nil {
 		t.Fatal(err)
 	}
 	select {
+	case ticks <- time.Time{}:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("lease loss reported success")
+		if err == nil || !strings.Contains(err.Error(), "lease heartbeat") {
+			t.Fatalf("lease loss did not cause cancellation: %v", err)
 		}
-	case <-time.After(time.Second):
+	case <-ctx.Done():
 		t.Fatal("lease loss did not cancel action")
 	}
-	saved, err := s.GetRun(context.Background(), "run")
+	saved, err := s.GetRun(ctx, "run")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,8 +265,43 @@ func TestLeaseRenewsAndLossCancelsAction(t *testing.T) {
 		t.Fatalf("lost owner wrote recovery state: %+v", saved)
 	}
 	var owner string
-	if err := s.DB().QueryRow(`SELECT holder_id FROM repo_leases WHERE repo_id='repo'`).Scan(&owner); err != nil || owner != "successor" {
+	if err := s.DB().QueryRowContext(ctx, `SELECT holder_id FROM repo_leases WHERE repo_id='repo'`).Scan(&owner); err != nil || owner != "successor" {
 		t.Fatalf("cleanup deleted successor: owner=%s err=%v", owner, err)
+	}
+}
+
+func TestExpiredLeaseHeartbeatCancelsWithoutRevival(t *testing.T) {
+	t.Parallel()
+	s, ctx, ticks, done := controlledLeaseAction(t)
+	if _, err := s.DB().ExecContext(ctx, `UPDATE repo_leases SET expires_at=? WHERE repo_id='repo'`, time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ticks <- time.Time{}:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "lease heartbeat") {
+			t.Fatalf("expired lease did not cancel: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("expired lease action did not finish")
+	}
+	var leases, renewals int
+	if err := s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM repo_leases`).Scan(&leases); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM test_lease_heartbeats`).Scan(&renewals); err != nil {
+		t.Fatal(err)
+	}
+	if leases != 0 || renewals != 0 {
+		t.Fatalf("expired owner revived or leaked lease: leases=%d renewals=%d", leases, renewals)
+	}
+	saved, err := s.GetRun(ctx, "run")
+	if err != nil || saved.State != model.StateFetchSource || saved.ErrorCode != "" {
+		t.Fatalf("expired owner mutated state: %+v error=%v", saved, err)
 	}
 }
 

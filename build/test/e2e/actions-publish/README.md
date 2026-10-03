@@ -9,8 +9,10 @@
 
 - 已审查且干净的 Source checkout，HEAD 为实际源 PR 合并提交；origin 必须对应声明的源仓库。
 - 本地真实构建的 `knowledge.db`、`build-report.json`，以及可选 `evolution/evolution.db`。
-- 冻结的 JSON specification；fingerprint 必须来自该本地构建的 `builder.json`，不能使用
+- 冻结的 JSON specification；fingerprint 必须来自该本地构建的 `frozen-builder-fingerprint.json`，不能使用
   Actions 编译此驱动的版本来冒充原始生成者。
+- 同次真实构建写出的原始 `frozen-builder-fingerprint.json`；发布前逐字段对照 specification，
+  缺失、无效或不一致时在任何远端请求之前拒绝发布。
 - 当前 job 的 `GITHUB_TOKEN`，发布 job 需要目标仓库 `contents: write`；消费 job 只需读权限。
 
 Specification 的完整结构如下。`fingerprint` 使用 `publisher.Fingerprint` 的实际 JSON，
@@ -66,6 +68,7 @@ go run ./build/test/e2e/actions-publish \
   --phase publish --spec publication-spec.json \
   --source-dir ../source --kg-db ../prebuilt/knowledge.db \
   --build-report ../prebuilt/build-report.json \
+  --builder-record ../prebuilt/frozen-builder-fingerprint.json \
   --evolution-db ../prebuilt/evolution/evolution.db \
   --output-dir ../publication --receipt ../publication/publish.json
 ```
@@ -88,6 +91,7 @@ go run ./build/test/e2e/actions-publish \
   --install-dir ../installed --receipt ../publication/consume.json
 ```
 
+消费前先核对回执中的来源分支、源提交和 manifest 可表达的全部 builder 字段与 spec 一致。
 这会从 Catalog 读取指针、从指定 Release 下载 `bundle.tar.gz`、校验所有 provenance 和
 checksums，并实际安装。随后重复调用正式 `Install`，确认同一个不可变版本目录及 DB
 内容保持不变。`consume.json` 提供绝对 `installed_db` 路径，供 CLI/MCP 使用。

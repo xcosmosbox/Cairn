@@ -18,6 +18,7 @@ import (
 
 	"github.com/xcosmosbox/cairn/build/internal/controller/githubapp"
 	"github.com/xcosmosbox/cairn/build/internal/controller/publisher"
+	"github.com/xcosmosbox/cairn/build/internal/controller/runner"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/kbbundle"
@@ -169,7 +170,11 @@ func TestDriverPublicationReplayAndRemoteConsumer(t *testing.T) {
 	base = server.URL
 	defer server.Close()
 	publishedPath := filepath.Join(root, "publish.json")
-	args := []string{"--spec", specPath, "--source-dir", source, "--kg-db", dbPath, "--build-report", reportPath, "--output-dir", filepath.Join(root, "stage"), "--receipt", publishedPath, "--api-base", base}
+	builderRecordPath := filepath.Join(root, "frozen-builder-fingerprint.json")
+	if err := writeJSON(builderRecordPath, spec.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"--spec", specPath, "--source-dir", source, "--kg-db", dbPath, "--build-report", reportPath, "--builder-record", builderRecordPath, "--output-dir", filepath.Join(root, "stage"), "--receipt", publishedPath, "--api-base", base}
 	if err := run(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +214,10 @@ func TestDriverRejectsUnreviewedSourceBeforeRemoteRequest(t *testing.T) {
 	for _, mode := range []string{"wrong-commit", "dirty-source", "wrong-owner", "invalid-closure"} {
 		t.Run(mode, func(t *testing.T) {
 			spec, source, dbPath, reportPath := driverFixture(t)
+			builderRecordPath := filepath.Join(t.TempDir(), "frozen-builder-fingerprint.json")
+			if err := writeJSON(builderRecordPath, spec.Fingerprint); err != nil {
+				t.Fatal(err)
+			}
 			switch mode {
 			case "wrong-commit":
 				spec.SourceCommit = strings.Repeat("a", 40)
@@ -240,11 +249,98 @@ func TestDriverRejectsUnreviewedSourceBeforeRemoteRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := publish(context.Background(), forge, spec, repo, catalog, created, source, dbPath, reportPath, "", t.TempDir()); err == nil {
+			if _, err := publish(context.Background(), forge, spec, repo, catalog, created, source, dbPath, reportPath, builderRecordPath, "", t.TempDir()); err == nil {
 				t.Fatal("invalid source was published")
 			}
 			if calls.Load() != 0 {
 				t.Fatalf("invalid source reached remote: %d requests", calls.Load())
+			}
+		})
+	}
+}
+
+func TestDriverRejectsMissingOrMismatchedBuilderRecordBeforeRemoteRequest(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"missing", "malformed", "unknown-field", "changed-builder", "changed-config"} {
+		t.Run(mode, func(t *testing.T) {
+			spec, source, dbPath, reportPath := driverFixture(t)
+			repo, catalog, created, err := spec.validate()
+			if err != nil {
+				t.Fatal(err)
+			}
+			builderRecordPath := filepath.Join(t.TempDir(), "frozen-builder-fingerprint.json")
+			recorded := spec.Fingerprint
+			switch mode {
+			case "malformed":
+				err = os.WriteFile(builderRecordPath, []byte("{"), 0o600)
+			case "unknown-field":
+				data, _ := json.Marshal(recorded)
+				data = append(data[:len(data)-1], []byte(`,"unreviewed":true}`)...)
+				err = os.WriteFile(builderRecordPath, data, 0o600)
+			case "changed-builder":
+				recorded.BuilderCommit = "different-builder"
+				err = writeJSON(builderRecordPath, recorded)
+			case "changed-config":
+				recorded.ConfigDigest = "sha256:" + strings.Repeat("2", 64)
+				err = writeJSON(builderRecordPath, recorded)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer server.Close()
+			forge := githubapp.NewHTTPForge(envTokenSource{baseURL: server.URL, envName: "UNUSED_SYNTHETIC_TOKEN"}, 0)
+			_, err = publish(context.Background(), forge, spec, repo, catalog, created, source, dbPath, reportPath, builderRecordPath, "", t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), "builder record") {
+				t.Fatalf("invalid builder record was not rejected locally: %v", err)
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("invalid builder record reached remote: %d requests", calls.Load())
+			}
+		})
+	}
+}
+
+func TestDriverRejectsConsumerProvenanceDriftBeforeRemoteRequest(t *testing.T) {
+	t.Parallel()
+	spec, _, _, _ := driverFixture(t)
+	repo, catalog, _, err := spec.validate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := receipt{
+		Phase: "publish", PublicationReplay: true,
+		Validation: runner.ValidationReport{OK: true},
+		Release:    githubapp.Release{ID: 7, Tag: "fixed-tag"},
+		Catalog: kbbundle.CatalogManifest{Manifest: kbbundle.Manifest{
+			KG: repo.KGGroup, SourceRepo: repo.Owner + "/" + repo.Name, SourceRef: repo.Branch,
+			SourceCommit: spec.SourceCommit, Model: spec.Fingerprint.Model,
+			BuilderVersion: spec.Fingerprint.BuilderVersion, BuilderCommit: spec.Fingerprint.BuilderCommit,
+			PromptSetVersion: spec.Fingerprint.PromptSetVersion, SchemaVersion: spec.Fingerprint.DBSchemaVersion,
+			ConfigDigest: spec.ConfigDigest, CreatedAt: spec.CreatedAt,
+		}, ReleaseTag: "fixed-tag"},
+	}
+	for _, test := range []struct {
+		name   string
+		change func(*kbbundle.CatalogManifest)
+	}{
+		{"source-ref", func(m *kbbundle.CatalogManifest) { m.SourceRef = "unreviewed-branch" }},
+		{"builder-version", func(m *kbbundle.CatalogManifest) { m.BuilderVersion = "different-version" }},
+		{"builder-commit", func(m *kbbundle.CatalogManifest) { m.BuilderCommit = "different-builder" }},
+		{"prompt-set", func(m *kbbundle.CatalogManifest) { m.PromptSetVersion = "different-prompts" }},
+		{"schema-version", func(m *kbbundle.CatalogManifest) { m.SchemaVersion++ }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			changed := expected
+			test.change(&changed.Catalog)
+			// No token is configured: reject the receipt before authentication or remote access.
+			_, err := consume(context.Background(), envTokenSource{envName: "UNUSED_SYNTHETIC_TOKEN"}, spec, repo, catalog, changed, t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), "receipt does not match specification") {
+				t.Fatalf("consumer provenance drift was not rejected locally: %v", err)
 			}
 		})
 	}

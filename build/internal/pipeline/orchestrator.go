@@ -27,6 +27,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -256,6 +257,15 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 			report.DocsRewritten++
 		}
 	}
+	// Concurrent completion order must not choose which summary represents a
+	// shared 04 member. Keep source order stable; description fusion retains all
+	// source details for each member ID.
+	sort.SliceStable(passed, func(i, j int) bool {
+		if passed[i].Skill != passed[j].Skill {
+			return passed[i].Skill < passed[j].Skill
+		}
+		return passed[i].FilePath < passed[j].FilePath
+	})
 
 	// 汇总失败文档，输出到终端与日志。
 	if len(report.Skipped) > 0 {
@@ -306,11 +316,14 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	} else {
 		log.Printf("[pipeline] 悬空边修正: 未发现悬空 relation")
 	}
+	if err := extract.ValidateFusionCompleteness(res, withIDs, o.minConf, false); err != nil {
+		return report, fmt.Errorf("pipeline: repaired source material incomplete (candidate not publishable): %w", err)
+	}
 
 	// ——3.6 description 融合重写（悬空修正之后、relation 识别之前）——
 	logStage("3.6", "description 融合 / fuse descriptions（按节点并发）")
 	// 第二期融合节点 description 留空；此处为每个节点综合其 members 的 04 detail 用 LLM 重写出
-	// 完整 description（门控确保每个有素材节点都补齐），写回 res。单节点失败降级（保持其 description 为空）。
+	// 完整 description，写回 res。重试耗尽的缺失保留在诊断产物中，但阻止候选入库。
 	s36Ctx, s36Cancel := stageCtx(ctx, o.stageTimeout)
 	describeRpt := o.extractor.FuseDescriptions(s36Ctx, res, withIDs)
 	s36Cancel()
@@ -319,6 +332,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	o.dumpJSON("05d_describe_report.json", describeRpt)
 	log.Printf("[pipeline] description 融合: subdomain %d/%d 成功, 节点重写 %d/%d（有素材 %d）",
 		describeRpt.SubdomainsOK, describeRpt.SubdomainsTotal, describeRpt.NodesRewritten, describeRpt.NodesTotal, describeRpt.NodesWithDetail)
+	if err := extract.ValidateFusionCompleteness(res, withIDs, o.minConf, true); err != nil {
+		return report, fmt.Errorf("pipeline: description fusion incomplete (candidate not publishable): %w", err)
+	}
 
 	// ——3.7 relation 识别（description 之后、ingest 之前，按 subdomain 并发）——
 	logStage("3.7", "relation 识别 / identify relations（按 subdomain 并发）")
@@ -527,6 +543,23 @@ func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res
 	})
 	if err != nil {
 		return result, err
+	}
+	// Missing slugs or duplicate UUIDs must not silently discard eligible nodes.
+	// Check the temporary candidate before replacing an existing database.
+	expectedLeaves := 0
+	for _, domain := range res.Domains {
+		for _, subdomain := range domain.Subdomains {
+			for _, nodes := range [][]extract.Node{subdomain.Entities, subdomain.Concepts} {
+				for _, node := range nodes {
+					if node.Confidence >= o.minConf {
+						expectedLeaves++
+					}
+				}
+			}
+		}
+	}
+	if actual := result.EntityNodes + result.ConceptNodes; actual != expectedLeaves {
+		return result, fmt.Errorf("pipeline: incomplete materialization: %d/%d eligible knowledge nodes inserted", actual, expectedLeaves)
 	}
 	if err := storage.NewRepositoryIdentityRepo(db).Set(ctx, identity); err != nil {
 		return result, fmt.Errorf("pipeline: stamp repository identity: %w", err)

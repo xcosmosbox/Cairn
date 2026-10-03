@@ -25,8 +25,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // maxRepairRounds 是悬空边修正阶段的原地重试上限。修正比 extract 轻量，2 轮足够。
@@ -219,8 +219,9 @@ type patchNode struct {
 //   - fix_relation：定位 subdomain，把 original source/target 的 relation 改成 fixed
 //   - drop_relation：无需操作（悬空已在清洗阶段移除，drop 仅记录确认）
 //
-// applyPatches applies a patchSet to domains in place.
-func applyPatches(domains []Domain, patches []patch) (int, []string) {
+// add 的全部 members 必须逐字引用真实 04 输入；否则不能补节点或恢复依赖它的关系。
+// Added nodes must reference real input units, and relations require declared endpoints.
+func applyPatches(domains []Domain, patches []patch, unitIDs map[string]bool, dangling []danglingRelation) (int, []string) {
 	applied := 0
 	var errs []string
 
@@ -236,14 +237,38 @@ func applyPatches(domains []Domain, patches []patch) (int, []string) {
 				errs = append(errs, fmt.Sprintf("patch#%d add: node id/name empty", i))
 				continue
 			}
+			if declaresNode(sd, p.Node.ID) {
+				errs = append(errs, fmt.Sprintf("patch#%d add: node id %q already declared", i, p.Node.ID))
+				continue
+			}
+			if len(p.Node.Members) == 0 {
+				errs = append(errs, fmt.Sprintf("patch#%d add: node %q has no 04 members", i, p.Node.ID))
+				continue
+			}
+			members := make([]string, 0, len(p.Node.Members))
+			seen := make(map[string]bool)
+			invalid := false
+			for _, member := range p.Node.Members {
+				if !unitIDs[member] {
+					errs = append(errs, fmt.Sprintf("patch#%d add: node %q references unknown 04 member %q", i, p.Node.ID, member))
+					invalid = true
+					break
+				}
+				if !seen[member] {
+					seen[member] = true
+					members = append(members, member)
+				}
+			}
+			if invalid {
+				continue
+			}
 			n := Node{
 				ID:          p.Node.ID,
 				Name:        p.Node.Name,
 				Summary:     p.Node.Summary,
 				Description: p.Node.Description,
 				Confidence:  p.Node.Confidence,
-				SourceSkills: p.Node.SourceSkills,
-				Members:     p.Node.Members,
+				Members:     members,
 			}
 			if p.Action == "add_entity" {
 				n.Label = string(dktypes.LabelEntity)
@@ -264,6 +289,13 @@ func applyPatches(domains []Domain, patches []patch) (int, []string) {
 				errs = append(errs, fmt.Sprintf("patch#%d restore: invalid kind %q", i, p.Relation.Kind))
 				continue
 			}
+			if !declaresNode(sd, p.Relation.Source) || !declaresNode(sd, p.Relation.Target) {
+				errs = append(errs, fmt.Sprintf("patch#%d restore: undeclared endpoint %q→%q", i, p.Relation.Source, p.Relation.Target))
+				continue
+			}
+			if hasRelation(sd, p.Relation) {
+				continue // A retry must not duplicate an already restored edge.
+			}
 			sd.Relations = append(sd.Relations, p.Relation)
 			applied++
 
@@ -273,26 +305,46 @@ func applyPatches(domains []Domain, patches []patch) (int, []string) {
 				errs = append(errs, fmt.Sprintf("patch#%d fix: subdomain not found", i))
 				continue
 			}
-			fixed := false
-			for k := range sd.Relations {
-				r := &sd.Relations[k]
+			var candidate Relation
+			found, relationIndex := false, -1
+			for k, r := range sd.Relations {
 				if r.Source == p.OriginalSource && r.Target == p.OriginalTarget && r.Kind == p.Kind {
-					if p.FixedSource != "" {
-						r.Source = p.FixedSource
-					}
-					if p.FixedTarget != "" {
-						r.Target = p.FixedTarget
-					}
-					if p.Description != "" {
-						r.Description = p.Description
-					}
-					fixed = true
+					candidate, found, relationIndex = r, true, k
 					break
 				}
 			}
-			if !fixed {
+			if !found {
+				// The original dangling edge was removed before invoking the LLM.
+				for _, dr := range dangling {
+					r := dr.Relation
+					if dr.DomainSlug == p.DomainSlug && dr.SubdomainSlug == p.SubdomainSlug &&
+						r.Source == p.OriginalSource && r.Target == p.OriginalTarget && r.Kind == p.Kind {
+						candidate, found = r, true
+						break
+					}
+				}
+			}
+			if !found {
 				errs = append(errs, fmt.Sprintf("patch#%d fix: relation %s→%s(%s) not found", i, p.OriginalSource, p.OriginalTarget, p.Kind))
 				continue
+			}
+			if p.FixedSource != "" {
+				candidate.Source = p.FixedSource
+			}
+			if p.FixedTarget != "" {
+				candidate.Target = p.FixedTarget
+			}
+			if p.Description != "" {
+				candidate.Description = p.Description
+			}
+			if !validRelationKinds[candidate.Kind] || !declaresNode(sd, candidate.Source) || !declaresNode(sd, candidate.Target) {
+				errs = append(errs, fmt.Sprintf("patch#%d fix: invalid relation or undeclared endpoint %q→%q", i, candidate.Source, candidate.Target))
+				continue
+			}
+			if relationIndex >= 0 {
+				sd.Relations[relationIndex] = candidate
+			} else if !hasRelation(sd, candidate) {
+				sd.Relations = append(sd.Relations, candidate)
 			}
 			applied++
 
@@ -305,6 +357,28 @@ func applyPatches(domains []Domain, patches []patch) (int, []string) {
 		}
 	}
 	return applied, errs
+}
+
+func hasRelation(sd *Subdomain, candidate Relation) bool {
+	for _, relation := range sd.Relations {
+		if relation.Source == candidate.Source && relation.Target == candidate.Target && relation.Kind == candidate.Kind {
+			return true
+		}
+	}
+	return false
+}
+
+// declaresNode 在写关系前确认端点，防止被拒绝的补节点仍留下短暂悬空边。
+// declaresNode validates relation endpoints before any graph mutation.
+func declaresNode(sd *Subdomain, id string) bool {
+	for _, nodes := range [][]Node{sd.Entities, sd.Concepts} {
+		for _, node := range nodes {
+			if node.ID == id {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // findSubdomain 按 domain/subdomain slug 定位 subdomain 指针。
@@ -347,8 +421,8 @@ type RepairReport struct {
 // RepairDanglingRelations 在覆盖治理之后、ingest 之前，对 res.Domains 做「悬空边修正」
 // （就地修改 res）。融合映射校准（合并重复节点 / 剔非法 member）与覆盖闭环已由上游
 // ExtractWithCoverage 完成，本阶段只专注 relations 的悬空端点（关注点分离）：
-//   1. 扫描悬空 relation（端点不在已声明融合节点内）→ 清洗 → 伪 session LLM 增量 patch 修正（耗尽降级）；
-//   2. 修正可能补声明了融合节点 → 重新倒推 source_skills（含清空 description，第二期契约）。
+//  1. 扫描悬空 relation（端点不在已声明融合节点内）→ 清洗 → 伪 session LLM 增量 patch 修正（耗尽降级）；
+//  2. 修正可能补声明了融合节点 → 重新倒推 source_skills（含清空 description，第二期契约）。
 //
 // docs 是刷了 04 id、同 skill 合并后的标注文档（AssignIDsAndMerge 产物）。client 不可为 nil。
 // 返回 *RepairReport，不返回 error（修正失败不阻断流水线，降级继续）。
@@ -408,9 +482,16 @@ func (e *Extractor) runRepairLoop(ctx context.Context, res *Result, docs []*dkty
 			continue
 		}
 
-		applied, errs := applyPatches(res.Domains, ps.Patches)
+		applied, errs := applyPatches(res.Domains, ps.Patches, collectUnitIDs(docs), dangling)
 		rpt.PatchesApplied += applied
 		rpt.PatchErrors = append(rpt.PatchErrors, errs...)
+		if len(errs) > 0 {
+			// 拒绝非法补节点后，图已无悬空边仍不能算修正成功：把错误交给既有重试。
+			// A clean graph after rejecting patches is safe degradation, not a successful repair.
+			lastErrs = errs
+			log.Printf("[extract-repair] 第 %d/%d 轮拒绝 %d 条非法 patch，重试", round, maxRepairRounds, len(errs))
+			continue
+		}
 
 		if verr := validateExtractSchema(res.Domains); verr != nil {
 			lastErrs = []string{fmt.Sprintf("第 %d 轮 patch 应用后 schema 校验失败: %v", round, verr)}
@@ -456,7 +537,8 @@ const repairSystemPrompt = `你是领域知识图谱的修正助手。用户会�
        给出 original_source/original_target/kind 定位原 relation，fixed_source/fixed_target 给出修正后的 id。
    (d) drop_relation：source 是笔误或无效，relation 应丢弃。给出 source/target/kind 定位与 reason。
 3. add_entity/add_concept 的 node 必须有非空 id（kebab-case）与 name，并给出 members
-   （该融合节点融合的 04 输入单元 id 列表，逐字取自【三】中真实存在的 id，不得编造）。
+   （该融合节点融合的 04 输入单元 id 列表，逐字取自【一】的 members 或【三】的 id，不得编造）。
+   已有节点 id 与 skill 名不是输入单元 id，禁止把它们当 members。
    node 无需 description 与 source_skills（前者由后续阶段生成，后者由 members 自动倒推）。
 4. restore_relation 的 relation 必须与原悬空 relation 的 source/target/kind 对应（source 用补声明后的 id）。
 5. patch 中的 domain_slug/subdomain_slug 用于定位，必须与给出的结构一致。`
@@ -469,8 +551,9 @@ func buildRepairPrompt(domains []Domain, dangling []danglingRelation, docs []*dk
 	sb.WriteString("你刚才对一批 reference 文档做了领域归纳（05 阶段），产出了 domain/subdomain/entity/concept/relation。\n")
 	sb.WriteString("其中部分 relation 的端点不在已声明的 entity/concept 列表里（悬空）。请修正。\n\n")
 
-	// 一、05 的 domain/subdomain 结构（不含其下 entity/concept，仅结构详情）。
-	sb.WriteString("## 一、你归纳的完整 domain/subdomain 结构（不含其下 entity/concept，仅结构详情）\n")
+	// Include real node IDs for fixes and verified member IDs for additions.
+	unitIDs := collectUnitIDs(docs)
+	sb.WriteString("## 一、已有 domain/subdomain、融合节点 id 与可引用的 members\n")
 	for i := range domains {
 		d := &domains[i]
 		fmt.Fprintf(&sb, "- domain「%s」(slug: %s)\n", d.Name, d.Slug)
@@ -485,6 +568,18 @@ func buildRepairPrompt(domains []Domain, dangling []danglingRelation, docs []*dk
 			fmt.Fprintf(&sb, "  - subdomain「%s」(slug: %s)\n", sd.Name, sd.Slug)
 			if sd.Summary != "" {
 				fmt.Fprintf(&sb, "    summary: %s\n", sd.Summary)
+			}
+			for _, nodes := range [][]Node{sd.Entities, sd.Concepts} {
+				for _, node := range nodes {
+					var verified []string
+					for _, member := range node.Members {
+						if unitIDs[member] {
+							verified = append(verified, member)
+						}
+					}
+					members, _ := json.Marshal(verified)
+					fmt.Fprintf(&sb, "    - node id=%s name=%s members=%s\n", node.ID, node.Name, members)
+				}
 			}
 		}
 	}
@@ -515,12 +610,14 @@ func buildRepairPrompt(domains []Domain, dangling []danglingRelation, docs []*dk
 			fmt.Fprintf(&sb, "- id=%s [%s] %s：%s\n", m.ID, m.Tag, m.Name, m.Content)
 		}
 		sb.WriteString("\n")
+	} else {
+		sb.WriteString("## 三、所有 04 输入单元均已被覆盖，无漏融合单元\n请优先修正到【一】已有节点 id；如确需补节点，members 只能复用【一】列出的真实输入单元 id。\n\n")
 	}
 
 	// 四、修正要求。
 	sb.WriteString("## 修正要求\n")
 	sb.WriteString("对【二】中的每条悬空 relation，判断属于以下哪种并返回 patch：\n")
-	sb.WriteString("(a) source 是漏声明的真实融合节点，对应【三】中一个或多个 04 输入单元 → add_entity(给 id/name/summary + members 引用这些 04 id) + restore_relation\n")
+	sb.WriteString("(a) source/target 是漏声明的真实融合节点，对应【一】members 或【三】中一个或多个 04 输入单元 → add_entity/add_concept(给 id/name/summary + members 引用这些 04 id) + restore_relation\n")
 	sb.WriteString("(b) source 名字写错了，实际指向 05 中已存在的某融合节点 id → fix_relation\n")
 	sb.WriteString("(c) source 是笔误/无效 → drop_relation(给 reason)\n")
 	sb.WriteString("只返回 patch JSON。\n")

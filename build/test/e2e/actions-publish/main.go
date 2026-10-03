@@ -105,6 +105,7 @@ func run(ctx context.Context, args []string) error {
 	sourceDir := fs.String("source-dir", "", "clean checkout of the reviewed source commit")
 	dbPath := fs.String("kg-db", "", "prebuilt real-LLM knowledge.db")
 	reportPath := fs.String("build-report", "", "original local build report JSON")
+	builderRecordPath := fs.String("builder-record", "", "original local frozen-builder-fingerprint.json")
 	evolutionPath := fs.String("evolution-db", "", "optional prebuilt evolution.db")
 	output := fs.String("output-dir", "", "private publication staging directory")
 	receiptPath := fs.String("receipt", "", "result JSON path (contains no token)")
@@ -134,10 +135,10 @@ func run(ctx context.Context, args []string) error {
 	var result receipt
 	switch *phase {
 	case "publish":
-		if *sourceDir == "" || *dbPath == "" || *reportPath == "" || *output == "" {
-			return fmt.Errorf("actions-publish: publish requires --source-dir, --kg-db, --build-report and --output-dir")
+		if *sourceDir == "" || *dbPath == "" || *reportPath == "" || *builderRecordPath == "" || *output == "" {
+			return fmt.Errorf("actions-publish: publish requires --source-dir, --kg-db, --build-report, --builder-record and --output-dir")
 		}
-		result, err = publish(ctx, forge, spec, repo, catalog, created, *sourceDir, *dbPath, *reportPath, *evolutionPath, *output)
+		result, err = publish(ctx, forge, spec, repo, catalog, created, *sourceDir, *dbPath, *reportPath, *builderRecordPath, *evolutionPath, *output)
 	case "consume":
 		if *expectedPath == "" || *installDir == "" {
 			return fmt.Errorf("actions-publish: consume requires --expected-receipt and --install-dir")
@@ -218,8 +219,17 @@ func checkSource(ctx context.Context, root string, spec publishSpec, dbPath stri
 	return nil
 }
 
-func publish(ctx context.Context, forge *githubapp.HTTPForge, spec publishSpec, repo dkconfig.RepoConfig, catalog dkconfig.CatalogConfig, created time.Time, sourceDir, dbPath, reportPath, evolutionPath, output string) (receipt, error) {
+func publish(ctx context.Context, forge *githubapp.HTTPForge, spec publishSpec, repo dkconfig.RepoConfig, catalog dkconfig.CatalogConfig, created time.Time, sourceDir, dbPath, reportPath, builderRecordPath, evolutionPath, output string) (receipt, error) {
 	var result receipt
+	// Compare every field with the identity recorded by the real local builder.
+	// The publication job must never substitute its own compiler/code identity.
+	var recorded publisher.Fingerprint
+	if err := readJSON(builderRecordPath, &recorded); err != nil {
+		return result, fmt.Errorf("actions-publish: read original builder record: %w", err)
+	}
+	if recorded != spec.Fingerprint {
+		return result, fmt.Errorf("actions-publish: specification differs from original builder record")
+	}
 	if err := checkSource(ctx, sourceDir, spec, dbPath); err != nil {
 		return result, err
 	}
@@ -274,7 +284,7 @@ func publish(ctx context.Context, forge *githubapp.HTTPForge, spec publishSpec, 
 
 func consume(ctx context.Context, auth envTokenSource, spec publishSpec, repo dkconfig.RepoConfig, catalog dkconfig.CatalogConfig, expected receipt, installDir string) (receipt, error) {
 	var result receipt
-	if expected.Phase != "publish" || !expected.PublicationReplay || !expected.Validation.OK || expected.Catalog.SourceCommit != spec.SourceCommit || expected.Catalog.KG != repo.KGGroup || expected.Catalog.SourceRepo != repo.Owner+"/"+repo.Name || expected.Catalog.Model != spec.Fingerprint.Model || expected.Catalog.ConfigDigest != spec.ConfigDigest || expected.Catalog.CreatedAt != spec.CreatedAt || expected.Release.Tag != expected.Catalog.ReleaseTag || expected.Release.ID <= 0 {
+	if expected.Phase != "publish" || !expected.PublicationReplay || !expected.Validation.OK || expected.Catalog.SourceCommit != spec.SourceCommit || expected.Catalog.SourceRef != repo.Branch || expected.Catalog.KG != repo.KGGroup || expected.Catalog.SourceRepo != repo.Owner+"/"+repo.Name || expected.Catalog.Model != spec.Fingerprint.Model || expected.Catalog.BuilderVersion != spec.Fingerprint.BuilderVersion || expected.Catalog.BuilderCommit != spec.Fingerprint.BuilderCommit || expected.Catalog.PromptSetVersion != spec.Fingerprint.PromptSetVersion || expected.Catalog.SchemaVersion != spec.Fingerprint.DBSchemaVersion || expected.Catalog.ConfigDigest != spec.ConfigDigest || expected.Catalog.CreatedAt != spec.CreatedAt || expected.Release.Tag != expected.Catalog.ReleaseTag || expected.Release.ID <= 0 {
 		return result, fmt.Errorf("actions-publish: expected publication receipt does not match specification")
 	}
 	token, _, err := auth.InstallToken(ctx, 0)
