@@ -123,7 +123,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	driverDigest, err := driverSourceDigest(filepath.Dir(codeRoot) + "/" + filepath.Base(codeRoot) + "/build/test/e2e/real-build")
+	driverDigest, err := driverSourceDigest(filepath.Join(codeRoot, "build/test/e2e/real-build"))
 	if err != nil {
 		return err
 	}
@@ -215,6 +215,9 @@ func run() error {
 	}
 	if buildErr != nil {
 		return buildErr
+	}
+	if observer.writeErr != nil {
+		return fmt.Errorf("usage ledger could not be persisted: %w", observer.writeErr)
 	}
 	if report == nil || len(report.Skipped) != 0 || checkpoint.annotationReplays.Load() != acceptedReferenceCount || checkpoint.gateReplays.Load() != acceptedReferenceCount {
 		return errors.New("incomplete document acceptance or unexpected checkpoint replay counts")
