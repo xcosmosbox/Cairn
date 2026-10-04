@@ -63,8 +63,10 @@ type TraversalResult struct {
 	// Depths 是每个节点从入口的最小深度。
 	// Depths records the minimum depth of each node from the entry nodes.
 	Depths map[string]int
-	// FTS5Hits 是来自 FTS5 入口查询的 BM25 score。
-	// FTS5Hits contains the BM25 scores from the FTS5 entry query.
+	// FTS5Hits 由调用方填充归一化的 [0,1] BM25 相关性分数，越大越相关。
+	// FTS5Hits contains caller-supplied normalized [0,1] BM25 relevance scores,
+	// higher is better. BFS leaves this map empty; raw SQLite ranks must first
+	// be converted by the caller. Nodes absent from the map score zero.
 	FTS5Hits map[string]float64
 }
 

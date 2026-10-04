@@ -35,8 +35,8 @@ type FTS5Hit struct {
 	// Node 是匹配到的知识图谱节点。
 	// Node is the matched knowledge graph node.
 	Node *dktypes.Node
-	// BM25Rank 是 BM25 相关性排名分数，数值越高表示匹配度越高。
-	// BM25Rank is the BM25 relevance ranking score; higher values indicate better matches.
+	// BM25Rank 是 SQLite 原生 BM25 rank（非正数），越小表示匹配度越高。
+	// BM25Rank is SQLite's raw non-positive BM25 rank; lower values indicate better matches.
 	BM25Rank float64
 }
 
@@ -55,7 +55,7 @@ func NewFTSIndex(db *DB) *FTSIndex {
 //   - label: 限定节点标签（零值表示不限定）
 //   - limit: 最大返回结果数
 //
-// 结果按 BM25 rank 降序排列。
+// 结果按 SQLite BM25 rank 升序排列（匹配度从高到低）。
 //
 // Search executes an FTS5 full-text search query.
 //
@@ -65,7 +65,7 @@ func NewFTSIndex(db *DB) *FTSIndex {
 //   - label: node label filter (zero value means no filter)
 //   - limit: maximum number of results to return
 //
-// Results are ordered by descending BM25 rank.
+// Results are ordered by ascending SQLite BM25 rank (best matches first).
 func (idx *FTSIndex) Search(ctx context.Context, query string, scope []string, label dktypes.Label, limit int) ([]*FTS5Hit, error) {
 	if query == "" {
 		return nil, nil

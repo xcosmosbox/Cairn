@@ -28,11 +28,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
-	"github.com/xcosmosbox/cairn/core/storage"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // maxAlignRounds 是增量对齐 LLM 调用的原地重试上限（JSON 非法 / 校验不过时重试）。
@@ -468,9 +468,13 @@ func (a *aligner) judge(ctx context.Context, units []*alignUnit, ps *promptSecti
 		groups, verr := validateAlignOutput(&out, units, book)
 		if verr != nil {
 			lastErr = verr
-			// Validation feedback is deliberately coarse. Never put any value
-			// supplied by the model (unit/target/domain/group/tag) into a prompt.
-			user = buildAlignPrompt(units, ps, "输出结构校验失败，请按 schema 修正")
+			// Only fixed validation categories may enter feedback. In particular,
+			// never reflect an invalid model-supplied alias (possibly a UUID).
+			feedback := "输出结构校验失败，请按 schema 修正"
+			if referenceErr, ok := verr.(alignReferenceError); ok {
+				feedback = referenceErr.Error()
+			}
+			user = buildAlignPrompt(units, ps, feedback)
 			continue
 		}
 		return out.Decisions, groups, nil
@@ -479,7 +483,7 @@ func (a *aligner) judge(ctx context.Context, units []*alignUnit, ps *promptSecti
 }
 
 // validateAlignOutput 校验 LLM 输出：每个单元恰好一条合法 decision；新 node
-// ownership/tag 完整；fuse 组有定义；alias 形态的 domain 必须真实命中本次 alias book。
+// ownership/tag 完整；fuse 组有定义；所有 alias 必须命中本次 alias book 中对应的类型。
 // book 为可选参数以便纯结构单测复用；生产调用始终传入。
 // validateAlignOutput validates coverage, ownership, tags, and group definitions.
 func validateAlignOutput(out *alignLLMOutput, units []*alignUnit, books ...*aliasBook) (map[string]*alignGroup, error) {
@@ -513,13 +517,16 @@ func validateAlignOutput(out *alignLLMOutput, units []*alignUnit, books ...*alia
 		if _, ok := normalizeNewNodeTag(g.Tag); !ok {
 			return nil, fmt.Errorf("互聚组 tag 非法（必须 entity/concept）")
 		}
+		if g.Target != "" && len(books) > 0 && !validAlignAlias(book, g.Target, dktypes.LabelSubdomain) {
+			return nil, alignReferenceError("groups.target 必须逐字引用已有子域清单中的 alias，不得附加名称或说明")
+		}
 		if g.Target == "" {
 			g.Domain = strings.TrimSpace(g.Domain)
 			if g.Domain == "" {
 				return nil, fmt.Errorf("互聚组新建子域时缺 domain/subdomain")
 			}
 			if unknownDomainAlias(g.Domain, book) {
-				return nil, fmt.Errorf("互聚组 domain alias 未命中")
+				return nil, alignReferenceError("groups.domain 必须逐字引用已有领域清单中的 alias，或填写新的领域名称；不能引用节点或子域 alias")
 			}
 			if !strings.HasPrefix(g.Domain, "dom#") {
 				if g.Domain, ok = normalizePersistedName(g.Domain); !ok {
@@ -551,6 +558,9 @@ func validateAlignOutput(out *alignLLMOutput, units []*alignUnit, books ...*alia
 			if d.Target == "" {
 				return nil, fmt.Errorf("merge_into 缺 target")
 			}
+			if len(books) > 0 && !validAlignAlias(book, d.Target, dktypes.LabelEntity, dktypes.LabelConcept) {
+				return nil, alignReferenceError("merge_into.target 必须逐字引用已有节点候选中的 alias，不得附加名称或说明")
+			}
 		case "attach":
 			var ok bool
 			if d.NodeName, ok = normalizePersistedName(d.NodeName); !ok {
@@ -560,12 +570,15 @@ func validateAlignOutput(out *alignLLMOutput, units []*alignUnit, books ...*alia
 			if d.Target == "" {
 				return nil, fmt.Errorf("attach 缺 target 或 node_name")
 			}
+			if len(books) > 0 && !validAlignAlias(book, d.Target, dktypes.LabelSubdomain) {
+				return nil, alignReferenceError("attach.target 必须逐字引用已有子域清单中的 alias，不得附加名称或说明")
+			}
 			if _, ok := normalizeNewNodeTag(d.Tag); !ok {
 				return nil, fmt.Errorf("attach tag 非法（必须 entity/concept）")
 			}
 		case "fuse":
 			if _, ok := groups[d.Group]; d.Group == "" || !ok {
-				return nil, fmt.Errorf("fuse group 未定义")
+				return nil, alignReferenceError("fuse.group 必须逐字引用 groups 中已定义的 group")
 			}
 		case "new_subdomain":
 			var ok bool
@@ -589,7 +602,7 @@ func validateAlignOutput(out *alignLLMOutput, units []*alignUnit, books ...*alia
 				return nil, fmt.Errorf("new_subdomain tag 非法（必须 entity/concept）")
 			}
 			if unknownDomainAlias(d.Domain, book) {
-				return nil, fmt.Errorf("new_subdomain domain alias 未命中")
+				return nil, alignReferenceError("new_subdomain.domain 必须逐字引用已有领域清单中的 alias，或填写新的领域名称；不能引用节点或子域 alias")
 			}
 		}
 	}
@@ -598,6 +611,34 @@ func validateAlignOutput(out *alignLLMOutput, units []*alignUnit, books ...*alia
 			len(want)-len(seen))
 	}
 	return groups, nil
+}
+
+// alignReferenceError contains fixed schema guidance, never model output. It is
+// safe to feed back to the next alignment attempt without violating UUID-free
+// prompts. Alias lookup is exact; display text is not stripped or guessed.
+type alignReferenceError string
+
+func (e alignReferenceError) Error() string { return string(e) }
+
+func validAlignAlias(book *aliasBook, ref string, labels ...dktypes.Label) bool {
+	if book == nil {
+		return false
+	}
+	for _, label := range labels {
+		var aliases map[string]*dktypes.Node
+		switch label {
+		case dktypes.LabelEntity, dktypes.LabelConcept:
+			aliases = book.nodeByAlias
+		case dktypes.LabelSubdomain:
+			aliases = book.subByAlias
+		case dktypes.LabelDomain:
+			aliases = book.domByAlias
+		}
+		if n := aliases[ref]; n != nil && n.ID != "" && n.Label == label {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeNewNodeTag(tag string) (string, bool) {
@@ -632,19 +673,47 @@ func normalizePersistedSummary(raw string) string {
 	return writeback.NormalizeEditable(raw)
 }
 
-// unknownDomainAlias distinguishes a new domain name from a fabricated
-// call-scoped alias. Any dom# token is transport syntax and may never become a
-// persisted domain slug unless it resolves in this exact call's alias book.
+// unknownDomainAlias distinguishes a new domain name from a fabricated or
+// wrong-kind call-scoped alias. Alias transport syntax must not become a new
+// domain name, even if the alias belongs to another candidate list.
 func unknownDomainAlias(ref string, book *aliasBook) bool {
 	ref = strings.TrimSpace(ref)
-	if !strings.HasPrefix(ref, "dom#") {
+	if validAlignAlias(book, ref, dktypes.LabelDomain) {
 		return false
 	}
-	if book == nil {
+	if book != nil {
+		if _, found := book.domByAlias[ref]; found {
+			return true
+		}
+		if _, found := book.nodeByAlias[ref]; found {
+			return true
+		}
+		if _, found := book.subByAlias[ref]; found {
+			return true
+		}
+	}
+	if strings.HasPrefix(ref, "dom#") || strings.HasPrefix(ref, "sd#") {
 		return true
 	}
-	_, ok := book.domByAlias[ref]
-	return !ok
+	// Recognize fabricated node aliases only within this call's known alias
+	// namespaces. Treating every <text>#<number> as transport syntax would
+	// reject legitimate new domain names such as C#8开发领域.
+	prefix, suffix, found := strings.Cut(ref, "#")
+	if !found || prefix == "" || suffix == "" || book == nil {
+		return false
+	}
+	for alias := range book.nodeByAlias {
+		knownPrefix, _, _ := strings.Cut(alias, "#")
+		if prefix == knownPrefix {
+			return true
+		}
+	}
+	for _, sub := range book.subByAlias {
+		if sub != nil && prefix == sub.Subdomain {
+			return true
+		}
+	}
+	return false
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -772,10 +841,9 @@ func (a *aligner) materialize(ctx context.Context, outcome *alignOutcome, decisi
 // resolveDomain resolves an LLM domain reference (alias or new Chinese name).
 func (a *aligner) resolveDomain(ref string, book *aliasBook) (slug, name string, isNew, ok bool) {
 	ref = strings.TrimSpace(ref)
-	if book != nil {
-		if n, exists := book.domByAlias[ref]; exists {
-			return n.Domain, n.Name, false, true
-		}
+	if validAlignAlias(book, ref, dktypes.LabelDomain) {
+		n := book.domByAlias[ref]
+		return n.Domain, n.Name, false, true
 	}
 	if unknownDomainAlias(ref, book) {
 		return "", "", false, false

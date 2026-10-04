@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/xcosmosbox/cairn/core/dktypes"
@@ -56,19 +57,21 @@ func NewSearchPipeline(db *storage.DB, rw *QueryRewriter, cfg *ServiceConfig) *S
 
 // Execute 执行完整的检索管线并返回包含所有中间状态的 SearchContext。
 // 管线步骤：
-//   1. 查询改写（Rewrite）
-//   2. FTS5 全文搜索
-//   3. BFS 图遍历（从 FTS5 命中节点出发）
-//   4. 综合打分排序（ScoreAndRank）
+//  1. 查询改写（Rewrite）
+//  2. FTS5 全文搜索
+//  3. BFS 图遍历（从 FTS5 命中节点出发）
+//  4. 综合打分排序（ScoreAndRank）
+//
 // 任意步骤失败时返回对应的错误，并附加上下文信息。
 //
 // Execute runs the complete retrieval pipeline and returns a SearchContext
 // containing all intermediate state.
 // Pipeline steps:
-//   1. Query rewriting (Rewrite)
-//   2. FTS5 full-text search
-//   3. BFS graph traversal (starting from FTS5 hit nodes)
-//   4. Combined scoring and ranking (ScoreAndRank)
+//  1. Query rewriting (Rewrite)
+//  2. FTS5 full-text search
+//  3. BFS graph traversal (starting from FTS5 hit nodes)
+//  4. Combined scoring and ranking (ScoreAndRank)
+//
 // Any step failure returns the corresponding error with contextual information.
 func (p *SearchPipeline) Execute(ctx context.Context, req *dktypes.QueryRequest) (*SearchContext, error) {
 	sc := &SearchContext{
@@ -103,6 +106,10 @@ func (p *SearchPipeline) Execute(ctx context.Context, req *dktypes.QueryRequest)
 		sc.ScoredResults = nil
 		return sc, nil
 	}
+	textScores, err := normalizeFTS5Ranks(ftsHits)
+	if err != nil {
+		return nil, fmt.Errorf("%w: normalize FTS5 ranks: %v", ErrInternal.Wrap(err), err)
+	}
 
 	// Step 3: BFS 图遍历 — 从 FTS5 命中节点出发，按配置深度展开
 	// Step 3: BFS graph traversal — expand from FTS5 hit nodes up to configured depth
@@ -122,6 +129,9 @@ func (p *SearchPipeline) Execute(ctx context.Context, req *dktypes.QueryRequest)
 	if err != nil {
 		return nil, fmt.Errorf("%w: BFS traversal failed: %v", ErrInternal.Wrap(err), err)
 	}
+	// BFS carries graph structure only. Supply normalized text relevance before
+	// scoring; SQLite's raw rank is negative and lower means a better match.
+	traversalResult.FTS5Hits = textScores
 	sc.TraversalResult = traversalResult
 	log.Printf("[search-pipeline] BFS traversal visited %d nodes, %d edges",
 		len(traversalResult.Nodes), len(traversalResult.Edges))
@@ -133,6 +143,39 @@ func (p *SearchPipeline) Execute(ctx context.Context, req *dktypes.QueryRequest)
 	log.Printf("[search-pipeline] scoring produced %d ranked results", len(scored))
 
 	return sc, nil
+}
+
+// normalizeFTS5Ranks converts SQLite's non-positive, lower-is-better ranks
+// into [0,1] relevance scores for the hybrid scorer. Dividing by the strongest
+// match preserves relative strengths without letting the raw BM25 scale
+// determine the balance with graph scores. Nodes outside this map score zero.
+func normalizeFTS5Ranks(hits []*storage.FTS5Hit) (map[string]float64, error) {
+	scores := make(map[string]float64, len(hits))
+	var strongest float64
+	for _, hit := range hits {
+		if hit == nil || hit.Node == nil {
+			continue
+		}
+		rank := hit.BM25Rank
+		if rank > 0 || math.IsNaN(rank) || math.IsInf(rank, 0) {
+			return nil, fmt.Errorf("node %q has invalid SQLite BM25 rank %g", hit.Node.ID, rank)
+		}
+		strength := -rank
+		scores[hit.Node.ID] = strength
+		if strength > strongest {
+			strongest = strength
+		}
+	}
+	for id, strength := range scores {
+		if strongest == 0 {
+			// Equal zero ranks still represent direct matches; avoid division by
+			// zero while keeping them distinguishable from graph-only neighbors.
+			scores[id] = 1
+		} else {
+			scores[id] = strength / strongest
+		}
+	}
+	return scores, nil
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
