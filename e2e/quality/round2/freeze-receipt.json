@@ -1,0 +1,12 @@
+{
+  "format": "cairn-round2-protocol-freeze/v1",
+  "protocol_sha256": "ef3070281c865f0f2371dd39c1df64eb6901f75e43007e8eb2acfb0205c5c1dc",
+  "harness_sources": {
+    "agent_eval_native.py": "09774f8dbb398d2b6033b1831fc8d8edf4648cc5785fcb0d2a9fdbfa2c853c69",
+    "agent_eval.py": "eb9cd4b11a2aeb9df2d1c9f17a06e86aa924be6220dfa29dab6639e3a1153305",
+    "retrieval.py": "cc1eea1b87c356d2064fded8c6f0a7f64c2d312cd355a8c7d0d2bf2e1b53c969",
+    "durable_ledger.py": "e831d19a10cd8891a3e1130a643f7951eac632adb77795950531efe9531d45e8",
+    "grade.py": "300db55c803cfff1f886757db9c89d21d2967d7650b46b6c46dad90b78b0e67c"
+  },
+  "paid_requests_before_freeze": 0
+}

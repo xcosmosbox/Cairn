@@ -4,6 +4,19 @@
 // 本文件包含知识图谱查询相关的请求、响应及结果数据结构。
 package dktypes
 
+// QuerySyntax distinguishes user keywords from explicit SQLite MATCH syntax.
+// The zero value is ordinary text; advanced expressions are never auto-detected.
+type QuerySyntax string
+
+const (
+	QuerySyntaxText QuerySyntax = "text"
+	QuerySyntaxFTS5 QuerySyntax = "fts5"
+)
+
+func (s QuerySyntax) IsValid() bool {
+	return s == "" || s == QuerySyntaxText || s == QuerySyntaxFTS5
+}
+
 // ——————————————————————————————————————————————————————————————————————————————
 // QueryRequest — 知识图谱查询请求
 // ——————————————————————————————————————————————————————————————————————————————
@@ -14,6 +27,9 @@ type QueryRequest struct {
 	// Query 是查询文本 / 关键词。
 	// Query is the query text or keyword.
 	Query string `json:"query"`
+	// QuerySyntax defaults to text (literal whitespace atoms joined with AND).
+	// fts5 accepts an unchanged advanced MATCH expression, including its errors.
+	QuerySyntax QuerySyntax `json:"query_syntax,omitempty"`
 	// Depth 指定查询的深度级别（summary / entity / neighborhood / subgraph）。
 	// Depth specifies the depth level of the query.
 	Depth Depth `json:"depth,omitempty"`

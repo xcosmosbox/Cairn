@@ -33,9 +33,9 @@ import (
 // 走的是另一条路——LLM 在提取阶段写入 node.synonyms，随 nodes_fts
 // 的 synonyms 列进索引（索引侧扩展），无需查询侧维护全局同义词表。
 //
-// 若未来要支持中文子串检索，正确的改法是改 nodes_fts 的 tokenize
-// （如 trigram，配合 LIKE 兜底 2 字查询），而不是在这里加分词器。
-// 注意那会改变 bundle 的数据格式，属破坏性变更。
+// 中文片段实验必须同时修改索引与查询。可在独立副本上比较 trigram，或
+// storage.FTSTextHanV1 的字符短语方案；后者必须匹配同样预处理过的索引。
+// 此改写器仍不分词。生产默认索引和 TextProfile 都保持 literal。
 //
 // QueryRewriter rewrites the raw user query before retrieval. It currently
 // performs abbreviation expansion only, then splits on whitespace.
@@ -84,12 +84,12 @@ func NewQueryRewriter(abbr map[string]string) *QueryRewriter {
 }
 
 // Rewrite 执行改写：缩写扩展 → 按空白切分 → 以空格重新拼接。
-// 返回可直接用于 FTS5 MATCH 的查询串。
+// 返回普通文本；调用方必须通过 PrepareSearchQuery 编译为安全 MATCH。
 //
 // Rewrite expands abbreviations, then normalizes whitespace. The result is
-// suitable for use in an FTS5 MATCH clause.
+// plain text, not an FTS5 MATCH expression. Use PrepareSearchQuery for MATCH.
 func (qr *QueryRewriter) Rewrite(ctx context.Context, query string) (string, error) {
-	if query == "" {
+	if strings.TrimSpace(query) == "" {
 		return "", fmt.Errorf("query must not be empty")
 	}
 

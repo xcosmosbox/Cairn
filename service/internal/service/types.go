@@ -28,10 +28,11 @@ type SearchContext struct {
 	// OriginalQuery is the raw query string entered by the user.
 	OriginalQuery string
 
-	// RewrittenQuery 是经过缩写扩展、同义词扩展和分词后的查询字符串。
-	// RewrittenQuery is the query string after abbreviation expansion,
-	// synonym expansion, and tokenization.
-	RewrittenQuery string
+	// RewrittenQuery is rewritten user text, before safe MATCH compilation.
+	RewrittenQuery  string
+	MatchExpression string
+	QuerySyntax     dktypes.QuerySyntax
+	TextProfile     storage.FTSTextProfile
 
 	// FTS5Hits 是 FTS5 全文搜索返回的命中列表，按 BM25 相关性排序。
 	// FTS5Hits is the list of hits returned by FTS5 full-text search,
@@ -68,6 +69,9 @@ type SearchContext struct {
 // controlling query behavior, retrieval algorithm weights, graph traversal
 // limits, and result set sizes.
 type ServiceConfig struct {
+	// TextProfile is the paired index/query profile. Empty means literal.
+	// han-v1 is only for explicitly prepared static experimental index copies.
+	TextProfile storage.FTSTextProfile
 	// DefaultDepth 是默认查询深度（summary / entity / neighborhood / subgraph）。
 	// DefaultDepth is the default query depth.
 	DefaultDepth dktypes.Depth

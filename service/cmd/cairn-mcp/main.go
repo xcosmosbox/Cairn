@@ -47,6 +47,7 @@ import (
 
 	_ "modernc.org/sqlite" // SQLite driver (纯 Go 实现 / pure Go implementation)
 
+	"github.com/xcosmosbox/cairn/core/dktypes"
 	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 	"github.com/xcosmosbox/cairn/core/kbbundle"
 	"github.com/xcosmosbox/cairn/core/storage"
@@ -722,7 +723,7 @@ type searchHit struct {
 //
 // federatedSearch performs concurrent KnowledgeService.Search across multiple
 // knowledge bases, merges results, and sorts by normalized FinalScore.
-func (s *serverState) federatedSearch(keyword string, limit int) ([]searchHit, error) {
+func (s *serverState) federatedSearch(keyword string, limit int, syntax dktypes.QuerySyntax) ([]searchHit, error) {
 	svcs, release := s.svcsSnapshot()
 	defer release()
 	if len(svcs) == 0 {
@@ -742,7 +743,7 @@ func (s *serverState) federatedSearch(keyword string, limit int) ([]searchHit, e
 		wg.Add(1)
 		go func(name string, ks service.KnowledgeService) {
 			defer wg.Done()
-			hits, err := searchServiceToHits(ks, keyword, limit, name)
+			hits, err := searchServiceToHits(ks, keyword, limit, name, syntax)
 			if err != nil {
 				err = fmt.Errorf("%s: %w", name, err)
 			}
@@ -790,8 +791,8 @@ func (s *serverState) federatedSearch(keyword string, limit int) ([]searchHit, e
 //
 // searchServiceToHits calls a single KnowledgeService.Search and maps the
 // structured result into searchHit slices (Rank = FinalScore).
-func searchServiceToHits(svc service.KnowledgeService, keyword string, limit int, kgName string) ([]searchHit, error) {
-	res, err := svc.Search(context.Background(), keyword, service.SearchOptions{Limit: limit})
+func searchServiceToHits(svc service.KnowledgeService, keyword string, limit int, kgName string, syntax dktypes.QuerySyntax) ([]searchHit, error) {
+	res, err := svc.Search(context.Background(), keyword, service.SearchOptions{Limit: limit, QuerySyntax: syntax})
 	if err != nil {
 		return nil, err
 	}
@@ -969,7 +970,13 @@ func handleToolsList(req *jsonRPCRequest) *jsonRPCResponse {
 				"properties": map[string]interface{}{
 					"keyword": map[string]interface{}{
 						"type":        "string",
-						"description": "搜索关键词 / Search keyword",
+						"description": "搜索关键词；默认普通文本，空白词组用 AND 连接，标点不作操作符 / Literal keyword atoms joined by AND by default; punctuation is not query syntax",
+					},
+					"query_syntax": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"text", "fts5"},
+						"default":     "text",
+						"description": "text: 安全普通文本；fts5: 原样高级 SQLite MATCH，语法错误直接返回 / text: literal atoms; fts5: unchanged advanced MATCH with visible syntax errors",
 					},
 					"kg": map[string]interface{}{
 						"type":        "string",
@@ -1136,8 +1143,16 @@ func handleToolsCall(state *serverState, req *jsonRPCRequest) *jsonRPCResponse {
 // toolDomainSearch searches entities by keyword, supporting single-KB and federated search.
 func toolDomainSearch(state *serverState, args map[string]interface{}) (*toolResult, string) {
 	keyword, _ := args["keyword"].(string)
-	if keyword == "" {
+	if strings.TrimSpace(keyword) == "" {
 		return nil, "keyword 参数不能为空 / keyword parameter must not be empty"
+	}
+	syntax := dktypes.QuerySyntaxText
+	if raw, exists := args["query_syntax"]; exists {
+		value, ok := raw.(string)
+		if !ok || (value != "text" && value != "fts5") {
+			return nil, "query_syntax must be text or fts5"
+		}
+		syntax = dktypes.QuerySyntax(value)
 	}
 
 	limit := 10
@@ -1155,7 +1170,7 @@ func toolDomainSearch(state *serverState, args map[string]interface{}) (*toolRes
 		}
 		defer release()
 
-		hits, qErr := searchServiceToHits(svc, keyword, limit, dbName)
+		hits, qErr := searchServiceToHits(svc, keyword, limit, dbName, syntax)
 		if qErr != nil {
 			return nil, fmt.Sprintf("搜索失败 / Search failed: %v", qErr)
 		}
@@ -1171,7 +1186,7 @@ func toolDomainSearch(state *serverState, args map[string]interface{}) (*toolRes
 	}
 
 	// 联邦搜索 / Federated search
-	hits, err := state.federatedSearch(keyword, limit)
+	hits, err := state.federatedSearch(keyword, limit, syntax)
 	if err != nil {
 		return nil, fmt.Sprintf("联邦搜索失败 / Federated search failed: %v", err)
 	}

@@ -1,0 +1,60 @@
+{
+  "format": "cairn-publication-receipt/v1",
+  "repository": "xcosmosbox/kd_manifeat",
+  "visibility": "private",
+  "branch": "eval/cairn-quality-20261004",
+  "commit": "ab0d7d4bfe55a88532fce6ac1cdd7c1011db9036",
+  "workflow_run": 37204789763,
+  "workflow_conclusion": "success",
+  "remote_git_tree_entry": {
+    "path": "evaluations/cairn-nicedata-20261004/cairn-evaluation-review-20261004.tar.gz",
+    "mode": "100644",
+    "type": "blob",
+    "sha": "25e6154abe72d67899c9ee84e01ad4a82e2f8a2c",
+    "size": 4525982,
+    "url": "https://api.github.com/repos/xcosmosbox/kd_manifeat/git/blobs/25e6154abe72d67899c9ee84e01ad4a82e2f8a2c"
+  },
+  "verification": {
+    "format": "cairn-publication-verification/v1",
+    "status": "assembled-and-verified",
+    "archive": {
+      "filename": "cairn-evaluation-review-20261004.tar.gz",
+      "bytes": 4525982,
+      "sha256": "256aa8607cee0849bb082e474186b6e2d292b1cf7c3e243d1095d424678a42a4",
+      "git_blob_sha1": "25e6154abe72d67899c9ee84e01ad4a82e2f8a2c"
+    },
+    "transport": {
+      "chunks_verified": 70,
+      "bytes": 4525982,
+      "manifest_sha256": "8ccf6d8ac59a96fe34ad52f15fbd9878fc10fe9bc261795d6718dc64b17ccce3"
+    },
+    "review_bundle": {
+      "members": 977,
+      "regular_files": 924,
+      "directories": 53,
+      "manifest_entries_verified": 923,
+      "manifest_sha256": "6f8991afef371c72e05f2d3300d7f9463c85d9401bc2f8a5ced3e51bce7eaaa4",
+      "exact_manifest_coverage": true,
+      "links_or_special_members": 0
+    },
+    "full_audit_supplement": {
+      "members": 108,
+      "regular_files": 108,
+      "directories": 0,
+      "manifest_entries_verified": 107,
+      "manifest_sha256": "31d554ffafc0114f5b4ed6cf42c5b54db3694cffe4d5774d98b10baf8e46f882",
+      "exact_manifest_coverage": true,
+      "links_or_special_members": 0,
+      "payload_files": 104,
+      "archive_sha256": "72b6c641939075d26942df6bca979f160ef084181e2b55c3fc83fa1ca549b548",
+      "archive_bytes": 2798713
+    },
+    "extraction_performed": false,
+    "paid_model_requests": 0,
+    "scope": "Byte and manifest verification; remote reachability requires a successful Git push.",
+    "assembly_source_commit": "cdd063b6d3bc91ad9681d2b4f9a8c51ea0ce06af",
+    "actions_run_id": "37204789763"
+  },
+  "original_archive_bytes_preserved": true,
+  "paid_model_requests": 0
+}
