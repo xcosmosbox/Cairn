@@ -1,0 +1,13 @@
+{
+  "builder_version": "devel",
+  "builder_commit": "7940e62a71ef0321f2563abcfd1471a55b390f2e+sha256:98edf576905ada810b8a471b4984b535e0b27730f789ad3e3a1587ba08f47446",
+  "controller_schema_version": 3,
+  "db_schema_version": 5,
+  "prompt_set_version": "sha256:3f9fa69b3ca8a196de082b40676d617819be0d84523e8b3c36c35f7f8b2c77fa",
+  "identity_algorithm_version": "sha256:5dedfffb529b925248cf517d0f67c88f6f746dad430782a01b30c26dc4e2434e",
+  "discovery_rules_digest": "sha256:5636f798a8a95a0ce45d671f646796c17b8af5242b5090ea54769016de2d3ca7",
+  "model": "deepseek-flash",
+  "provider": "openai_compatible",
+  "annotation_schema_version": 1,
+  "config_digest": "sha256:19fbf3125b9751b3fa7d812a511a5fe2caaa145d56621e5cf7c55ffa06e817d2"
+}

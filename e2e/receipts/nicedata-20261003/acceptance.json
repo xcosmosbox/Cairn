@@ -1,0 +1,18 @@
+{
+  "model_execution_date": "2026-10-03",
+  "online_acceptance_date": "2026-10-04",
+  "source_pr": 12,
+  "catalog_pr": 13,
+  "publication_workflow_run": 37168033699,
+  "consumption_workflow_run": 37168181994,
+  "source_commit": "801ebed0eb6f1044dfd713d1e76251de39a79f47",
+  "materializer_code": "7940e62a71ef0321f2563abcfd1471a55b390f2e",
+  "prebuilt_artifacts_commit": "43e53b22df2709dec833fd2ead3f8166b6b74a4f",
+  "prebuilt_archive_sha256": "59b9c7a3a8af5ae690e803760f2b4f9d42043c3033c80da43f4c80410b0661e8",
+  "prebuilt_database_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+  "installed_database_sha256": "666eba2a529b1777dde6a59f7f641ba890ea1af6047ebe1f8668d878c18b8495",
+  "publication_replay_verified": true,
+  "repeat_install_verified": true,
+  "all_consumer_protocols_passed": true,
+  "auth_scope": "GitHub connector source/catalog PR writes; Actions repository GITHUB_TOKEN for HTTPForge publishing/consumption; production App JWT minting/refresh not exercised"
+}

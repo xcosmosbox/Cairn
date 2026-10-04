@@ -1,0 +1,50 @@
+{
+  "phase": "consume",
+  "catalog": {
+    "format": "dk-kb-bundle/v1",
+    "kg": "nicedata-e2e-20261003",
+    "source_repo": "xcosmosbox/kd_manifeat",
+    "source_ref": "source/nicedata-e2e-20261003",
+    "source_commit": "801ebed0eb6f1044dfd713d1e76251de39a79f47",
+    "builder_version": "devel",
+    "builder_commit": "7940e62a71ef0321f2563abcfd1471a55b390f2e+sha256:98edf576905ada810b8a471b4984b535e0b27730f789ad3e3a1587ba08f47446",
+    "schema_version": 5,
+    "prompt_set_version": "sha256:3f9fa69b3ca8a196de082b40676d617819be0d84523e8b3c36c35f7f8b2c77fa",
+    "model": "deepseek-flash",
+    "config_digest": "sha256:19fbf3125b9751b3fa7d812a511a5fe2caaa145d56621e5cf7c55ffa06e817d2",
+    "bundle_digest": "sha256:1d0f66c50f7549da43e3b0f23d8e036ef6084b466ffd4a5f24cb82ebf0ba95da",
+    "kb_version": "2026-10-03T09:23:40.617523337Z",
+    "created_at": "2026-10-03T09:23:39Z",
+    "minimum_reader_version": "",
+    "channel": "stable",
+    "published_at": "2026-10-03T09:23:39Z",
+    "release_tag": "kb-nicedata-e2e-20261003-801ebed0eb6f-1d0f66c50f75",
+    "asset_name": "bundle.tar.gz"
+  },
+  "validation": {
+    "ok": true,
+    "node_count": 944,
+    "edge_count": 2460,
+    "checks": [
+      "quick_check",
+      "schema",
+      "node_count",
+      "edge_count",
+      "edge endpoints",
+      "node sources",
+      "source_closure"
+    ]
+  },
+  "release": {
+    "id": 402770491,
+    "tag_name": "kb-nicedata-e2e-20261003-801ebed0eb6f-1d0f66c50f75",
+    "prerelease": true,
+    "html_url": "https://github.com/xcosmosbox/kd_manifeat/releases/tag/kb-nicedata-e2e-20261003-801ebed0eb6f-1d0f66c50f75",
+    "assets_url": "https://api.github.com/repos/xcosmosbox/kd_manifeat/releases/402770491/assets"
+  },
+  "tarball_sha256": "sha256:a3a30473a7e951fa7f27e7c6cb3d30049357599a499869c090c0d33d05463369",
+  "publication_replay_verified": true,
+  "repeat_install_verified": true,
+  "installed_dir": "/home/runner/work/kd_manifeat/kd_manifeat/installed/1d0f66c50f7549da",
+  "installed_db": "/home/runner/work/kd_manifeat/kd_manifeat/installed/1d0f66c50f7549da/knowledge.db"
+}

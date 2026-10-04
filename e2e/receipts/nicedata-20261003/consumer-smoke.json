@@ -1,0 +1,790 @@
+{
+  "format": "cairn-real-consumer-smoke/v2",
+  "passed": true,
+  "trace_scope": "authoritative node_sources -> CLI why -> MCP living UUID",
+  "started_at": "2026-10-04T01:30:29Z",
+  "database": {
+    "path": "/home/runner/work/kd_manifeat/kd_manifeat/installed/1d0f66c50f7549da/knowledge.db",
+    "before": {
+      "sha256": "666eba2a529b1777dde6a59f7f641ba890ea1af6047ebe1f8668d878c18b8495",
+      "bytes": 6471680,
+      "sidecars": []
+    },
+    "after": {
+      "sha256": "666eba2a529b1777dde6a59f7f641ba890ea1af6047ebe1f8668d878c18b8495",
+      "bytes": 6471680,
+      "sidecars": []
+    },
+    "unchanged": true
+  },
+  "graph": {
+    "schema_version": 5,
+    "nodes": 944,
+    "edges": 2460,
+    "repository_identity": "{\"version\":1,\"identity\":\"git:github.com/xcosmosbox/kd_manifeat\"}"
+  },
+  "cli_status": {
+    "response_sha256": "2335f168b9594707bcf6bc3239ee676c40072dae509d49483c4a306118e0e2c0",
+    "response_bytes": 1783
+  },
+  "mcp_handshake": {
+    "protocol": "2024-11-05",
+    "tools": [
+      "describe_knowledge_layer",
+      "domain_impact",
+      "domain_search",
+      "domain_status",
+      "list_knowledge_bases",
+      "resolve_node"
+    ]
+  },
+  "themes": [
+    {
+      "theme": "Flink反压",
+      "status": "passed",
+      "matched_terms": [
+        "flink",
+        "反压",
+        "backpressure"
+      ],
+      "node": {
+        "id": "03dea0e4-aa44-5dc1-bbda-74cb2153f6c4",
+        "name": "diagnosis_backpressure.md",
+        "label": "Entity",
+        "domain": "数据链路诊断与运维",
+        "subdomain": "实时流程-flink-状态与全量诊断"
+      },
+      "query": "\"diagnosis_backpressure.md\"",
+      "cli_find": {
+        "matched_ids": [
+          "03dea0e4-aa44-5dc1-bbda-74cb2153f6c4",
+          "0998bc1f-6a5f-5413-88b7-53042aa39ed9",
+          "0d6d6ac8-85eb-5357-a532-512353d9394a",
+          "3e739513-211e-552c-875e-05267d1c631a",
+          "489b5dc0-3230-5259-bdf7-4d073ae7cd60",
+          "4d14c334-36b8-54ab-826f-a7427f50ea5c",
+          "4f0a3b70-25e9-5dc0-95ea-83d666edd212",
+          "559f7380-64d9-5a90-a645-89cdc8bd375a",
+          "5734fe3c-396c-5f71-b44a-7ffedc3557b1",
+          "575b177d-04be-5062-80d1-1df00ec5dced"
+        ],
+        "response_sha256": "671c89eb51a0d428517a87d2b2b12200d109ffb82f4d3c3761f348f7c1d5b702",
+        "response_bytes": 11003
+      },
+      "cli_impact": {
+        "node_ids": [
+          "03dea0e4-aa44-5dc1-bbda-74cb2153f6c4",
+          "1d34294e-ea14-5c9e-a30d-73b28560a923",
+          "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+          "2ede7a5c-d3cb-5934-b5e4-5f93bec2b81a",
+          "358f59f1-cf8c-5b82-a5aa-f3e0558e8fc3",
+          "3e739513-211e-552c-875e-05267d1c631a",
+          "469d5f14-46ca-51ce-b6a0-af1a330af6e8",
+          "5c05954e-64cd-5566-9bb1-163223bcb832",
+          "6450a663-23e0-5774-a8b6-065939192c5c",
+          "7a4e8f82-261d-591e-86f6-15f9e81f38f8",
+          "9cc9a0cf-9209-5417-84d2-4a378c1c52be",
+          "a5da5413-97ea-5e60-9ff1-d3a3a7247a32",
+          "aab0a0be-adf9-580b-91bc-7f6fa495208c",
+          "ae08ad53-fd51-5dca-bc3f-51aa69c9c657",
+          "cd270839-19f6-5d75-98f4-bb36ddd49860",
+          "d22962bf-1a88-5e48-94f6-220bd555e2ac",
+          "ebf689fb-9b18-57a7-a1b5-b1919f4c7b84",
+          "f2925ac5-3725-5d51-a24a-f99abfcefbef"
+        ],
+        "response_sha256": "92c9c15863b157855da646e48f28697b1fb21ba6c2e53684dac1e963b928f6ae",
+        "response_bytes": 4344
+      },
+      "trace": {
+        "source_count": 2,
+        "sources": [
+          {
+            "node_uuid": "03dea0e4-aa44-5dc1-bbda-74cb2153f6c4",
+            "member_id": "realtime-flow-ops-entity-diagnosis-backpressure-md",
+            "skill": "realtime-flow-ops",
+            "file_path": "plugins/nicedata/skills/realtime-flow-ops/references/bottleneck.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "03dea0e4-aa44-5dc1-bbda-74cb2153f6c4",
+            "member_id": "realtime-flow-ops-entity-diagnosis-backpressure-md",
+            "skill": "realtime-flow-ops",
+            "file_path": "plugins/nicedata/skills/realtime-flow-ops/references/diagnosis.md",
+            "start_line": 0,
+            "end_line": 0
+          }
+        ],
+        "source_list_truncated": false,
+        "response_sha256": "4180b745d229ced94dd318085bc73e5742e474cd33da98331c4d7ea834d54e76",
+        "response_bytes": 743
+      }
+    },
+    {
+      "theme": "积压",
+      "status": "passed",
+      "matched_terms": [
+        "积压",
+        "backlog"
+      ],
+      "node": {
+        "id": "13a7713b-8d1a-589e-ad0a-772a5a8d115d",
+        "name": "积压诊断报告",
+        "label": "Entity",
+        "domain": "模型训练知识与诊断",
+        "subdomain": "训练巡检与掉底-积压诊断"
+      },
+      "query": "\"积压诊断报告\"",
+      "cli_find": {
+        "matched_ids": [
+          "13a7713b-8d1a-589e-ad0a-772a5a8d115d",
+          "16765e8f-9b43-59de-bae1-82b5e40369ff",
+          "54912666-acbe-547f-a8c2-d7248c06dcfa",
+          "948bc27f-6f56-54d9-9159-825749bc6e99",
+          "dc8122cc-2f1e-5346-bfca-ddf3ad1e3839",
+          "f9b2271e-f858-5f88-ac11-bf59de572160",
+          "1455cd9e-55a3-5360-a3be-5ad592823c47",
+          "2bbd1490-01f0-5e31-95cd-234322377952",
+          "3a8eb43d-2f4a-572d-b15c-0935d360fc9a",
+          "672d0fd9-dfcd-50e4-a386-0a044974cc6e"
+        ],
+        "response_sha256": "1a511852c9d5f60a14d5e0841cc0c5e8f225613ea7a360a3e082533f763f0f3a",
+        "response_bytes": 9490
+      },
+      "cli_impact": {
+        "node_ids": [
+          "13a7713b-8d1a-589e-ad0a-772a5a8d115d",
+          "1455cd9e-55a3-5360-a3be-5ad592823c47",
+          "16765e8f-9b43-59de-bae1-82b5e40369ff",
+          "2bbd1490-01f0-5e31-95cd-234322377952",
+          "3a8eb43d-2f4a-572d-b15c-0935d360fc9a",
+          "54912666-acbe-547f-a8c2-d7248c06dcfa",
+          "672d0fd9-dfcd-50e4-a386-0a044974cc6e",
+          "6b3819d7-45c8-5d36-a44f-e646320eb78c",
+          "8a8191db-670b-5f27-b3a6-f23e5d62064b",
+          "948bc27f-6f56-54d9-9159-825749bc6e99",
+          "d2bebb87-7bfc-5183-9a84-9265e8ba9c9a",
+          "dc8122cc-2f1e-5346-bfca-ddf3ad1e3839",
+          "f8cbdd7c-5d92-57eb-8dcd-49170fc68750",
+          "f9b2271e-f858-5f88-ac11-bf59de572160"
+        ],
+        "response_sha256": "0d42e4c7ba78cde622e8cc6a3ca4b307c8804f413c30e39c32ec8198c49e4c49",
+        "response_bytes": 3372
+      },
+      "trace": {
+        "source_count": 1,
+        "sources": [
+          {
+            "node_uuid": "13a7713b-8d1a-589e-ad0a-772a5a8d115d",
+            "member_id": "nicemodel-train-inspect-entity-积压诊断报告",
+            "skill": "nicemodel-train-inspect",
+            "file_path": "plugins/nicemodel/skills/nicemodel-train-inspect/references/backlog_diagnosis.md",
+            "start_line": 0,
+            "end_line": 0
+          }
+        ],
+        "source_list_truncated": false,
+        "response_sha256": "95fc407795354b46e5a46213eed46a07d213f4ee13fdd76f4f16f6e457ca514d",
+        "response_bytes": 611
+      }
+    },
+    {
+      "theme": "GPU OnlineEval",
+      "status": "passed",
+      "matched_terms": [
+        "gpu",
+        "onlineeval"
+      ],
+      "node": {
+        "id": "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+        "name": "Evaluator 指标计算组件",
+        "label": "Entity",
+        "domain": "模型训练知识与诊断",
+        "subdomain": "训练架构知识"
+      },
+      "query": "\"Evaluator 指标计算组件\"",
+      "cli_find": {
+        "matched_ids": [
+          "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+          "79d7c517-d7d3-5cb6-b26e-5bbf8bff41a5",
+          "f1ac2f1e-1549-5325-aa14-55fc4ae0d74e"
+        ],
+        "response_sha256": "8fd3e6002f447fafad9545e509c8c6e0cc0587ae9768a227844518b409ea5c5b",
+        "response_bytes": 3267
+      },
+      "cli_impact": {
+        "node_ids": [
+          "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+          "79d7c517-d7d3-5cb6-b26e-5bbf8bff41a5",
+          "f1ac2f1e-1549-5325-aa14-55fc4ae0d74e"
+        ],
+        "response_sha256": "20c17bf74997e42eadf8777e816d0a8ba4257b34f1dba784708e67b66959cd03",
+        "response_bytes": 805
+      },
+      "trace": {
+        "source_count": 4,
+        "sources": [
+          {
+            "node_uuid": "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+            "member_id": "nicemodel-knowledge-entity-evaluator-指标计算组件",
+            "skill": "nicemodel-knowledge",
+            "file_path": "plugins/nicemodel/skills/nicemodel-knowledge/references/cairn-skill-definition.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+            "member_id": "nicemodel-knowledge-entity-evaluator",
+            "skill": "nicemodel-knowledge",
+            "file_path": "plugins/nicemodel/skills/nicemodel-knowledge/references/online_eval.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+            "member_id": "nicemodel-knowledge-entity-evaluator",
+            "skill": "nicemodel-knowledge",
+            "file_path": "plugins/nicemodel/skills/nicemodel-knowledge/references/process-deployment-matrix.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "3ec4dba8-3910-5e26-9d1d-6e5943107495",
+            "member_id": "nicemodel-train-inspect-entity-evaluator-角色",
+            "skill": "nicemodel-train-inspect",
+            "file_path": "plugins/nicemodel/skills/nicemodel-train-inspect/references/cairn-skill-definition.md",
+            "start_line": 0,
+            "end_line": 0
+          }
+        ],
+        "source_list_truncated": false,
+        "response_sha256": "fa2c45a41cece88004c965546f8f7c49d03ffd74b30dc312aca91a5a393f27f7",
+        "response_bytes": 1091
+      }
+    },
+    {
+      "theme": "datahub datasvr",
+      "status": "passed",
+      "matched_terms": [
+        "datahub",
+        "datasvr"
+      ],
+      "node": {
+        "id": "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+        "name": "datahub / datasvr 模式归责真值表",
+        "label": "Concept",
+        "domain": "数据链路诊断与运维",
+        "subdomain": "血缘链路溯源诊断"
+      },
+      "query": "\"datahub / datasvr 模式归责真值表\"",
+      "cli_find": {
+        "matched_ids": [
+          "00521eb0-f72f-5aad-9e40-c7202fb4fe08",
+          "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+          "0f3238cd-fe20-5644-aec8-5d42b6915231",
+          "3f263b0e-0902-5614-9a3e-7dd2b99e54fb",
+          "bb64efff-29c4-522c-a5a3-8b191c45133c",
+          "bff5b49a-4904-561a-984d-d84a9dffce57",
+          "cab61959-3edb-57b5-9705-6477c60e8724",
+          "2d07fa53-7295-5332-913b-de25c1b8a600",
+          "3751200a-34f5-5041-8201-07ed8bd5ab74",
+          "a4c3d5a5-12d0-5904-a1a1-b5a5098f14aa"
+        ],
+        "response_sha256": "db91a1dbfac135fbdd04238776acd6a2c81101846ad31a6cdbd6508a2862ad08",
+        "response_bytes": 11395
+      },
+      "cli_impact": {
+        "node_ids": [
+          "00521eb0-f72f-5aad-9e40-c7202fb4fe08",
+          "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+          "0f3238cd-fe20-5644-aec8-5d42b6915231",
+          "2d07fa53-7295-5332-913b-de25c1b8a600",
+          "3751200a-34f5-5041-8201-07ed8bd5ab74",
+          "3f263b0e-0902-5614-9a3e-7dd2b99e54fb",
+          "a4c3d5a5-12d0-5904-a1a1-b5a5098f14aa",
+          "bb64efff-29c4-522c-a5a3-8b191c45133c",
+          "bff5b49a-4904-561a-984d-d84a9dffce57",
+          "cab61959-3edb-57b5-9705-6477c60e8724"
+        ],
+        "response_sha256": "20ac53ea0f774545d65f612974ea324521ea3470f604c3b9db9fcd5e86ef2162",
+        "response_bytes": 3141
+      },
+      "trace": {
+        "source_count": 4,
+        "sources": [
+          {
+            "node_uuid": "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+            "member_id": "nicedata-lineage-trace-diagnose-concept-datahub-模式归责真值表",
+            "skill": "nicedata-lineage-trace-diagnose",
+            "file_path": "plugins/nicedata/skills/nicedata-lineage-trace-diagnose/references/diagnostic_rules.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+            "member_id": "nicedata-lineage-trace-diagnose-concept-datasvr-模式归责真值表",
+            "skill": "nicedata-lineage-trace-diagnose",
+            "file_path": "plugins/nicedata/skills/nicedata-lineage-trace-diagnose/references/diagnostic_rules.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+            "member_id": "nicedata-lineage-trace-diagnose-concept-上游-flow-是否可继续追溯",
+            "skill": "nicedata-lineage-trace-diagnose",
+            "file_path": "plugins/nicedata/skills/nicedata-lineage-trace-diagnose/references/diagnostic_rules.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1",
+            "member_id": "nicedata-lineage-trace-diagnose-concept-逐层追溯-掉底-异动共用",
+            "skill": "nicedata-lineage-trace-diagnose",
+            "file_path": "plugins/nicedata/skills/nicedata-lineage-trace-diagnose/references/diagnostic_rules.md",
+            "start_line": 0,
+            "end_line": 0
+          }
+        ],
+        "source_list_truncated": false,
+        "response_sha256": "531704a57032445d6455f49bb53226a2b69e78f75e7f25ea63eacaa2e4e872dc",
+        "response_bytes": 1274
+      }
+    },
+    {
+      "theme": "checkpoint",
+      "status": "passed",
+      "matched_terms": [
+        "checkpoint",
+        "检查点"
+      ],
+      "node": {
+        "id": "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+        "name": "Checkpoint 配置 / 历史统计 / 详情",
+        "label": "Entity",
+        "domain": "数据链路诊断与运维",
+        "subdomain": "flink-专项诊断-反压-checkpoint-资源-metric"
+      },
+      "query": "\"Checkpoint 配置 / 历史统计 / 详情\"",
+      "cli_find": {
+        "matched_ids": [
+          "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+          "bbed04cd-524b-5abe-ba37-b275476f164c"
+        ],
+        "response_sha256": "86773f72144b34d3d5e7ac91ee6393720467e9e8f6eadd9b0fffe827500027fe",
+        "response_bytes": 2304
+      },
+      "cli_impact": {
+        "node_ids": [
+          "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+          "bbed04cd-524b-5abe-ba37-b275476f164c"
+        ],
+        "response_sha256": "34a13fc4e2878293b634a0a3b19b8979edc8a3a1c390111caf62ddecab42ab44",
+        "response_bytes": 552
+      },
+      "trace": {
+        "source_count": 3,
+        "sources": [
+          {
+            "node_uuid": "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+            "member_id": "realtime-flow-ops-entity-checkpoint-历史统计",
+            "skill": "realtime-flow-ops",
+            "file_path": "plugins/nicedata/skills/realtime-flow-ops/references/diagnosis_checkpoint.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+            "member_id": "realtime-flow-ops-entity-checkpoint-详情",
+            "skill": "realtime-flow-ops",
+            "file_path": "plugins/nicedata/skills/realtime-flow-ops/references/diagnosis_checkpoint.md",
+            "start_line": 0,
+            "end_line": 0
+          },
+          {
+            "node_uuid": "24b24678-1dc0-5d4d-9f59-bd8fa266f06e",
+            "member_id": "realtime-flow-ops-entity-checkpoint-配置",
+            "skill": "realtime-flow-ops",
+            "file_path": "plugins/nicedata/skills/realtime-flow-ops/references/diagnosis_checkpoint.md",
+            "start_line": 0,
+            "end_line": 0
+          }
+        ],
+        "source_list_truncated": false,
+        "response_sha256": "26fba775422b7116f92c582a175042c36921d0451b6dccb3d0a89ca9b3e4e491",
+        "response_bytes": 952
+      }
+    }
+  ],
+  "coverage": {
+    "requested_themes": 5,
+    "present_themes": 5,
+    "absent_themes": 0
+  },
+  "graph_impact_probe": {
+    "source_id": "skill::add-skill",
+    "target_id": "domain::ai-skill-工程与生态",
+    "query": "\"add-skill\"",
+    "cli": {
+      "response_sha256": "97dd331292d91fb133e8244c39856372887446b9d5007b7b87d910ffbefbb917",
+      "response_bytes": 6235
+    },
+    "mcp": {
+      "response_sha256": "347fac81d16969ef23a6090594a4993f9b4de1aa9a823896301522929f02174c",
+      "response_bytes": 6339
+    }
+  },
+  "mcp_calls": [
+    {
+      "tool": "list_knowledge_bases",
+      "arguments": {},
+      "expected_error": false,
+      "response_sha256": "6afa6b11f4e5953995cd650dbb7fbd55416182c32f8bbaebbb56b8c3cfdb18b2",
+      "response_bytes": 5151
+    },
+    {
+      "tool": "domain_status",
+      "arguments": {
+        "kg": "consumer-primary"
+      },
+      "expected_error": false,
+      "response_sha256": "2a12b02dbd8cac452cb0a86c5d2f2f05170570a6f7620e65a5f4d5c755cb18e7",
+      "response_bytes": 1202
+    },
+    {
+      "tool": "describe_knowledge_layer",
+      "arguments": {
+        "kg": "consumer-primary",
+        "verbose": true
+      },
+      "expected_error": false,
+      "response_sha256": "a51a13a9d82dba8897c3b3fb544ad71089cc54697874a3a56a5c09c728c86a6e",
+      "response_bytes": 4300
+    },
+    {
+      "tool": "domain_status",
+      "arguments": {
+        "kg": "consumer-alias"
+      },
+      "expected_error": false,
+      "response_sha256": "158df0fbfa7d874fc324c74979fc500e5d055847b4ee6d771595d2b763bd8c5d",
+      "response_bytes": 1200
+    },
+    {
+      "tool": "describe_knowledge_layer",
+      "arguments": {
+        "kg": "consumer-alias",
+        "verbose": true
+      },
+      "expected_error": false,
+      "response_sha256": "60d301b0d35bc9dc2ca15d24d2026f9c0535b931bd9c66ee8ef39ec2dbdb0978",
+      "response_bytes": 4294
+    },
+    {
+      "tool": "describe_knowledge_layer",
+      "arguments": {
+        "verbose": true
+      },
+      "expected_error": false,
+      "response_sha256": "a524db4c6049ac698dc654a23fa3d01864466b622b954e7c8771e405307f4153",
+      "response_bytes": 4879
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "kg": "consumer-primary",
+        "keyword": "\"diagnosis_backpressure.md\"",
+        "limit": 50
+      },
+      "expected_error": false,
+      "response_sha256": "c6eaa11e040e6d1c714235a965cf2d926c110dd1cab6cd3e7ea6ce8576a33ca5",
+      "response_bytes": 4153
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "kg": "consumer-primary",
+        "entity_name": "\"diagnosis_backpressure.md\"",
+        "depth": 2
+      },
+      "expected_error": false,
+      "response_sha256": "1b43c994d62dda9e2e7c2515cd64a422e9bdf53658050708b5ddd7f62ad5c440",
+      "response_bytes": 4472
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "kg": "consumer-primary",
+        "uuid": "03dea0e4-aa44-5dc1-bbda-74cb2153f6c4"
+      },
+      "expected_error": false,
+      "response_sha256": "9a6cb3c378c5516e94eec4b6ea8dc9da3171404ff11c92d6e761b5d20d259cc2",
+      "response_bytes": 306
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "kg": "consumer-primary",
+        "keyword": "\"积压诊断报告\"",
+        "limit": 50
+      },
+      "expected_error": false,
+      "response_sha256": "7da8858e2f9aa6e86533b498d446cc3474dcca13b699074ad43ec118012fa6fb",
+      "response_bytes": 3346
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "kg": "consumer-primary",
+        "entity_name": "\"积压诊断报告\"",
+        "depth": 2
+      },
+      "expected_error": false,
+      "response_sha256": "771518ebfcd213401c425223ca765f1c71a21fb7b8e70fd96536b6e2cb4557b0",
+      "response_bytes": 3411
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "kg": "consumer-primary",
+        "uuid": "13a7713b-8d1a-589e-ad0a-772a5a8d115d"
+      },
+      "expected_error": false,
+      "response_sha256": "50b07cd8667339f1811a1f5821e77dbd5c2fa953c79e213d6ae9cc933009d52d",
+      "response_bytes": 306
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "kg": "consumer-primary",
+        "keyword": "\"Evaluator 指标计算组件\"",
+        "limit": 50
+      },
+      "expected_error": false,
+      "response_sha256": "55cdddce5566c419c57b9fa662d79e5c9942abdf5a9f9d0c21b4ac163102c520",
+      "response_bytes": 1002
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "kg": "consumer-primary",
+        "entity_name": "\"Evaluator 指标计算组件\"",
+        "depth": 2
+      },
+      "expected_error": false,
+      "response_sha256": "e45568f4535ed21bf6b802517c812f1ff24197ce3a8a5bd7c033f3a7d3f04399",
+      "response_bytes": 872
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "kg": "consumer-primary",
+        "uuid": "3ec4dba8-3910-5e26-9d1d-6e5943107495"
+      },
+      "expected_error": false,
+      "response_sha256": "ce2321c5ae9e255d3f79d074ea6e6fbd618c7eb9abef345651d3281f588b6395",
+      "response_bytes": 307
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "kg": "consumer-primary",
+        "keyword": "\"datahub / datasvr 模式归责真值表\"",
+        "limit": 50
+      },
+      "expected_error": false,
+      "response_sha256": "ca7b011811430a9bfddb363930c928762937e56bd9d272f1c5dc55be22693f51",
+      "response_bytes": 3232
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "kg": "consumer-primary",
+        "entity_name": "\"datahub / datasvr 模式归责真值表\"",
+        "depth": 2
+      },
+      "expected_error": false,
+      "response_sha256": "38536f2a60358f498fe07e918e5e42d90661bbe7633a7dd2a24b384c467be3cb",
+      "response_bytes": 3189
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "kg": "consumer-primary",
+        "uuid": "0e9fcd58-1cf4-5d4f-a702-d2bbd5502ca1"
+      },
+      "expected_error": false,
+      "response_sha256": "9ce0f01e68550421041823364701e7214b0090669518adb286bf3498d324419b",
+      "response_bytes": 313
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "kg": "consumer-primary",
+        "keyword": "\"Checkpoint 配置 / 历史统计 / 详情\"",
+        "limit": 50
+      },
+      "expected_error": false,
+      "response_sha256": "63e64646d65b2cf0f9f9fab48f26ca2aeab6b69df711f7110dc94b4ee8b0c99c",
+      "response_bytes": 761
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "kg": "consumer-primary",
+        "entity_name": "\"Checkpoint 配置 / 历史统计 / 详情\"",
+        "depth": 2
+      },
+      "expected_error": false,
+      "response_sha256": "b9f5970e18788fbcbeced8858412ba0fadaf219450121b4a502b66b5b9326152",
+      "response_bytes": 621
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "kg": "consumer-primary",
+        "uuid": "24b24678-1dc0-5d4d-9f59-bd8fa266f06e"
+      },
+      "expected_error": false,
+      "response_sha256": "c2987803f2ce5e567d18adddb250c2b5cf07d53aaaa4905fff286d50e623873f",
+      "response_bytes": 350
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "keyword": "\"模式判定（root_model.mode）\"",
+        "limit": 50
+      },
+      "expected_error": false,
+      "response_sha256": "9ed905b2a1d2d3b2eff17cc1bdf472bf2904afff89be8046640c6e53df7f0155",
+      "response_bytes": 4465
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "kg": "consumer-alias",
+        "uuid": "00521eb0-f72f-5aad-9e40-c7202fb4fe08"
+      },
+      "expected_error": false,
+      "response_sha256": "c842063cada61b43e9f1cf780d23fd750dd51c3de6b8f3f185922f2ecbb87976",
+      "response_bytes": 309
+    },
+    {
+      "tool": "domain_search",
+      "arguments": {
+        "keyword": "\"模式判定（root_model.mode）\"",
+        "kg": "consumer-does-not-exist"
+      },
+      "expected_error": true,
+      "response_sha256": "e4405876c8ad5c02c407558fa83c09dc5ed7df841037c991ef353092bfb1e58c",
+      "response_bytes": 86
+    },
+    {
+      "tool": "domain_status",
+      "arguments": {
+        "kg": "consumer-does-not-exist"
+      },
+      "expected_error": true,
+      "response_sha256": "e4405876c8ad5c02c407558fa83c09dc5ed7df841037c991ef353092bfb1e58c",
+      "response_bytes": 86
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "entity_name": "\"模式判定（root_model.mode）\"",
+        "kg": "consumer-does-not-exist"
+      },
+      "expected_error": true,
+      "response_sha256": "e4405876c8ad5c02c407558fa83c09dc5ed7df841037c991ef353092bfb1e58c",
+      "response_bytes": 86
+    },
+    {
+      "tool": "describe_knowledge_layer",
+      "arguments": {
+        "kg": "consumer-does-not-exist"
+      },
+      "expected_error": true,
+      "response_sha256": "e4405876c8ad5c02c407558fa83c09dc5ed7df841037c991ef353092bfb1e58c",
+      "response_bytes": 86
+    },
+    {
+      "tool": "resolve_node",
+      "arguments": {
+        "uuid": "00521eb0-f72f-5aad-9e40-c7202fb4fe08",
+        "kg": "consumer-does-not-exist"
+      },
+      "expected_error": true,
+      "response_sha256": "e4405876c8ad5c02c407558fa83c09dc5ed7df841037c991ef353092bfb1e58c",
+      "response_bytes": 86
+    },
+    {
+      "tool": "domain_status",
+      "arguments": {},
+      "expected_error": true,
+      "response_sha256": "9d4d57d39ef30b78a85e78d477ec616f1d218fe662c25eb25d82af784e6d0a3a",
+      "response_bytes": 65
+    },
+    {
+      "tool": "domain_impact",
+      "arguments": {
+        "kg": "consumer-primary",
+        "entity_name": "\"add-skill\"",
+        "depth": 2
+      },
+      "expected_error": false,
+      "response_sha256": "347fac81d16969ef23a6090594a4993f9b4de1aa9a823896301522929f02174c",
+      "response_bytes": 6339
+    }
+  ],
+  "http": {
+    "passed": true,
+    "protocol": "2024-11-05",
+    "rest_search": {
+      "response_sha256": "2af0a2a634aa0a095965a250a6109ae4b41345492394964f3dcf8e33458044a3",
+      "response_bytes": 2064
+    },
+    "rest_unknown_kg_rejected": true,
+    "sse_calls": [
+      {
+        "tool": "domain_search",
+        "arguments": {
+          "kg": "consumer-primary",
+          "keyword": "\"模式判定（root_model.mode）\"",
+          "limit": 50
+        },
+        "expected_error": false,
+        "response_sha256": "d5be430810500106551ec74f83b5420eb8795d5e3545a63d563f367545554135",
+        "response_bytes": 2002
+      },
+      {
+        "tool": "resolve_node",
+        "arguments": {
+          "kg": "consumer-primary",
+          "uuid": "00521eb0-f72f-5aad-9e40-c7202fb4fe08"
+        },
+        "expected_error": false,
+        "response_sha256": "c842063cada61b43e9f1cf780d23fd750dd51c3de6b8f3f185922f2ecbb87976",
+        "response_bytes": 309
+      },
+      {
+        "tool": "domain_impact",
+        "arguments": {
+          "kg": "consumer-primary",
+          "entity_name": "\"add-skill\"",
+          "depth": 2
+        },
+        "expected_error": false,
+        "response_sha256": "347fac81d16969ef23a6090594a4993f9b4de1aa9a823896301522929f02174c",
+        "response_bytes": 6339
+      },
+      {
+        "tool": "domain_status",
+        "arguments": {
+          "kg": "consumer-does-not-exist"
+        },
+        "expected_error": true,
+        "response_sha256": "e4405876c8ad5c02c407558fa83c09dc5ed7df841037c991ef353092bfb1e58c",
+        "response_bytes": 86
+      }
+    ]
+  }
+}
