@@ -1,0 +1,11 @@
+{
+  "format": "cairn-round2-instrumentation-freeze-delta/v1",
+  "at_utc": "2026-10-04T14:05:26.694274+00:00",
+  "prior_freeze_sha256": "13882595c8dafdaa479fcdce1a5cf930203c9ae8f15907fcb8f5982c64a043c4",
+  "reviewed_source_sha256": "535fa67b864ced523cf71347e027775f8cca8d8306439dc3e9439f1fcc403e07",
+  "final_source_sha256": "f0480bc01bcc779666500a9f7c2932bd62d10220dbd27af04f96893ade38c86b",
+  "only_change": "Audit counter key completed_http_responses renamed recorded_http_attempts, because transport errors also produce local completed-attempt events. Exact string-replacement equality verified.",
+  "model_tool_protocol_or_execution_logic_changed": false,
+  "fault_tests_after_rename": "3/3 passed",
+  "continuation_requests_before_delta": 0
+}

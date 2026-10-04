@@ -366,7 +366,7 @@ def evaluate_question(question_id: str, question: str, arm: str, engine: Retriev
         # No attempt is reserved for jobs blocked by the run latch. A failed
         # pre-request append may reserve an ID but still never send HTTP; its
         # independent request failure receipt states that distinction.
-        result["completed_http_responses"] = len(calls)
+        result["recorded_http_attempts"] = len(calls)
     except ModelCallError as exc:
         calls.extend(exc.attempts)
         result["error"] = str(exc)
