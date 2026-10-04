@@ -146,9 +146,73 @@ def safe_assistant_message(message: Any) -> dict:
     return result
 
 
+class DurabilityAbort(ModelCallError):
+    """A run-level persistence failure, never a provider/protocol retry."""
+
+
+class RunDurability:
+    """Serialize request admission with result appends and latch any failure.
+
+    Already admitted HTTP calls remain in flight and must persist their response
+    even after the latch trips. Queued jobs and retries check both ledgers before
+    reserving another HTTP attempt. This does not serialize provider response
+    waits, alter solver messages, or close the request ledger prematurely.
+    """
+    def __init__(self, result_ledger: JSONLedger | None = None):
+        self.result_ledger = result_ledger
+        self.lock = threading.Lock()
+        self.failure = None
+
+    def _fail_locked(self, error):
+        if self.failure is None:
+            self.failure = str(error)
+
+    def fail(self, error):
+        with self.lock:
+            self._fail_locked(error)
+
+    def admit(self, ledger: JSONLedger, budget: CallBudget, record: dict, attempts: list[dict]) -> dict:
+        with self.lock:
+            if self.failure is not None:
+                raise DurabilityAbort("run stopped after ledger failure: " + self.failure, attempts)
+            try:
+                if self.result_ledger is not None:
+                    self.result_ledger.verify()
+                ledger.verify()
+            except (LedgerIntegrityError, OSError) as exc:
+                self._fail_locked(exc)
+                raise DurabilityAbort(str(exc), attempts) from exc
+            try:
+                call_id = budget.reserve()
+            except CallBudgetExceeded as exc:
+                exc.attempts = attempts
+                raise
+            record = {**record, "http_attempt": call_id}
+            try:
+                ledger.append({**record, "event": "request", "status": "in_flight"})
+            except (LedgerIntegrityError, OSError) as exc:
+                self._fail_locked(exc)
+                raise DurabilityAbort(str(exc), attempts) from exc
+            # The durable request event is the admission boundary. Calls
+            # admitted before a concurrent failure are drained, not discarded.
+            return record
+
+    def append_result(self, result: dict):
+        with self.lock:
+            try:
+                # JSONLedger emits an independent failure receipt for every
+                # failed append, including subsequent results after failure.
+                self.result_ledger.append(result)
+            except (LedgerIntegrityError, OSError) as exc:
+                self._fail_locked(exc)
+                raise
+
+
 class NativeDeepSeekClient(DeepSeekClient):
-    def __init__(self, config: EvalConfig, api_key: str, budget: CallBudget, ledger: JSONLedger):
+    def __init__(self, config: EvalConfig, api_key: str, budget: CallBudget, ledger: JSONLedger,
+                 result_ledger: JSONLedger | None = None):
         super().__init__(config, api_key, budget, ledger)
+        self.durability = RunDurability(result_ledger)
         if config.thinking != "disabled":
             raise ValueError("native-v3 evaluation requires thinking disabled")
 
@@ -159,22 +223,14 @@ class NativeDeepSeekClient(DeepSeekClient):
         body = json_text(payload).encode("utf-8")
         attempts = []
         for attempt in range(config.max_retries + 1):
-            try:
-                call_id = self.budget.reserve()
-            except CallBudgetExceeded as exc:
-                exc.attempts = attempts
-                raise
-            record = {**context, "http_attempt": call_id, "attempt_for_turn": attempt + 1,
+            record = {**context, "attempt_for_turn": attempt + 1,
                       "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                       "request_sha256": hashlib.sha256(body).hexdigest(), "request_bytes": len(body),
                       "request_max_tokens": config.max_tokens, "model": config.model, "thinking": "disabled",
                       "tool_choice": tool_choice, "protocol": "native_tool_calls/v3-batches"}
             if attempts:
                 record["retry_of_http_attempt"] = attempts[-1]["http_attempt"]
-            try:
-                self.ledger.append({**record, "event": "request", "status": "in_flight"})
-            except (LedgerIntegrityError, OSError) as exc:
-                raise ModelCallError(str(exc), attempts) from exc
+            record = self.durability.admit(self.ledger, self.budget, record, attempts)
             started = time.monotonic()
             message = None
             try:
@@ -218,7 +274,8 @@ class NativeDeepSeekClient(DeepSeekClient):
                 # Preserve received usage in the result even when the primary
                 # ledger fails. The ledger also emits an explicit recovery
                 # receipt and blocks later requests; no retry hides the loss.
-                raise ModelCallError(str(exc), attempts) from exc
+                self.durability.fail(exc)
+                raise DurabilityAbort(str(exc), attempts) from exc
             if record["status"] == "ok":
                 return message, attempts
         raise ModelCallError(attempts[-1].get("error", "provider request failed"), attempts)
@@ -300,6 +357,16 @@ def evaluate_question(question_id: str, question: str, arm: str, engine: Retriev
                 force_submit = True
         else:
             raise ValueError("model-turn budget exhausted without a final answer")
+    except DurabilityAbort as exc:
+        calls.extend(exc.attempts)
+        result["error"] = str(exc)
+        result["failure_kind"] = "ledger_durability_abort"
+        result["execution_state"] = "partial" if calls else "not_started"
+        result["network_attempted"] = bool(calls)
+        # No attempt is reserved for jobs blocked by the run latch. A failed
+        # pre-request append may reserve an ID but still never send HTTP; its
+        # independent request failure receipt states that distinction.
+        result["completed_http_responses"] = len(calls)
     except ModelCallError as exc:
         calls.extend(exc.attempts)
         result["error"] = str(exc)
@@ -362,7 +429,7 @@ def main():
                 "tools_sha256": hashlib.sha256(json_text(TOOLS).encode()).hexdigest(),
                 "tool_policy": "first search forced; ordered search batches; each call gets a tool response and independently consumes unchanged budgets; submit_answer forced on exhaustion or fourth round; mixed/multiple final calls fail",
                 "config": dataclasses.asdict(config), "workers": args.workers,
-                "ledger_instrumentation": "short-open append with inode/size guards, fsync, and exact final result/HTTP reconciliation; solver protocol unchanged",
+                "ledger_instrumentation": "short-open append with inode/size guards and fsync; shared fail-stop admission verifies result/request ledgers before each HTTP reservation; drain all in-flight responses and collect every result with independent failure receipts; solver protocol unchanged",
                 "max_http_attempts": args.max_http_attempts, "seed": args.seed,
                 "dataset_sha256": sha256_file(args.dataset), "kg_sha256": kg_before,
                 "raw_index_sha256": sha256_file(args.raw_db), "adapter_sha256": sha256_file(args.adapter),
@@ -377,28 +444,44 @@ def main():
     request_ledger = JSONLedger(args.output_dir / "requests.jsonl")
     result_ledger = JSONLedger(args.output_dir / "results.jsonl")
     budget = CallBudget(args.max_http_attempts)
-    client = NativeDeepSeekClient(config, os.environ.get("CAIRN_LLM_API_KEY", ""), budget, request_ledger)
+    client = NativeDeepSeekClient(config, os.environ.get("CAIRN_LLM_API_KEY", ""), budget, request_ledger, result_ledger)
     engines = {arm: RetrievalEngine(arm, args.kg_db, args.raw_db, args.adapter, config.top_k) for arm in args.arms}
     results = []
+    persistence_errors = []
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = [executor.submit(evaluate_question, q["question_id"], q["question"], arm, engines[arm], client, config) for q, arm in jobs]
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
-                result_ledger.append(result)
                 results.append(result)
+                try:
+                    client.durability.append_result(result)
+                except (LedgerIntegrityError, OSError) as exc:
+                    # Do not unwind the executor on the first failed append:
+                    # keep collecting admitted responses and explicit zero-HTTP
+                    # abort results from all queued jobs. JSONLedger preserves
+                    # each failed result separately instead of repairing history.
+                    persistence_errors.append(str(exc))
                 print(json_text({"completed": len(results), "total": len(jobs), "question_id": result["question_id"],
                                  "arm": result["arm"], "status": result["status"], "http_attempts": budget.used}), flush=True)
-        request_ledger.verify()
-        result_ledger.verify()
+        for ledger in (request_ledger, result_ledger):
+            try:
+                ledger.verify()
+            except (LedgerIntegrityError, OSError) as exc:
+                client.durability.fail(exc)
+                persistence_errors.append(str(exc))
     finally:
         request_ledger.close()
         result_ledger.close()
     try:
+        if client.durability.failure is not None:
+            raise LedgerIntegrityError("run stopped after ledger failure: " + client.durability.failure)
         integrity = verify_run_ledgers(args.output_dir, budget.used, metadata["job_order"])
     except (LedgerIntegrityError, ValueError, KeyError, OSError) as exc:
         failure = {"format": "cairn-ledger-integrity/v1", "status": "failed", "error": str(exc),
-                   "summary_written": False, "note": "No reconstruction performed; original evidence retained."}
+                   "summary_written": False, "collected_jobs": len(results), "planned_jobs": len(jobs),
+                   "http_attempts_reserved": budget.used, "result_persistence_errors": persistence_errors,
+                   "note": "No reconstruction performed; original evidence and independent failure receipts retained. Admitted HTTP responses were drained; blocked jobs did not send new requests."}
         (args.output_dir / "ledger-integrity.json").write_text(json.dumps(failure, ensure_ascii=False, indent=2) + "\n")
         raise
     (args.output_dir / "ledger-integrity.json").write_text(json.dumps(integrity, ensure_ascii=False, indent=2) + "\n")

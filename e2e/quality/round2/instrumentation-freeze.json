@@ -1,0 +1,31 @@
+{
+  "format": "cairn-round2-instrumentation-freeze/v1",
+  "at_utc": "2026-10-04T14:03:53.998356+00:00",
+  "amendment_sha256": "9a31b625dd8b5a5ce54a09b2b11bb0fc6b13e3182596d1e0c53a32521310eeac",
+  "new_native_source_sha256": "535fa67b864ced523cf71347e027775f8cca8d8306439dc3e9439f1fcc403e07",
+  "original_native_source_sha256": "09774f8dbb398d2b6033b1831fc8d8edf4648cc5785fcb0d2a9fdbfa2c853c69",
+  "unchanged_source_hashes": {
+    "agent_eval.py": "eb9cd4b11a2aeb9df2d1c9f17a06e86aa924be6220dfa29dab6639e3a1153305",
+    "retrieval.py": "cc1eea1b87c356d2064fded8c6f0a7f64c2d312cd355a8c7d0d2bf2e1b53c969",
+    "durable_ledger.py": "e831d19a10cd8891a3e1130a643f7951eac632adb77795950531efe9531d45e8",
+    "grade.py": "300db55c803cfff1f886757db9c89d21d2967d7650b46b6c46dad90b78b0e67c"
+  },
+  "system_prompt_sha256": "69fd376b825e1a3aaf553f3822951e63434fa6e95e0684a0bc3b2a089e89b24d",
+  "tools_sha256": "a6e876aff41fcfaf8dc99aa8b101cb40f698b875daad3fe1ed672b293124a5da",
+  "tests": {
+    "python_full_suite": 53,
+    "passed": 53,
+    "independent_fault_tests": 3,
+    "independent_fault_tests_passed": 3
+  },
+  "independent_review": "AST confirms identical prompts, tools, tool choice, parsers, assistant sanitizer, request payload/serialization and evaluate logic except persistence abort handler. Already-admitted requests may still send after a concurrent failure; they are drained, not discarded.",
+  "recovery_manifest_sha256": "10bfc1db3278f3616ca007d03d18423e315c0052810aee0088d3153ed84ba804",
+  "original_bytes_preserved": true,
+  "continuation_tasks": 51,
+  "continuation_paid_requests_before_freeze": 0,
+  "remaining_conservative_reservation_cap": 214,
+  "original_solver_ceiling": 400,
+  "source_root_cause": "unknown",
+  "recovered_cohort_durable_integrity": "failed;25complete task results explicitly reconstructed by original request-hash replay,6partial tasks retained as failures",
+  "output_strategy": "isolated temporary directory; verify completed ledgers and file hashes before copying to audit workspace; do not claim filesystem cause resolved"
+}
