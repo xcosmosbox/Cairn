@@ -1,0 +1,409 @@
+{
+  "all_runtime_input_bytes_unchanged": true,
+  "artifact_sha256": {
+    "execution_config": "68ab009a262a51611635e6687a406c4a72c8908a0ac56f7febb65a5899ad8eec",
+    "fixed_dev_roster": "b90031450e06f8e6dd67e9133fa44dce8fb1a8cb69605fbfc45ad4e2d37013e6",
+    "han_manifest": "32872f6b6f9ef2fdee7d00b9545525a97def249d779109e859c9ef333d40e998",
+    "offline_inputs": "9543540eb751c1046fb0a7e32fafb3c475b41639e6b3d6d3ad01e1708d70ebdd",
+    "offline_queries": "52d8c4c86c711109b424f6c3e3d3715ea7624eb7b5d15fc7643ecee4cc94702b",
+    "offline_receipt": "0efdca183066773cf3127e93fd91f2d67f03f85e3703896802b29619c33f1cfc",
+    "offline_summary": "ff1c14b8dd2b96e14e830289c7f33790f81d0a1faba442170ad6369dbbb3ba88",
+    "offline_traces": "16140b3768f4034672ad582985a22bfe4b9ec040c05e030dc745acc53fb50253",
+    "protocol": "ef3070281c865f0f2371dd39c1df64eb6901f75e43007e8eb2acfb0205c5c1dc",
+    "protocol_amendment_001": "133572fbb63e1da0b23673250c6e5a3ecfd553f5e13b71ff5d94d9a02b720cba",
+    "semantic_selection": "69ef7d5d2db64f94f429f1f807b5a7fa02873ae23abafa1065651a8fb975d893",
+    "trigram_manifest": "53d7b2fed58399b121959914cbe6f34881d886668f8b744d2d1ba336a25cd380"
+  },
+  "format": "cairn-round2-offline-results/v1",
+  "frozen_database_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+  "groups": {
+    "han-v1/fts": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.775,
+      "empty_successes": 186,
+      "errors": 0,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.13958333333333334,
+      "source_path_overlap_at10_mean": 0.14166666666666666,
+      "successful_queries": 240,
+      "truncated_searches": 7,
+      "visible_chars": 217738,
+      "visible_empty_successes": 186,
+      "visible_evidence_blocks": 101
+    },
+    "han-v1/graph": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.775,
+      "empty_successes": 186,
+      "errors": 0,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 1,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.1375,
+      "source_path_overlap_at10_mean": 0.14166666666666666,
+      "successful_queries": 240,
+      "truncated_searches": 31,
+      "visible_chars": 368181,
+      "visible_empty_successes": 187,
+      "visible_evidence_blocks": 151
+    },
+    "legacy/fts": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.9395348837209302,
+      "empty_successes": 202,
+      "errors": 25,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.0375,
+      "source_path_overlap_at10_mean": 0.0375,
+      "successful_queries": 215,
+      "truncated_searches": 0,
+      "visible_chars": 60974,
+      "visible_empty_successes": 202,
+      "visible_evidence_blocks": 28
+    },
+    "legacy/graph": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.9395348837209302,
+      "empty_successes": 202,
+      "errors": 25,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.0375,
+      "source_path_overlap_at10_mean": 0.0375,
+      "successful_queries": 215,
+      "truncated_searches": 10,
+      "visible_chars": 129494,
+      "visible_empty_successes": 202,
+      "visible_evidence_blocks": 47
+    },
+    "literal/fts": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.9291666666666667,
+      "empty_successes": 223,
+      "errors": 0,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.05,
+      "source_path_overlap_at10_mean": 0.05,
+      "successful_queries": 240,
+      "truncated_searches": 0,
+      "visible_chars": 63973,
+      "visible_empty_successes": 223,
+      "visible_evidence_blocks": 32
+    },
+    "literal/graph": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.9291666666666667,
+      "empty_successes": 223,
+      "errors": 0,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.05,
+      "source_path_overlap_at10_mean": 0.05,
+      "successful_queries": 240,
+      "truncated_searches": 12,
+      "visible_chars": 144187,
+      "visible_empty_successes": 223,
+      "visible_evidence_blocks": 58
+    },
+    "trigram/fts": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.9625,
+      "empty_successes": 231,
+      "errors": 0,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.020833333333333332,
+      "source_path_overlap_at10_mean": 0.020833333333333332,
+      "successful_queries": 240,
+      "truncated_searches": 0,
+      "visible_chars": 48619,
+      "visible_empty_successes": 231,
+      "visible_evidence_blocks": 24
+    },
+    "trigram/graph": {
+      "budget_or_trace_denied": 0,
+      "empty_rate_among_successes": 0.9625,
+      "empty_successes": 231,
+      "errors": 0,
+      "executed": 240,
+      "fixed_query_events": 240,
+      "nonempty_backend_but_no_visible_evidence": 0,
+      "source_path_line_mrr_at10_mean": 0.0,
+      "source_path_line_overlap_at10_mean": 0.0,
+      "source_path_mrr_at10_mean": 0.020833333333333332,
+      "source_path_overlap_at10_mean": 0.020833333333333332,
+      "successful_queries": 240,
+      "truncated_searches": 8,
+      "visible_chars": 96750,
+      "visible_empty_successes": 231,
+      "visible_evidence_blocks": 40
+    }
+  },
+  "index_copy_identity": {
+    "han-v1": {
+      "all_non_fts_tables_unchanged": true,
+      "go_version": "go1.22.12",
+      "index_rows": 944,
+      "index_schema": "CREATE VIRTUAL TABLE nodes_fts USING fts5(name, summary, synonyms, tags, description, domain, subdomain, prefix='2 3', tokenize='unicode61')",
+      "output_db_sha256": "8585650bd10ed62eb35ca1e4f2cad1b10c5801bac5970f50f2bc8d4199c9c566",
+      "source_db_after_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+      "source_db_before_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+      "unicode_version": "15.0.0"
+    },
+    "trigram": {
+      "all_non_fts_tables_unchanged": true,
+      "go_version": "go1.22.12",
+      "index_rows": 944,
+      "index_schema": "CREATE VIRTUAL TABLE nodes_fts USING fts5(name, summary, synonyms, tags, description, domain, subdomain, prefix='2 3', tokenize='trigram')",
+      "output_db_sha256": "01fd507bf760ecfa0d80286c7336bacec5edd93cb836fca0bdfaabc6fe21dfb6",
+      "source_db_after_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+      "source_db_before_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+      "unicode_version": "15.0.0"
+    }
+  },
+  "interpretation": [
+    "Safe literal queries eliminated all25 MATCH parser failures per arm; nonempty query events rose13 to17.",
+    "Trigram reduced nonempty events to9 and lost7 source-path hits per arm versus literal.",
+    "Han increased nonempty events to54 and source-path hits to34/240; graph had one nonempty backend response with no budget-visible evidence.",
+    "The six-question independent AI evidence review supports selecting Han for the next paid comparison:34 versus11 fully supported fact units,23 gains and0 losses against literal. This is evidence support in fixed DEV traces, not solver-answer accuracy or generalization."
+  ],
+  "limitations": [
+    "Source-path/line overlap is provenance localization only, never semantic correctness.",
+    "Returned visible source references have no positive complete line intervals in this replay; path+line overlap is therefore0.",
+    "Quoted evidence reviews use AI-authored gold and independent AI reviewers; quotation provenance is mechanically verified, semantic entailment remains reviewer judgment.",
+    "Han changes BM25 normalization and can join punctuation-separated or serialized synonym neighbors; profiles remain static read-only index-copy experiments.",
+    "The ten-question holdout is not included in this offline evaluation; no unseen-test claim is made."
+  ],
+  "native_trace_failure_count": 0,
+  "paired_provenance_metric_changes": {
+    "legacy_to_literal/fts": {
+      "errors_removed": 25,
+      "source_path_mrr_at10_increase": 3,
+      "source_path_overlap_at10_increase": 3
+    },
+    "legacy_to_literal/graph": {
+      "errors_removed": 25,
+      "source_path_mrr_at10_increase": 3,
+      "source_path_overlap_at10_increase": 3
+    },
+    "literal_to_han-v1/fts": {
+      "source_path_mrr_at10_increase": 22,
+      "source_path_overlap_at10_increase": 22
+    },
+    "literal_to_han-v1/graph": {
+      "source_path_mrr_at10_decrease": 1,
+      "source_path_mrr_at10_increase": 23,
+      "source_path_overlap_at10_decrease": 1,
+      "source_path_overlap_at10_increase": 23
+    },
+    "literal_to_trigram/fts": {
+      "source_path_mrr_at10_decrease": 7,
+      "source_path_overlap_at10_decrease": 7
+    },
+    "literal_to_trigram/graph": {
+      "source_path_mrr_at10_decrease": 7,
+      "source_path_overlap_at10_decrease": 7
+    }
+  },
+  "pure_ascii_queries": {
+    "han-v1/fts": {
+      "empty_successes": 10,
+      "errors": 0,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.42105263157894735
+    },
+    "han-v1/graph": {
+      "empty_successes": 10,
+      "errors": 0,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.42105263157894735
+    },
+    "legacy/fts": {
+      "empty_successes": 8,
+      "errors": 4,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.3157894736842105
+    },
+    "legacy/graph": {
+      "empty_successes": 8,
+      "errors": 4,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.3157894736842105
+    },
+    "literal/fts": {
+      "empty_successes": 10,
+      "errors": 0,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.42105263157894735
+    },
+    "literal/graph": {
+      "empty_successes": 10,
+      "errors": 0,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.42105263157894735
+    },
+    "trigram/fts": {
+      "empty_successes": 13,
+      "errors": 0,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.2631578947368421
+    },
+    "trigram/graph": {
+      "empty_successes": 13,
+      "errors": 0,
+      "fixed_query_events": 19,
+      "source_path_overlap_at10_mean": 0.2631578947368421
+    }
+  },
+  "scope": {
+    "evaluated_arms": [
+      "fts",
+      "graph"
+    ],
+    "factors": 4,
+    "fixed_executed_query_events": 240,
+    "historical_denied_calls_preserved_for_budget_only": 4,
+    "holdout_inspected": false,
+    "no_adaptive_solver_queries": true,
+    "no_generated_answers": true,
+    "original_query_traces": 80,
+    "questions": 40,
+    "split": "DEV only",
+    "total_fixed_query_replay_events": 1920
+  },
+  "seed_consistency": {
+    "han-v1": {
+      "equal": 240
+    },
+    "legacy": {
+      "equal": 215,
+      "not_comparable_due_error_or_budget": 25
+    },
+    "literal": {
+      "equal": 240
+    },
+    "trigram": {
+      "equal": 240
+    }
+  },
+  "seed_mismatch_count": 0,
+  "semantic_gate": {
+    "aggregates": {
+      "han-v1": {
+        "absent": 24,
+        "contradicted": 0,
+        "fully_supported": 34,
+        "fully_supported_fraction": 0.5666666666666667,
+        "fully_supported_packets": 10,
+        "packets": 24,
+        "partly_supported": 2,
+        "required_fact_units": 60
+      },
+      "literal": {
+        "absent": 48,
+        "contradicted": 0,
+        "fully_supported": 11,
+        "fully_supported_fraction": 0.18333333333333332,
+        "fully_supported_packets": 4,
+        "packets": 24,
+        "partly_supported": 1,
+        "required_fact_units": 60
+      },
+      "trigram": {
+        "absent": 56,
+        "contradicted": 0,
+        "fully_supported": 4,
+        "fully_supported_fraction": 0.06666666666666667,
+        "fully_supported_packets": 2,
+        "packets": 24,
+        "partly_supported": 0,
+        "required_fact_units": 60
+      }
+    },
+    "fact_unit_definition": "one required fact x its original query trace x evaluated arm; two original traces and two evaluated arms stay separate",
+    "packet_count": 72,
+    "paid_requests_before_selection": 0,
+    "paired_fully_supported_changes": {
+      "han-v1": {
+        "gained_fully_supported_facts": 23,
+        "lost_fully_supported_facts": 0,
+        "net_fully_supported_change": 23
+      },
+      "trigram": {
+        "gained_fully_supported_facts": 0,
+        "lost_fully_supported_facts": 7,
+        "net_fully_supported_change": -7
+      }
+    },
+    "required_fact_units_per_factor": 60,
+    "required_facts_across_six_questions": 15,
+    "selection": {
+      "eligible_candidates": [
+        "han-v1"
+      ],
+      "reason": "han-v1 has 34/60 fully-supported fact units versus literal 11/60; gained 23, lost 0. It wins the frozen ordering among candidates strictly exceeding literal.",
+      "rule": "strictly more fully-supported required facts than literal; then greater fully-supported count, fewer lost literal-supported facts, then literal/trigram/han-v1 order",
+      "selected_factor": "han-v1"
+    },
+    "verified_contiguous_quotation_segments": 52
+  },
+  "tracked_paid_provider_requests": 0,
+  "tracked_paid_provider_tokens": 0,
+  "visible_source_interval_availability": {
+    "han-v1/fts": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 388
+    },
+    "han-v1/graph": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 454
+    },
+    "legacy/fts": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 76
+    },
+    "legacy/graph": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 123
+    },
+    "literal/fts": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 85
+    },
+    "literal/graph": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 151
+    },
+    "trigram/fts": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 58
+    },
+    "trigram/graph": {
+      "positive_complete_line_intervals": 0,
+      "visible_source_reference_occurrences": 93
+    }
+  }
+}

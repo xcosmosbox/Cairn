@@ -1,0 +1,51 @@
+{
+  "format": "cairn-round2-implementation-freeze/v1",
+  "frozen_at_utc": "2026-10-04T13:45:07.289454+00:00",
+  "paid_requests_before_freeze": 0,
+  "production_and_harness_commit": "1baa5f20b6d0c11fd108eaa6ac4453d56fb039ad",
+  "tree": "0cd2f4a5e55e7f4f6db132f579de83e02433703b",
+  "selected_factor": {
+    "adapter": "/workspace/scratch/05aefcf1dff2/round2-runs/bin/cairn-eval-retrieve",
+    "adapter_args": [
+      "--query-syntax",
+      "text",
+      "--text-profile",
+      "han-v1",
+      "--index-manifest",
+      "/workspace/scratch/05aefcf1dff2/round2-runs/indexes/han-v1.manifest.json"
+    ],
+    "adapter_sha256": "2c48abf664a6c9291c6ee7e305765d6b42a987d824fce05ae6709c30bb2dd43b",
+    "database": "/workspace/scratch/05aefcf1dff2/round2-runs/indexes/han-v1.db",
+    "database_sha256": "8585650bd10ed62eb35ca1e4f2cad1b10c5801bac5970f50f2bc8d4199c9c566",
+    "id": "han-v1",
+    "manifest_sha256": "32872f6b6f9ef2fdee7d00b9545525a97def249d779109e859c9ef333d40e998"
+  },
+  "wrapper": {
+    "path": "/workspace/scratch/05aefcf1dff2/round2-runs/offline/adapter-wrappers/han-v1.py",
+    "sha256": "2721fd5fda9c8cb350d4c34b8137ee0e33713486cce4353107d0c9b6e10b388a"
+  },
+  "selection_sha256": "69ef7d5d2db64f94f429f1f807b5a7fa02873ae23abafa1065651a8fb975d893",
+  "protocol_sha256": "ef3070281c865f0f2371dd39c1df64eb6901f75e43007e8eb2acfb0205c5c1dc",
+  "amendment_sha256": "133572fbb63e1da0b23673250c6e5a3ecfd553f5e13b71ff5d94d9a02b720cba",
+  "native_source_sha256": {
+    "agent_eval_native.py": "09774f8dbb398d2b6033b1831fc8d8edf4648cc5785fcb0d2a9fdbfa2c853c69",
+    "agent_eval.py": "eb9cd4b11a2aeb9df2d1c9f17a06e86aa924be6220dfa29dab6639e3a1153305",
+    "retrieval.py": "cc1eea1b87c356d2064fded8c6f0a7f64c2d312cd355a8c7d0d2bf2e1b53c969",
+    "durable_ledger.py": "e831d19a10cd8891a3e1130a643f7951eac632adb77795950531efe9531d45e8",
+    "grade.py": "300db55c803cfff1f886757db9c89d21d2967d7650b46b6c46dad90b78b0e67c"
+  },
+  "questions_sha256": "54fea2e690ad7b6567b86acc4634454c2734f3159b6bcb39d767a614606218cd",
+  "gold_sha256": "a8f6b9f672cfae5d719245ab62a83fffc6183e4b7d95435c99b1579500295f0a",
+  "raw_db_sha256": "440ba9bd89cd6833d863fcc6f82f9021f5a9fe1b91ce11ba50f26b5a4b439b69",
+  "original_db_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+  "go_version": "go1.22.12",
+  "build_flags": [
+    "-buildvcs=false"
+  ],
+  "ci": {
+    "push": "https://github.com/xcosmosbox/Cairn/actions/runs/37206489717",
+    "pull_request": "https://github.com/xcosmosbox/Cairn/actions/runs/37206562284",
+    "both": "success"
+  },
+  "pilot_execution": "First m02/fts is a recorded pilot task to detect provider failure before scheduling the remaining 11; same workers=6 configuration, prompts and per-task budgets. It is reused unchanged with later results; pilot total cap48 and solver total400 remain shared across invocations. No extra unrecorded connectivity/model probe."
+}
