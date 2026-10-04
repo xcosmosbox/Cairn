@@ -17,6 +17,12 @@ var ErrLeaseBusy = errors.New("reconcile: repository lease held by another execu
 // withRepoLease 每次调用使用独立 owner，包括同一实例的并发 Step。
 // Renew ownership for the full action lifetime and cancel work when ownership is lost.
 func (r *Reconciler) withRepoLease(ctx context.Context, repoID string, fn func(context.Context) error) (bool, error) {
+	return r.withRepoLeaseTicks(ctx, repoID, fn, nil)
+}
+
+// withRepoLeaseTicks 保持同一租约生命周期，只把心跳触发与数据库的真实时钟分开。
+// This private entry lets tests observe committed renewals without assuming scheduler timing.
+func (r *Reconciler) withRepoLeaseTicks(ctx context.Context, repoID string, fn func(context.Context) error, ticks <-chan time.Time) (bool, error) {
 	owner := r.holderID + "/" + uuid.NewString()
 	acquired, err := r.store.AcquireLease(ctx, repoID, owner, r.leaseTTL)
 	if err != nil || !acquired {
@@ -30,17 +36,23 @@ func (r *Reconciler) withRepoLease(ctx context.Context, repoID string, fn func(c
 	if interval < time.Millisecond {
 		interval = time.Millisecond
 	}
+	var ticker *time.Ticker
+	if ticks == nil {
+		ticker = time.NewTicker(interval)
+		ticks = ticker.C
+	}
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
+		if ticker != nil {
+			defer ticker.Stop()
+		}
 		for {
 			select {
 			case <-stop:
 				return
 			case <-actionCtx.Done():
 				return
-			case <-ticker.C:
+			case <-ticks:
 				heartbeatCtx, stopHeartbeat := context.WithTimeout(actionCtx, interval)
 				err := r.store.RenewLease(heartbeatCtx, repoID, owner, r.leaseTTL)
 				stopHeartbeat()

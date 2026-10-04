@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "node_count": 944,
+  "edge_count": 2460,
+  "checks": [
+    "quick_check",
+    "schema",
+    "node_count",
+    "edge_count",
+    "edge endpoints",
+    "node sources",
+    "source_closure"
+  ]
+}

@@ -167,7 +167,7 @@ func (c *Config) Validate() error {
 		c.LLM.Provider = "openai_compatible"
 	}
 	if c.LLM.Endpoint == "" {
-		c.LLM.Endpoint = "https://api.deepseek.com/chat/completions"
+		c.LLM.Endpoint = DeepSeekEndpoint
 	}
 	if c.LLM.APIKeyEnv == "" {
 		c.LLM.APIKeyEnv = "CAIRN_LLM_API_KEY"
@@ -176,10 +176,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("dkconfig: llm.api_key_env 非法环境变量名 %q", c.LLM.APIKeyEnv)
 	}
 	if c.LLM.Model == "" {
-		c.LLM.Model = "deepseek-v4-pro"
+		c.LLM.Model = DeepSeekFlashModel
 	}
 	if c.LLM.MaxTokens <= 0 {
-		c.LLM.MaxTokens = 384000
+		c.LLM.MaxTokens = DeepSeekDefaultThinkingTokens
+	}
+	if IsDeepSeekEndpoint(c.LLM.Endpoint) && c.LLM.MaxTokens > DeepSeekMaxOutputTokens {
+		return fmt.Errorf("dkconfig: llm.max_tokens %d exceeds DeepSeek maximum %d", c.LLM.MaxTokens, DeepSeekMaxOutputTokens)
 	}
 	if c.LLM.Timeout.Std() <= 0 {
 		c.LLM.Timeout = Duration(600 * time.Second)
@@ -326,10 +329,10 @@ func Defaults() Config {
 		},
 		LLM: LLMConfig{
 			Provider:   "openai_compatible",
-			Endpoint:   "https://api.deepseek.com/chat/completions",
+			Endpoint:   DeepSeekEndpoint,
 			APIKeyEnv:  "CAIRN_LLM_API_KEY",
-			Model:      "deepseek-v4-pro",
-			MaxTokens:  384000,
+			Model:      DeepSeekFlashModel,
+			MaxTokens:  DeepSeekDefaultThinkingTokens,
 			Timeout:    Duration(600 * time.Second),
 			MaxRetries: 3,
 		},

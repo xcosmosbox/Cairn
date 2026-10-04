@@ -24,8 +24,8 @@ llm:
   provider: openai_compatible
   endpoint: https://api.deepseek.com/chat/completions
   api_key_env: CAIRN_LLM_API_KEY
-  model: deepseek-v4-pro
-  max_tokens: 383000
+  model: deepseek-flash  # 官方 API ID；当前 DeepSeek-V4.1-Flash
+  max_tokens: 65536       # standard thinking 默认 64K；可设到 393216（384K）
   timeout: 600s
   max_retries: 3
 

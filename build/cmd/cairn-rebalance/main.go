@@ -27,6 +27,7 @@ import (
 
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dkconfig"
 	"github.com/xcosmosbox/cairn/core/evolve"
 	"github.com/xcosmosbox/cairn/core/metrics"
 )
@@ -36,9 +37,9 @@ func main() {
 	dbPath := flag.String("db", "knowledge.db", "既有 SQLite 库路径（局部 upsert，不重建）/ existing .db path")
 	repositoryIdentity := flag.String("repository-identity", "", "稳定仓库身份（默认 Git origin / 本地持久标记）/ stable repository identity")
 	adoptLegacy := flag.Bool("adopt-legacy", false, "显式导入无身份旧库，要求完整原始 sidecar 来源证明 / explicitly adopt a legacy KG with complete sidecar proof")
-	model := flag.String("model", "deepseek-v4-pro", "LLM 模型 / LLM model")
-	endpoint := flag.String("endpoint", "https://api.deepseek.com/chat/completions", "LLM endpoint")
-	maxTokens := flag.Int("max-tokens", 384000, "单次 LLM 最大输出 token / max output tokens per call")
+	model := flag.String("model", dkconfig.DeepSeekFlashModel, "LLM 模型 / LLM model")
+	endpoint := flag.String("endpoint", dkconfig.DeepSeekEndpoint, "LLM endpoint")
+	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "单次 LLM 最大输出 token（DeepSeek 上限 393216）/ max output tokens per call")
 	timeout := flag.String("timeout", "1800s", "单请求超时 / per-request timeout")
 	maxRetries := flag.Int("max-retries", 3, "LLM 原地重试上限 / in-place retry cap")
 	check := flag.Bool("check", false, "只算指标+建议（零 LLM 零改图）/ check only")

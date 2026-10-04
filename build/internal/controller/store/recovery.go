@@ -29,7 +29,7 @@ func (s *Store) beginWrite(ctx context.Context) (*sql.Tx, error) {
 	}
 	if owner, ok := ctx.Value(leaseContextKey{}).(leaseOwnership); ok {
 		var valid int
-		err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM repo_leases WHERE repo_id=? AND holder_id=? AND julianday(expires_at)>julianday(?)`, owner.repoID, owner.holderID, time.Now().UTC().Format(time.RFC3339Nano)).Scan(&valid)
+		err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM repo_leases WHERE repo_id=? AND holder_id=? AND julianday(expires_at)>julianday('now')`, owner.repoID, owner.holderID).Scan(&valid)
 		if err != nil || valid != 1 {
 			tx.Rollback()
 			if err != nil {

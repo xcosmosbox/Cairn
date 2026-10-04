@@ -26,6 +26,7 @@ import (
 
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/pipeline"
+	"github.com/xcosmosbox/cairn/core/dkconfig"
 	"github.com/xcosmosbox/cairn/core/evolve"
 )
 
@@ -33,9 +34,9 @@ func main() {
 	repositoryIdentity := flag.String("repository-identity", "", "稳定仓库身份（默认 Git origin / 本地持久标记）/ stable repository identity")
 	repo := flag.String("repo", "", "待扫描的仓库工作区路径 / workspace repo path to scan")
 	dbPath := flag.String("db", "knowledge.db", "输出 SQLite 库路径 / output .db path")
-	model := flag.String("model", "deepseek-v4-pro", "LLM 模型 / LLM model")
-	endpoint := flag.String("endpoint", "https://api.deepseek.com/chat/completions", "LLM endpoint")
-	maxTokens := flag.Int("max-tokens", 384000, "单次 LLM 最大输出 token / max output tokens per call")
+	model := flag.String("model", dkconfig.DeepSeekFlashModel, "LLM 模型 / LLM model")
+	endpoint := flag.String("endpoint", dkconfig.DeepSeekEndpoint, "LLM endpoint")
+	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "单次 LLM 最大输出 token（DeepSeek 上限 393216）/ max output tokens per call")
 	timeout := flag.String("timeout", "1800s", "单请求超时 / per-request timeout")
 	maxRetries := flag.Int("max-retries", 3, "各 LLM 阶段原地重试上限 / in-place retry cap per LLM stage")
 	maxRollbacks := flag.Int("max-rollbacks", 3, "单篇文档回退重标注上限 / per-doc rollback budget")

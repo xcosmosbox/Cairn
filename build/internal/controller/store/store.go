@@ -552,18 +552,35 @@ func (s *Store) MarkEffectFailed(ctx context.Context, effectKey, summary string)
 
 // ─── Lease ──────────────────────────────────────────────────────
 
+// leaseTTLModifier 使用与 SQLite UTC 时钟一致的毫秒精度，向上取整使正 TTL 不变成零。
+// SQL time has millisecond precision; round positive durations up without overflowing time.Duration.
+func leaseTTLModifier(ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		return "", fmt.Errorf("controller store: invalid lease TTL")
+	}
+	ms := ttl / time.Millisecond
+	if ttl%time.Millisecond != 0 {
+		ms++
+	}
+	return fmt.Sprintf("+%d.%03d seconds", ms/1000, ms%1000), nil
+}
+
 // AcquireLease 尝试获取 repo 的租约。若已有未过期租约且 holder 不同则失败；
 // 过期租约可被新 holder 接管（§14 崩溃恢复）。
 func (s *Store) AcquireLease(ctx context.Context, repoID, holderID string, ttl time.Duration) (bool, error) {
-	if repoID == "" || holderID == "" || ttl <= 0 {
-		return false, fmt.Errorf("controller store: invalid lease identity or TTL")
+	if repoID == "" || holderID == "" {
+		return false, fmt.Errorf("controller store: invalid lease identity")
 	}
-	now := time.Now().UTC()
-	// 单语句竞争租约，不允许两个连接先读到空行再同时宣称所有权。
-	// A single conditional upsert avoids read-then-write acquisition races.
-	res, err := s.db.ExecContext(ctx, `INSERT INTO repo_leases (repo_id,holder_id,acquired_at,expires_at,heartbeat_at) VALUES(?,?,?,?,?)
+	modifier, err := leaseTTLModifier(ttl)
+	if err != nil {
+		return false, err
+	}
+	// 连接/写锁排队期间的调用时刻不能决定所有权或过期时间。
+	// Generate grant times and compare existing expiry at SQL execution, after any queue delay.
+	res, err := s.db.ExecContext(ctx, `INSERT INTO repo_leases (repo_id,holder_id,acquired_at,expires_at,heartbeat_at)
+ VALUES(?,?,strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now',?),strftime('%Y-%m-%dT%H:%M:%fZ','now'))
  ON CONFLICT(repo_id) DO UPDATE SET holder_id=excluded.holder_id,acquired_at=excluded.acquired_at,expires_at=excluded.expires_at,heartbeat_at=excluded.heartbeat_at
- WHERE repo_leases.holder_id=excluded.holder_id OR julianday(repo_leases.expires_at)<=julianday(?)`, repoID, holderID, now.Format(time.RFC3339Nano), now.Add(ttl).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+ WHERE repo_leases.holder_id=excluded.holder_id OR julianday(repo_leases.expires_at)<=julianday('now')`, repoID, holderID, modifier)
 	if err != nil {
 		return false, err
 	}
@@ -571,14 +588,16 @@ func (s *Store) AcquireLease(ctx context.Context, repoID, holderID string, ttl t
 	return n == 1, err
 }
 
-// RenewLease 仅续约尚未过期且仍属于本次执行的租约；过期执行不能复活。
-// Renew only a live lease owned by this execution; expired owners cannot resurrect it.
+// RenewLease 只续约执行 SQL 时仍有效的当前 owner，不能用排队前时间复活已过期 holder。
+// Renewal must validate SQL execution time, not a captured time from before connection/lock waits.
 func (s *Store) RenewLease(ctx context.Context, repoID, holderID string, ttl time.Duration) error {
-	if ttl <= 0 {
-		return fmt.Errorf("controller store: invalid lease TTL")
+	modifier, err := leaseTTLModifier(ttl)
+	if err != nil {
+		return err
 	}
-	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE repo_leases SET expires_at=?,heartbeat_at=? WHERE repo_id=? AND holder_id=? AND julianday(expires_at)>julianday(?)`, now.Add(ttl).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), repoID, holderID, now.Format(time.RFC3339Nano))
+	res, err := s.db.ExecContext(ctx, `UPDATE repo_leases
+ SET expires_at=strftime('%Y-%m-%dT%H:%M:%fZ','now',?),heartbeat_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ WHERE repo_id=? AND holder_id=? AND julianday(expires_at)>julianday('now')`, modifier, repoID, holderID)
 	if err != nil {
 		return err
 	}

@@ -149,9 +149,9 @@ func (s *LLMSummarizer) generateCatalogSummary(ctx context.Context, input PRSumm
 // callLLM 是 Source/Catalog 共用的 LLM 调用 + JSON 解析逻辑。
 func (s *LLMSummarizer) callLLM(ctx context.Context, prompt, system, kgGroup string) (PRSummary, error) {
 	resp, err := s.client.Complete(ctx, llm.CompleteRequest{
-		System:    system,
-		User:      prompt,
-		MaxTokens: 2000,
+		System: system,
+		User:   prompt,
+		// Use the configured client budget, which also covers thinking tokens.
 	})
 	if err != nil {
 		log.Printf("[pr-summary] LLM 调用失败: %v", err)
