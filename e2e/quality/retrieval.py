@@ -147,6 +147,9 @@ def normalized_block(block: dict) -> dict:
     }
     if safe_sources:
         result.update({key: safe_sources[0][key] for key in ("path", "start_line", "end_line") if key in safe_sources[0]})
+        # 回填必须保留真实字符边界；historical node/raw formatting stays byte-identical.
+        if result["kind"] == "source_backfill" and result["provenance"] == "verified_original_source_file_scope":
+            result.update({key: safe_sources[0][key] for key in ("start_char", "end_char") if key in safe_sources[0]})
     if len(sources) > len(safe_sources):
         result["sources_truncated"] = True
     relations = block.get("relations", block.get("edges"))
@@ -155,6 +158,27 @@ def normalized_block(block: dict) -> dict:
         if len(relations) > 20:
             result["relations_truncated"] = True
     return result
+
+
+def _clipped_evidence(block: dict, length: int) -> dict:
+    """仅回填原文随前缀裁剪收窄范围；other evidence keeps historical formatting."""
+    clipped = {**block, "text": block["text"][:length], "text_truncated": True}
+    if block.get("kind") != "source_backfill" or block.get("provenance") != "verified_original_source_file_scope":
+        return clipped
+    sources = block.get("sources", [])
+    if len(sources) != 1:
+        raise ValueError("backfill clipping requires exactly one verified source")
+    source = sources[0]
+    if any(type(source.get(key)) is not int for key in ("start_char", "end_char", "start_line", "end_line")):
+        raise ValueError("backfill clipping requires integer char/line bounds")
+    if (source["start_char"] < 0 or source["end_char"] - source["start_char"] != len(block["text"])
+            or source["start_line"] < 1
+            or source["end_line"] != source["start_line"] + block["text"][:-1].count("\n")):
+        raise ValueError("backfill clipping bounds do not describe its exact text")
+    narrowed = {**source, "end_char": source["start_char"] + len(clipped["text"]),
+                "end_line": source["start_line"] + clipped["text"][:-1].count("\n")}
+    clipped.update(sources=[narrowed], end_char=narrowed["end_char"], end_line=narrowed["end_line"])
+    return clipped
 
 
 def evidence_budget(blocks: list[dict], max_chars: int, top_k: int = 10) -> dict:
@@ -174,7 +198,7 @@ def evidence_budget(blocks: list[dict], max_chars: int, top_k: int = 10) -> dict
         left, right, best = 0, len(text), None
         while left <= right:
             middle = (left + right) // 2
-            clipped = {**block, "text": text[:middle], "text_truncated": True}
+            clipped = _clipped_evidence(block, middle)
             if len(json_text({"evidence": selected + [clipped], "truncated": True})) <= max_chars:
                 best, left = clipped, middle + 1
             else:
