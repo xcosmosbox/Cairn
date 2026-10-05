@@ -1,0 +1,148 @@
+{
+  "format": "cairn-retrieval-round2/v1",
+  "frozen_at_utc": "2026-10-04T13:17:37.374318+00:00",
+  "purpose": "Separate plain query syntax safety from Chinese index/query token consistency; then compare FTS and graph under unchanged native solver protocol.",
+  "archive_publication": {
+    "repository": "xcosmosbox/kd_manifeat",
+    "commit": "ab0d7d4bfe55a88532fce6ac1cdd7c1011db9036",
+    "workflow_run": 37204789763,
+    "visibility_observed": "private",
+    "anonymously_public": false
+  },
+  "code": {
+    "production_base": "343eb25efc460e14c41df66e55db75040bdbc7b8",
+    "legacy_base": "74170824cfbec34e05b6406cacac49a4d77f66d6",
+    "evaluation_source_checkpoint": "5c84d7c8482806a9355e4e7ecc918bccb82ac88d",
+    "implementation_freeze": "separate hash-bound record required before first paid candidate run; no later tuning from holdout"
+  },
+  "data": {
+    "gold_sha256": "a8f6b9f672cfae5d719245ab62a83fffc6183e4b7d95435c99b1579500295f0a",
+    "dev_questions_sha256": "fa5dd1a59791ba8c6c0dc9feab4b673929e8ef575125b29fb509fbd9ec969edf",
+    "database_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+    "raw_db_sha256": "440ba9bd89cd6833d863fcc6f82f9021f5a9fe1b91ce11ba50f26b5a4b439b69",
+    "baseline_results_sha256": "a56b9a4c2f31db42530acbd9156922f0f2967cabf00ae80f18cc392bdb2596b4",
+    "rankfix_results_sha256": "27c3385600c73e21f3a873da950b89aa816851081283a4a009da6134ede68513",
+    "source_rule": "all KG nodes, edges, node_sources, metadata and other non-FTS table rows stay identical; only derived index copies change"
+  },
+  "offline": {
+    "roster": "Only40DEV ids, before selecting queries; all240 actually executed old FTS/graph searches (ok or error);4 denied overbudget calls excluded; retain duplicate query events and origin trace ordering. Freeze roster before candidate replay.",
+    "factors": [
+      {
+        "id": "legacy",
+        "index": "original unicode61",
+        "query": "legacy raw MATCH",
+        "production_revision": "74170824cfbec34e05b6406cacac49a4d77f66d6"
+      },
+      {
+        "id": "literal",
+        "index": "original unicode61",
+        "query": "safe quote each original whitespace atom, AND",
+        "text_profile": "literal"
+      },
+      {
+        "id": "trigram",
+        "index": "copy: trigram, same seven raw field values",
+        "query": "safe quote each original whitespace atom, AND",
+        "text_profile": "literal"
+      },
+      {
+        "id": "han-v1",
+        "index": "copy: unicode61 with spaces around Go unicode.Han runes in each indexed field",
+        "query": "same Han transform inside each original quoted atom, AND",
+        "text_profile": "han-v1"
+      }
+    ],
+    "arms": [
+      "fts",
+      "graph"
+    ],
+    "controls": [
+      "same top10 seeds and finalK",
+      "unchanged BFS depth and ranking weights",
+      "same evidence formatter",
+      "per search10000 and trace total20000 visible characters including errors",
+      "no OR, LIKE, stopwords, query-specific exceptions or KG re-extraction"
+    ],
+    "metrics": [
+      "executed search errors",
+      "empty results among successfully executed searches",
+      "visible evidence size and truncation",
+      "source-path/line overlap and MRR (provenance localization only, not semantic correctness)",
+      "FTS/graph seed equality",
+      "paired improvements and regressions",
+      "pure ASCII retrieval changes",
+      "short Han and boundary false adjacency"
+    ],
+    "semantic_gate": {
+      "question_ids": [
+        "m02",
+        "m13",
+        "m24",
+        "d07",
+        "d14",
+        "d23"
+      ],
+      "review": "Independent AI checks required-fact support in actual visible evidence, with exact supporting quotations; opaque factor labels, mapping withheld until verdict. Not a human gold standard.",
+      "selection": "Select at most one index candidate for paid comparison only if supported required-fact coverage on fixed6DEV packets improves over literal; consider losses and report them. If neither index candidate improves, keep literal originalDB. Nonempty/provenance overlap alone cannot select a winner.",
+      "tie_break": "greater fully-supported fact count; fewer newly unsupported facts; then literal, trigram, han-v1 in that order for equal outcomes"
+    }
+  },
+  "solver": {
+    "harness": "agent_eval_native.py native_tool_calls/v3-batches with durable_ledger.py",
+    "model": "deepseek-flash",
+    "thinking": "disabled",
+    "max_tokens": 4096,
+    "max_searches": 3,
+    "max_model_turns": 4,
+    "top_k": 10,
+    "per_search_chars": 10000,
+    "total_context_chars": 20000,
+    "max_retries": 1,
+    "timeout_seconds": 120,
+    "sampling_overrides": null,
+    "workers": 6,
+    "pilot_dev_ids": [
+      "m02",
+      "m13",
+      "m24",
+      "d07",
+      "d14",
+      "d23"
+    ],
+    "formal_questions": 50,
+    "formal_arms": [
+      "fts",
+      "graph"
+    ],
+    "reuse_rule": "freeze implementation before pilot; reuse its12 results in formal100 if all code/data/protocol hashes identical; run remaining44questionsx2 only. Any necessary correction requires separate revision and all pilot attempts remain counted. Never rerun existing200 original tasks."
+  },
+  "paid_budget": {
+    "solver_max_http_attempts_total": 400,
+    "pilot_max_http_attempts": 48,
+    "remaining_solver_attempts": "400 minus all pilot attempts; hard caps passed to every runner",
+    "judge_max_http_attempts_total": 200,
+    "judge_max_accounted_tokens_total": 5000000,
+    "judge_model": "deepseek-flash",
+    "judge_thinking": "enabled",
+    "judge_reasoning_effort": "low",
+    "judge_max_tokens": 32768,
+    "judge_max_attempts_per_case": 2,
+    "judge_workers": 4,
+    "budget_exhaustion": "Stop automatic calls and retain denominator/failures. Residual cases may receive separately labeled independent AI adjudication under same schema; never claim automatic success.",
+    "provider_auth_or_policy_failure": "stop subsequent paid phases; do not route around access denial or simulate API success",
+    "unit": "requests and token ceilings; actual provider usage reported, no invented currency charge"
+  },
+  "holdout": {
+    "size": 10,
+    "previously_evaluated": true,
+    "rule": "No holdout per-case inspection for tuning. Only after implementation freeze; report aggregate and preserve cases for audit. Not an untouched generalization set."
+  },
+  "grading": "existing frozen gold and grade.py rubric/schema; blind method mapping; no gold edits; strict and grounded strict both reported with full denominator; all judge failed attempts and token usage retained",
+  "limitations": [
+    "single-run AI-authored benchmark and AI grading",
+    "index profiles also change BM25 norms; trigram changes Latin substring behavior and misses<3runes",
+    "Han phrases can falsely join punctuation-separated or JSON-array neighbor characters; evaluate rather than silently postfilter",
+    "legacy graph lacks BM25 propagation; use existing rankfix results as closest graph quality comparator; offline new factors share fixed rankfix baseline",
+    "index copies are experimental static read-only data, not production bundle migration"
+  ]
+}

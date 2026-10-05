@@ -243,6 +243,9 @@ func runHTTPServer(state *serverState, addr string) {
 			fmt.Sscanf(l, "%d", &limit)
 		}
 		args := map[string]interface{}{"keyword": keyword, "limit": limit}
+		if syntax, exists := r.URL.Query()["query_syntax"]; exists && len(syntax) > 0 {
+			args["query_syntax"] = syntax[0]
+		}
 		if kg != "" {
 			args["kg"] = kg
 		}

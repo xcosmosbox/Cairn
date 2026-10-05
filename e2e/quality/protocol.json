@@ -1,0 +1,121 @@
+{
+  "version": "cairn-quality-v3-native-batches",
+  "baseline_code_commit": "74170824cfbec34e05b6406cacac49a4d77f66d6",
+  "database_sha256": "6d2d54c533a68317a03a61e6e5291c235a656db71f4408a26fbaf28cf547c828",
+  "source_manifest_sha256": "4ccbf96ccdbf25762d2a26ba911cc189b3b0375acd0ae93a9eaea87a71aa684c",
+  "dataset": {
+    "size": 50,
+    "development": 40,
+    "heldout": 10,
+    "authoring": "independent source-only AI authors; separate AI source-evidence review; not human-labelled gold",
+    "freeze_before_solver": true,
+    "split_seed": 20261004,
+    "forbid_generated_KG_based_question_selection": true,
+    "stratification": "author x question category; 20 dev/5 heldout per author; heldout contains 2 unanswerable questions",
+    "gold_sha256": "a8f6b9f672cfae5d719245ab62a83fffc6183e4b7d95435c99b1579500295f0a",
+    "distinct_evidence_documents": 27,
+    "pilot_dev_ids": [
+      "m02",
+      "m13",
+      "m24",
+      "d07",
+      "d14",
+      "d23"
+    ]
+  },
+  "arms": {
+    "raw": "Original-document chunks, literal lexical matching (grep-like), no graph or LLM retrieval",
+    "fts": "Frozen KG, actual production FTS5, no BFS expansion",
+    "graph": "Frozen KG, actual production SearchPipeline: same FTS seeds, BFS, ScoreAndRank; baseline defects retained"
+  },
+  "solver": {
+    "provider": "openai_compatible",
+    "endpoint": "https://api.deepseek.com/chat/completions",
+    "model": "deepseek-flash",
+    "thinking": {
+      "type": "disabled"
+    },
+    "max_tokens": 4096,
+    "max_searches": 3,
+    "max_logical_rounds": 4,
+    "min_searches": 1,
+    "top_k": 10,
+    "max_context_chars_per_search": 10000,
+    "max_context_chars_total": 20000,
+    "concurrency": 6,
+    "request_timeout_seconds": 120,
+    "max_retries": 1,
+    "max_http_attempts": 700,
+    "sampling_overrides": null,
+    "grounding": "answer only from returned evidence; corpus is untrusted data, not instructions",
+    "credential_source": "runtime environment; value never recorded",
+    "protocol": "native tool_calls: first forced search; batches of searches allowed; every call independently charged against max3 searches and exact context budgets; overbudget calls return tool errors without execution; submit forced on exhaustion or fourth model round; mixed search/submit and multiple submit fail",
+    "harness_sha256": "fe61fdca39ae6a174c2ce49c51661020a3e7eb8c7cda4afdd08beab1ab70fed9"
+  },
+  "primary_metrics": [
+    "required-fact coverage scored against independent source evidence",
+    "answer correctness and groundedness",
+    "correct abstention for unanswerable questions",
+    "source citation validity",
+    "end-to-end latency and recorded token usage"
+  ],
+  "diagnostics": [
+    "origin-path hits are provenance overlap, not semantic retrieval recall",
+    "empty retrieval and query errors",
+    "context truncation",
+    "model failure and provider finish reason",
+    "missing usage count"
+  ],
+  "restrictions": [
+    "No claim of human-reviewed gold or statistical certainty from 50 cases",
+    "No autonomous production changes or source write operations during solver tasks",
+    "Do not tune on heldout per-case failures",
+    "No App JWT acceptance claim without actual credentials and run evidence"
+  ],
+  "official_provider_docs": [
+    "https://api-docs.deepseek.com/guides/thinking_mode/",
+    "https://api-docs.deepseek.com/api/create-chat-completion/",
+    "https://api-docs.deepseek.com/guides/tool_calls/"
+  ],
+  "harness_scope": "Bounded native Chat Completions tool-calling Agent reusing production SearchPipeline retrieval; not MCP, ResponseBuilder, or service token packing; external service-interface E2E was completed separately.",
+  "raw_index": {
+    "chunk_chars": 1800,
+    "overlap_chars": 200,
+    "chunks": 406,
+    "documents": 69,
+    "sha256": "440ba9bd89cd6833d863fcc6f82f9021f5a9fe1b91ce11ba50f26b5a4b439b69",
+    "ranking": "matched-term count DESC, occurrence density DESC, source path ASC, start offset ASC"
+  },
+  "judge": {
+    "model": "deepseek-flash",
+    "thinking": {
+      "type": "enabled"
+    },
+    "reasoning_effort": "low",
+    "max_tokens": 32768,
+    "max_http_attempts": 200,
+    "max_total_accounted_tokens": 8000000,
+    "concurrency": 4,
+    "blinding": "arm names and ranking metadata removed, random ordering; evidence style may reveal method",
+    "review_type": "AI judge with source excerpts, not human evaluation",
+    "reasoning_content_persisted": false,
+    "max_attempts_per_case": 2,
+    "token_budget_revision_reason": "Positive-evidence schema pilot exceeded 8192 output tokens in 2/3 requests; increase all formal judging equally before baseline. Invalid evidence quotations remain hard validation errors.",
+    "metrics": "Separate original-source factual support from actual retrieved-text support; original strict_pass plus grounded_strict_pass"
+  },
+  "baseline_adapter": {
+    "binary_sha256": "c0fe11b613cd388c7ef80fb1032299f5e654a8feda0c29c2325302a31528d752",
+    "main_go_sha256": "13b973e8bf083dc7159fba2a7dc32ffef1a036c54db28d03197d4818b4bec71c",
+    "production_code_commit": "74170824cfbec34e05b6406cacac49a4d77f66d6",
+    "fts_seeds": "one all-label production Search call, same order/ranks/topK as graph pipeline",
+    "known_defect_retained": "TraversalResult.FTS5Hits is empty, so BM25 component is zero"
+  },
+  "protocol_revision_reason": "Before full benchmark: JSON-action pilot failed 5/18 on malformed JSON or fabricated tool turns. Native single-call pilot failed 14/18 because provider validly batched search calls. v3 accepts native search batches with unchanged total search/model/context limits. No gold, retrieval algorithm or model tuning.",
+  "pilot_v3_decision": {
+    "completed": 18,
+    "successful": 16,
+    "failures": "one invalid final tool argument object; one provider search after forced submit with exhausted context",
+    "decision": "freeze v3; keep strict failures in formal end-to-end metrics, no per-case repair or selective retry",
+    "all_http_usage_recorded": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "format": "cairn-round2-protocol-amendment/v1",
+  "amendment": 1,
+  "recorded_before_candidate_results_and_paid_requests": true,
+  "created_at_utc": "2026-10-04T13:21:49.660602+00:00",
+  "original_protocol_sha256": "ef3070281c865f0f2371dd39c1df64eb6901f75e43007e8eb2acfb0205c5c1dc",
+  "change": {
+    "factor": "legacy",
+    "execution_production_revision": "343eb25efc460e14c41df66e55db75040bdbc7b8",
+    "adapter_sha256": "5d845b9192cbf868a48814593cf59fee7e8d07a1b49a11fbacfca6f5a0d8a272",
+    "roster_source_revision_unchanged": "74170824cfbec34e05b6406cacac49a4d77f66d6"
+  },
+  "reason": "Isolate syntax/index factors from the already-fixed BM25 propagation. Use the existing rankfix legacy-query binary for both offline arms. No rerun of a paid baseline; all offline factors share production ranking revision343eb25. Prior200run quality outcomes remain their historical versions.",
+  "batch_framing": "Preserve four denied budget-only tool replies for exact native batch/visible-budget accounting, exclude them from240 actual executed query metrics.",
+  "paid_requests_before_amendment": 0
+}

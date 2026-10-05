@@ -1,0 +1,33 @@
+{
+  "format": "cairn-round2-local-validation/v1",
+  "at_utc": "2026-10-04T13:37:51.107447+00:00",
+  "go_version": "go1.22.12",
+  "full_go_race": {
+    "command": "go test -race -count=1 ./...",
+    "exit_code": 0,
+    "log_sha256": "c47529fe72ef9542771c5759f77a00f90ef28b7b03ecff7a31a2bef1bea1fb6b"
+  },
+  "make_verify": {
+    "first_exit_code": 2,
+    "failure": "managed worktree: error obtaining VCS status exit128",
+    "rerun_exit_code": 0,
+    "local_only_environment": "GOFLAGS=-buildvcs=false",
+    "changes_to_makefile": false,
+    "log_sha256": "26e94f1d499ae33f40cfdafe520248c89bff32c1e8e84b2d1b6ffb474d1424a4"
+  },
+  "python_unittest": {
+    "count": 44,
+    "status": "passed"
+  },
+  "export_receipts_self_test": "passed",
+  "independent_code_review": {
+    "blockers_remaining": 0,
+    "issues_fixed": [
+      "reject nonempty WAL/journal and verify database binding after query",
+      "resolve database symlinks before identity checks",
+      "reject CLI misplaced flags instead of ignoring"
+    ]
+  },
+  "paid_requests_at_record": 0,
+  "remote_ci": "pending; normal git checkout must validate without local VCS workaround"
+}

@@ -74,6 +74,9 @@ func NewSearchPipeline(db *storage.DB, rw *QueryRewriter, cfg *ServiceConfig) *S
 //
 // Any step failure returns the corresponding error with contextual information.
 func (p *SearchPipeline) Execute(ctx context.Context, req *dktypes.QueryRequest) (*SearchContext, error) {
+	if req == nil {
+		return nil, fmt.Errorf("query request must not be nil")
+	}
 	sc := &SearchContext{
 		OriginalQuery: req.Query,
 		Config:        p.config,
@@ -82,17 +85,19 @@ func (p *SearchPipeline) Execute(ctx context.Context, req *dktypes.QueryRequest)
 
 	// Step 1: 查询改写 — 缩写扩展 + 同义词扩展 + 分词语
 	// Step 1: Query rewriting — abbreviation expansion + synonym expansion + tokenization
-	rewritten, err := p.rewriter.Rewrite(ctx, req.Query)
+	prepared, err := PrepareSearchQuery(ctx, p.rewriter, req.Query, req.QuerySyntax, p.config.TextProfile)
 	if err != nil {
 		return nil, fmt.Errorf("query rewriting failed: %w", err)
 	}
-	sc.RewrittenQuery = rewritten
-	log.Printf("[search-pipeline] query rewritten: %q → %q", req.Query, rewritten)
+	sc.RewrittenQuery = prepared.RewrittenText
+	sc.MatchExpression = prepared.MatchExpression
+	sc.QuerySyntax, sc.TextProfile = prepared.Syntax, prepared.TextProfile
+	log.Printf("[search-pipeline] query rewritten: %q → %q; syntax=%s profile=%s MATCH=%q", req.Query, sc.RewrittenQuery, sc.QuerySyntax, sc.TextProfile, sc.MatchExpression)
 
 	// Step 2: FTS5 全文搜索
 	// Step 2: FTS5 full-text search
 	ftsIndex := storage.NewFTSIndex(p.db)
-	ftsHits, err := ftsIndex.Search(ctx, sc.RewrittenQuery, req.Scope, "", p.config.MaxSearchResults)
+	ftsHits, err := ftsIndex.Search(ctx, sc.MatchExpression, req.Scope, "", p.config.MaxSearchResults)
 	if err != nil {
 		return nil, fmt.Errorf("%w: FTS5 search failed: %v", ErrInternal.Wrap(err), err)
 	}

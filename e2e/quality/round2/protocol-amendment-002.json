@@ -1,0 +1,38 @@
+{
+  "format": "cairn-round2-protocol-amendment/v1",
+  "amendment": 2,
+  "at_utc": "2026-10-04T13:57:46.504637+00:00",
+  "reason": "Observed formal-run result and HTTP ledger path identity replacement; root cause remains unknown. Result persistence failure was not propagated to other queued solver tasks, so network continued until request-ledger protection also triggered.",
+  "original_protocol_sha256": "ef3070281c865f0f2371dd39c1df64eb6901f75e43007e8eb2acfb0205c5c1dc",
+  "original_implementation_freeze_sha256": "deafbdd3d147a5e81a8351663a65313638ca81cdf31146ed05f1ac9ccb56719e",
+  "change": "Persistence-only harness safety revision: shared terminal integrity gate before network admission; preserve all already-admitted responses and completed task results; refuse complete-run success after any persistence failure. Use isolated temporary output directories and copy only after process exit and integrity verification. Final revised source hash required before continuation.",
+  "model_tool_protocol_changed": false,
+  "unchanged": [
+    "deepseek-flash",
+    "thinking disabled",
+    "max_tokens4096",
+    "max3searches/max4rounds",
+    "top10",
+    "per-search10000/total20000characters",
+    "native batch parsing",
+    "Han retrieval adapter/index",
+    "gold",
+    "judge rubric/configuration"
+  ],
+  "continuation": {
+    "previous_pilot_results_reused": 12,
+    "formal_jobs_previously_scheduled": 88,
+    "network_started_tasks": 37,
+    "completed_candidates_for_hash_replay": 31,
+    "partial_tasks_retained_as_failures_without_rerun": 6,
+    "never_network_started_tasks_to_execute": 51,
+    "historical_200_tasks_repeated": 0,
+    "first_formal_budget_reservations": 152,
+    "pilot_budget_reservations": 34,
+    "maximum_remaining_reservations": 214,
+    "total_solver_ceiling": 400
+  },
+  "audit": "Never rewrite failed source ledgers. Recorded response replay must match original outgoing request SHA256 at every recovered turn. Label reconstructed results explicitly; incomplete chains stay failed. Unknown request usage remains unknown.",
+  "comparison_impact": "Same per-task retrieval/model budgets and implementation; 51 previously unstarted tasks use revised persistence code and separate scheduling after interruption. Full100 denominator includes partial failures, and the cohort is mixed original/reconstructed/continued provenance, not one uninterrupted durable run. No claim of fully verified original request persistence for the interrupted cohort.",
+  "paid_continuation_before_this_amendment": 0
+}

@@ -210,20 +210,28 @@ func printSubcommandHelp(cmd string) error {
 		fmt.Println(`cairn find <entity-name> — 按名称搜索实体 / Search entities by name
 
 用法 / Usage:
-  cairn find <entity-name> [flags]
+  cairn find [flags] <query>
 
 标志 / Flags:
   --limit <n>    最大返回结果数，默认 10 / Max results to return, default 10
   --domain <name> 按业务域过滤 / Filter by business domain
+  --query-syntax text|fts5  默认 text；高级 MATCH 必须显式选择 fts5
+                           Default text; opt in to advanced MATCH with fts5
 
 说明 / Description:
-  使用 FTS5 全文索引在 name、summary、synonyms、tags、description、
-  domain、subdomain 列中进行模糊匹配。结果按 BM25 相关性排序，
-  并展示每个匹配节点的入边关系。
+  标志必须放在查询前；含空格的查询请整体加引号。
+  默认将空白分隔的词组作为文字，用 AND 连接；标点不作为操作符。
+  fts5 模式原样接受高级 MATCH，语法错误会直接返回。
+  查询使用 FTS5 和图扩展，按混合分数排序，并展示入边关系。
 
-  Uses FTS5 full-text index for fuzzy matching across name, summary,
-  synonyms, tags, description, domain, and subdomain columns. Results
-  are ranked by BM25 relevance, with incoming edge relationships displayed.`)
+  Put flags before the query and quote queries containing whitespace.
+  Text mode quotes whitespace atoms and joins them with AND; punctuation
+  is not query syntax. Explicit fts5 mode accepts unchanged advanced MATCH.
+  FTS5 plus graph expansion is ranked by the hybrid score.
+
+示例 / Examples:
+  cairn find "net.ops-worker"
+  cairn find --query-syntax fts5 "alpha OR beta*"`)
 	case "impact":
 		fmt.Println(`cairn impact <entity-name> — 正向 BFS 影响分析 / Forward BFS impact analysis
 

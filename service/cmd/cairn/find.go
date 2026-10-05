@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/service/internal/service"
 )
 
@@ -25,14 +26,19 @@ func runFind(svc service.KnowledgeService, args []string) error {
 	fs := flag.NewFlagSet("find", flag.ExitOnError)
 	limit := fs.Int("limit", 10, "最大返回结果数 / max results to return")
 	domain := fs.String("domain", "", "按业务域过滤 / filter by business domain")
+	syntax := fs.String("query-syntax", "text", "text: literal keyword atoms AND; fts5: explicit advanced MATCH")
 
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("解析参数失败 / failed to parse arguments: %w", err)
 	}
-	if fs.NArg() < 1 {
-		return fmt.Errorf("缺少实体名称参数 / missing entity name argument\n用法: cairn find <entity-name> [--limit <n>] [--domain <name>]")
+	if fs.NArg() != 1 {
+		return fmt.Errorf("必须提供一个带引号的查询，标志放在查询前 / provide one quoted query with flags before it\n用法: cairn find [--query-syntax text|fts5] [--limit <n>] [--domain <name>] <query>")
 	}
 	entityName := fs.Arg(0)
+	querySyntax := dktypes.QuerySyntax(*syntax)
+	if !querySyntax.IsValid() {
+		return fmt.Errorf("query-syntax must be text or fts5")
+	}
 
 	var scope []string
 	if *domain != "" {
@@ -42,8 +48,9 @@ func runFind(svc service.KnowledgeService, args []string) error {
 	// 委托元能力：检索由 service 层完成，CLI 不碰 SQL。
 	// Delegate to the meta-capability; the CLI does not touch SQL.
 	res, err := svc.Search(context.Background(), entityName, service.SearchOptions{
-		Scope: scope,
-		Limit: *limit,
+		Scope:       scope,
+		Limit:       *limit,
+		QuerySyntax: querySyntax,
 	})
 	if err != nil {
 		return fmt.Errorf("搜索失败 / search failed: %w", err)

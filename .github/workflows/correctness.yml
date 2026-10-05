@@ -26,6 +26,10 @@ jobs:
         run: |
           bash -n scripts/dev/smoke-mcp.sh
           python3 scripts/dev/zz_smoke_mcp_test.py
+      - name: Retrieval evaluation protocol and durable audit regressions
+        run: |
+          python3 -m unittest discover -s e2e/quality -p 'test_*.py'
+          python3 e2e/quality/export_receipts.py --self-test
   viewer:
     runs-on: ubuntu-latest
     timeout-minutes: 15

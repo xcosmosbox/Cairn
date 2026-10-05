@@ -105,10 +105,23 @@ JSON Output。`--model` / `--endpoint` 可改，完整参数见 `./bin/cairn-ing
 ./bin/cairn --db-path ./knowledge.db status                # 图谱概览
 ```
 
+搜索默认采用普通文本：按空白划分关键词，每个词安全引用后以 AND 组合。
+`foo.bar`、`worker-name`、引号、冒号和 `OR` 等内容不会被当成 FTS 操作符。
+匹配仍遵循索引分词器的规则，不保证标点逐字节一致。需要布尔、前缀或列过滤时，
+显式选择高级语法；CLI 的选项放在查询之前：
+
+```bash
+./bin/cairn --db-path ./knowledge.db find --query-syntax fts5 'orders OR payments'
+```
+
+MCP `domain_search` 与 REST 搜索使用 `query_syntax: "text" | "fts5"`，省略时为 `text`。
+高级表达式原样传给 MATCH，语法错误会显式返回；原先依赖隐式高级语法的调用方需设置此选项。
+底层 `FTSIndex.Search` 保留高级 MATCH 契约，增量融合的 OR 召回不受此入口调整影响。
+
 > **关于中文检索**：`nodes_fts` 使用 FTS5 默认的 `unicode61` 分词器，连续汉字是
-> 单个 token，因此请传**完整节点名**而非子串（搜「订单聚合根」可命中，只搜「订单」不行）。
-> 命中一个入口节点后，图遍历会把周边子图带出来。这是当前的既定设计，
-> 原因与后续改法记录在 `service/internal/service/query_rewriter.go` 的文档注释里。
+> 单个 token；一个较短片段若没有独立词元，仍可能无法命中。安全引用本身不会改变分词。
+> [检索评测工具](e2e/quality/README.md) 单独比较 trigram 与 Han 字符短语索引副本，
+> 这些实验没有迁移生产库，也不能将命中增加等同于回答正确率提升。
 
 ### 3. 挂给 AI Agent（MCP）
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,6 +193,28 @@ func TestRealHTTPRESTAndLegacySSEHandshake(t *testing.T) {
 			if response["kg_name"] != "smoke" {
 				t.Fatal(response)
 			}
+		}
+	}
+	// Exercise real REST query_syntax forwarding; an ignored option would make
+	// the explicit boolean query behave like the empty literal-AND query.
+	for _, tc := range []struct {
+		syntax  string
+		wantHit bool
+	}{{"text", false}, {"fts5", true}} {
+		path := "/api/search?kg=smoke&keyword=" + url.QueryEscape("aggregate0 OR absent") + "&query_syntax=" + tc.syntax
+		res, err := client.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var response map[string]interface{}
+		err = json.NewDecoder(res.Body).Decode(&response)
+		res.Body.Close()
+		if err != nil || res.StatusCode != 200 || response["isError"] == true || response["error"] != nil {
+			t.Fatalf("REST syntax request failed: %+v %v", response, err)
+		}
+		text, _ := response["markdown"].(string)
+		if strings.Contains(text, "- ID: 0") != tc.wantHit {
+			t.Fatalf("REST lost syntax %s: %+v", tc.syntax, response)
 		}
 	}
 	stream, err := client.Get(base + "/sse")

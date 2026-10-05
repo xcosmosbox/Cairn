@@ -1,0 +1,4 @@
+__pycache__/
+# Frozen questions and per-case records are published in the authorized audit repository.
+dataset/
+source-manifest.json

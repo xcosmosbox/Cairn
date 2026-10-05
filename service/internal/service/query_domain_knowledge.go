@@ -15,18 +15,18 @@ import (
 
 // QueryDomainKnowledgeHandler 负责处理 "查询领域知识" 的请求，
 // 它是整个服务层对外的主要入口。处理流程包括：
-//   1. 请求校验（validateRequest）
-//   2. 应用默认值（applyDefaults）
-//   3. 执行检索管线（SearchPipeline.Execute）
-//   4. 构建查询响应（ResponseBuilder.Build）
+//  1. 请求校验（validateRequest）
+//  2. 应用默认值（applyDefaults）
+//  3. 执行检索管线（SearchPipeline.Execute）
+//  4. 构建查询响应（ResponseBuilder.Build）
 //
 // QueryDomainKnowledgeHandler is responsible for handling "query domain knowledge"
 // requests. It serves as the main external entry point for the entire service layer.
 // The processing flow includes:
-//   1. Request validation (validateRequest)
-//   2. Apply defaults (applyDefaults)
-//   3. Execute retrieval pipeline (SearchPipeline.Execute)
-//   4. Build query response (ResponseBuilder.Build)
+//  1. Request validation (validateRequest)
+//  2. Apply defaults (applyDefaults)
+//  3. Execute retrieval pipeline (SearchPipeline.Execute)
+//  4. Build query response (ResponseBuilder.Build)
 type QueryDomainKnowledgeHandler struct {
 	// pipeline 是检索管线，负责查询改写、FTS5 搜索、BFS 遍历和打分排序。
 	// pipeline is the retrieval pipeline, responsible for query rewriting,
@@ -123,6 +123,9 @@ func (h *QueryDomainKnowledgeHandler) validateRequest(req *dktypes.QueryRequest)
 	// Validate query string
 	if strings.TrimSpace(req.Query) == "" {
 		return ErrInvalidQuery.WithDetail("query string is empty or contains only whitespace")
+	}
+	if !req.QuerySyntax.IsValid() {
+		return ErrInvalidQuery.WithDetail("query_syntax must be text or fts5")
 	}
 
 	// 校验 depth（如果指定了值）

@@ -74,6 +74,8 @@ type KnowledgeService interface {
 // SearchOptions 是 Search 元能力的参数。
 // SearchOptions are the parameters for the Search meta-capability.
 type SearchOptions struct {
+	// QuerySyntax is text by default; fts5 explicitly enables advanced MATCH.
+	QuerySyntax dktypes.QuerySyntax
 	// Scope 限定搜索的域列表（空=不限）。
 	Scope []string
 	// Limit 是最大返回结果数（≤0 使用配置默认）。
@@ -97,10 +99,13 @@ type SearchHit struct {
 // SearchResult 是 Search 的结构化结果。
 // SearchResult is the structured result of Search.
 type SearchResult struct {
-	Keyword        string
-	RewrittenQuery string
-	Hits           []*SearchHit
-	QueryMs        int64
+	Keyword         string
+	RewrittenQuery  string
+	MatchExpression string
+	QuerySyntax     dktypes.QuerySyntax
+	TextProfile     storage.FTSTextProfile
+	Hits            []*SearchHit
+	QueryMs         int64
 }
 
 // ImpactOptions 是 Impact 元能力的参数。
@@ -199,6 +204,7 @@ func NewKnowledgeService(db *storage.DB, cfg *ServiceConfig, rewriter *QueryRewr
 // DefaultServiceConfig returns sensible default retrieval parameters.
 func DefaultServiceConfig() *ServiceConfig {
 	return &ServiceConfig{
+		TextProfile:          storage.FTSTextLiteral,
 		DefaultDepth:         dktypes.DepthSummary,
 		DefaultMaxTokens:     2000,
 		DefaultMinConfidence: 0.0,
@@ -221,6 +227,7 @@ func (s *knowledgeService) Search(ctx context.Context, keyword string, opts Sear
 	}
 	req := &dktypes.QueryRequest{
 		Query:         keyword,
+		QuerySyntax:   opts.QuerySyntax,
 		Scope:         opts.Scope,
 		MinConfidence: opts.MinConfidence,
 	}
@@ -230,9 +237,12 @@ func (s *knowledgeService) Search(ctx context.Context, keyword string, opts Sear
 	}
 
 	res := &SearchResult{
-		Keyword:        keyword,
-		RewrittenQuery: sc.RewrittenQuery,
-		QueryMs:        time.Since(start).Milliseconds(),
+		Keyword:         keyword,
+		RewrittenQuery:  sc.RewrittenQuery,
+		MatchExpression: sc.MatchExpression,
+		QuerySyntax:     sc.QuerySyntax,
+		TextProfile:     sc.TextProfile,
+		QueryMs:         time.Since(start).Milliseconds(),
 	}
 	for i, sn := range sc.ScoredResults {
 		if i >= limit {
@@ -268,7 +278,13 @@ func (s *knowledgeService) Impact(ctx context.Context, keyword string, opts Impa
 
 	// Step 1: FTS5 找起点（最多 3 个，避免入口过多）。
 	ftsIdx := storage.NewFTSIndex(s.db)
-	hits, err := ftsIdx.Search(ctx, keyword, opts.Scope, "", 3)
+	// Impact accepts an entity name, always ordinary text. Keep its historical
+	// no-abbreviation behavior while sharing safe literal query compilation.
+	prepared, err := PrepareSearchQuery(ctx, nil, keyword, dktypes.QuerySyntaxText, s.config.TextProfile)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge service impact query: %w", err)
+	}
+	hits, err := ftsIdx.Search(ctx, prepared.MatchExpression, opts.Scope, "", 3)
 	if err != nil {
 		return nil, fmt.Errorf("knowledge service impact fts: %w", err)
 	}
