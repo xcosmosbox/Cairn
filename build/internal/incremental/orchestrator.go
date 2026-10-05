@@ -114,21 +114,22 @@ func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) 
 // RunReport 是一轮增量运行的结果摘要（可观测）。
 // RunReport summarizes one incremental run.
 type RunReport struct {
-	DocsScanned      int      // 候选文档总数（sidecar 文档 + 扫描文档 + file_states 文档）
-	DocsChanged      int      // 细判有实质变更的文档数
-	C1Edits          int      // C1 块内编辑数
-	C2Deletions      int      // C2 块删除数
-	C3Violations     int      // C3 只读区篡改数（忽略+还原）
-	C4Segments       int      // C4 块外新增段数
-	UnitsAnnotated   int      // I-3 产出的新标注单元数
-	NodesMerged      int      // 融入已有 node 数
-	NodesCreated     int      // 新建 node 数
-	NodesDeleted     int      // 真删 node 数（引用计数归零）
-	SubdomainsReflow int      // relation 重算的脏子域数
-	DocsRewritten    int      // I-9 实际写盘的文档数
-	PrimariesWritten int      // I-9 写盘的 primary 数
-	PrimariesDeleted int      // I-9 删除的 primary 数
-	AnnotateSkipped  []string // I-3 降级跳过的文档
+	DocumentMoves    []DocumentMove // 已核验的来源路径迁移；UUID/member/span 不变
+	DocsScanned      int            // 候选文档总数（sidecar 文档 + 扫描文档 + file_states 文档）
+	DocsChanged      int            // 细判有实质变更的文档数
+	C1Edits          int            // C1 块内编辑数
+	C2Deletions      int            // C2 块删除数
+	C3Violations     int            // C3 只读区篡改数（忽略+还原）
+	C4Segments       int            // C4 块外新增段数
+	UnitsAnnotated   int            // I-3 产出的新标注单元数
+	NodesMerged      int            // 融入已有 node 数
+	NodesCreated     int            // 新建 node 数
+	NodesDeleted     int            // 真删 node 数（引用计数归零）
+	SubdomainsReflow int            // relation 重算的脏子域数
+	DocsRewritten    int            // 实际写盘的文档数（含路径迁移 sidecar 更新）
+	PrimariesWritten int            // I-9 写盘的 primary 数
+	PrimariesDeleted int            // I-9 删除的 primary 数
+	AnnotateSkipped  []string       // I-3 降级跳过的文档
 	// UnresolvedDocs 是 C4 未完全吸收的文档及原因（问题 2：散文已保留、baseline 未前移、
 	// 下一轮可重试——绝不被「成功回写」掩盖）。
 	// UnresolvedDocs lists docs whose C4 additions were not fully absorbed.
@@ -207,6 +208,20 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	if err != nil {
 		return nil, err
 	}
+	if len(scanned.moves) > 0 {
+		if err := applyManagedMoves(ctx, st, repoPath, repoURL, scanned.moves, report); err != nil {
+			return report, err
+		}
+		// Re-read the authoritative path ledger before interpreting C1..C4.
+		// A moved source must never also enter the old-path deletion branch.
+		changesets, scanned, err = o.detect(ctx, st, repoPath, repoURL)
+		if err != nil {
+			return report, err
+		}
+		if len(scanned.moves) > 0 {
+			return report, fmt.Errorf("incremental: document moves did not converge")
+		}
+	}
 	report.DocsScanned = len(scanned.all)
 	var changed []*DocChangeSet
 	for _, cs := range changesets {
@@ -214,8 +229,8 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 			changed = append(changed, cs)
 		}
 	}
-	report.DocsChanged = len(changed)
-	log.Printf("[incremental] I-1: 候选文档 %d，实质变更 %d", len(scanned.all), len(changed))
+	report.DocsChanged = len(changed) + len(report.DocumentMoves)
+	log.Printf("[incremental] I-1: 候选文档 %d，实质变更 %d（路径迁移 %d）", len(scanned.all), report.DocsChanged, len(report.DocumentMoves))
 
 	// ══════════ I-2 变更分派（双路径闸门）══════════
 	bp, pp := Dispatch(changed, scanned.skillByDoc)
@@ -371,7 +386,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 			log.Printf("[incremental] ⚠ I-9 部分失败（成功部分照常推进）: %v", werr)
 		}
 		if wrpt != nil {
-			report.DocsRewritten = wrpt.DocsRewritten
+			report.DocsRewritten += wrpt.DocsRewritten
 			report.PrimariesWritten = wrpt.PrimariesWritten
 			report.PrimariesDeleted = wrpt.PrimariesDeleted
 			log.Printf("[incremental] I-9: 重写文档 %d（跳过未变 %d），primary 写 %d 删 %d，sidecar 删 %d",
@@ -389,7 +404,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	} else if err := o.syncFileStates(ctx, st, repoURL, scanned, bp.DeletedDocs, repoPath, rs); err != nil {
 		return report, err
 	}
-	recordManifestStats(ctx, st, len(changed), scanned.sidecarDocs, rs)
+	recordManifestStats(ctx, st, report.DocsChanged, scanned.sidecarDocs, rs)
 
 	report.Warnings = rs.warningsSnapshot()
 	if v, err := st.version.Current(ctx); err == nil {
@@ -579,6 +594,7 @@ func (o *IncrementalOrchestrator) preflightKG(ctx context.Context, st *stores, r
 // scanResult 是文档枚举的结果（候选全集 + skill 映射 + sidecar 文档计数）。
 // scanResult is the doc enumeration result.
 type scanResult struct {
+	moves       []managedMove     // 完整预检后才允许 Run 原子迁移；detect 自身只读
 	all         []string          // 候选文档全集（去重，相对 repo 根）
 	skillByDoc  map[string]string // 文档 → 所属 skill（discovery 扫描）
 	sidecarDocs int               // 有 sidecar 的文档数（manifest 分母）
@@ -682,6 +698,13 @@ func (o *IncrementalOrchestrator) detect(ctx context.Context, st *stores, repoPa
 				return nil, nil, fmt.Errorf("incremental: unsafe detected path %q: %w", path, err)
 			}
 		}
+	}
+	sr.moves, err = planManagedMoves(ctx, st, repoPath, sr, allSources, states)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(sr.moves) > 0 {
+		return nil, sr, nil // do not classify missing origins as C2 before relocation
 	}
 
 	// —— 逐文档粗筛 + 细判 ——

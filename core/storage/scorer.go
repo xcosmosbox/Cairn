@@ -26,8 +26,9 @@ type ScoredNode struct {
 	// FinalScore 是最终的加权综合分数。
 	// FinalScore is the final weighted composite score.
 	FinalScore float64
-	// BM25Score 是 FTS5 全文搜索的 BM25 相关性分数。
-	// BM25Score is the BM25 relevance score from FTS5 full-text search.
+	// BM25Score 是归一化的 [0,1] 文本相关性分数，越大越相关。
+	// BM25Score is normalized [0,1] text relevance, higher is better;
+	// it is not SQLite's raw negative BM25 rank.
 	BM25Score float64
 	// GraphScore 是基于图深度的结构相关性分数。
 	// GraphScore is the structural relevance score based on graph depth.
