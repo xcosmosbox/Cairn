@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "fixed_fake": {
+    "input_mode": "compiled fixed fixture; does not consume examples/public-demo documents",
+    "kg": "demo",
+    "nodes": 4,
+    "edges": 3,
+    "keyword": "阻塞队列",
+    "summary": "Bounded queue blocks when full or empty",
+    "source_ref": "fake",
+    "source_path": "SKILL.md",
+    "source_start_line": 6,
+    "source_end_line": 8,
+    "not_loaded_keyword": "重试预算",
+    "not_loaded_hits": 0,
+    "missing_uuid_status": "unknown",
+    "missing_db_exit": 1
+  },
+  "multi_document_input": {
+    "files": ["SKILL.md", "references/queue.md", "references/timeout.md"],
+    "intended_relation": "重试预算 depends_on 阻塞队列",
+    "real_extraction_status": "not_run",
+    "observed_cross_document_graph_status": "unverified",
+    "note": "An input intention is not an extracted graph or a measured retrieval benefit."
+  }
+}
