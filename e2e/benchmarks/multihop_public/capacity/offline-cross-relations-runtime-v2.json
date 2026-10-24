@@ -1,0 +1,126 @@
+{
+  "format": "cairn-capacity-cross-runtime-validation/v2",
+  "observed_at_utc": "2026-10-24T15:40:04.642801+00:00",
+  "model_calls": 0,
+  "qa_or_holdout_reads": 0,
+  "public_main_base": "7268621486df9bb3b90d78d10cc3b88f9c3b5b82",
+  "review_fix": "complete eligible validated semantic identity projection versus final candidate and DB; rejected-only retention hard-fails; independent accepted duplicate/local identity remains valid",
+  "prior_receipt_sha256_preserved": "242668f56450efdbcc5a97b15400107f09e9731ad685ee3fc6909c8c7a65e173",
+  "independent_python_original_identity_checks": 12,
+  "independent_python_body_bytes_sum": 162880,
+  "independent_python_wrapper_bytes_sum": 166300,
+  "go_preflight_sha256": "2b091196fae655d654729ebdb0528b4e80f9b57c771f976af2a276a3a1891b1f",
+  "go_preflight": {
+    "capacity_driver_source_digest": "sha256:24d287d5ea659b29dc37c80ac8615bf265fae78a0d590d8734c1299fa6a148f6",
+    "executable_sha256": "e8a0828d9345a144256d5a8881856b61a0dae9fce426b12e0b9d168e88235291",
+    "full609_admitted": false,
+    "model_calls": 0,
+    "production_source_digest": "sha256:67953bd36ed4d1888e079bb0900fe1d6f0fe74177cbd95f214b0b9b5ba73e7a9",
+    "runtime_freeze": {
+      "format": "cairn-capacity-runtime-freeze/v1",
+      "runtime_overlay_sha256": "9c13285e84c3785e1a9d9930cecf1fdfa8c309a22f7fbf28c923067564a862d2",
+      "selection_sha256": "e36722a07a47cdd2891295b4507520d4b4bd8c414a7bcd8bad290e59e81c23de",
+      "base_protocol_sha256": "9b5511c490f9cef84f0035fecb2e085f08509a5aaf37e64c17e456f6dca86901",
+      "cross_relation_evidence_bytes": 1048576,
+      "minimum_actual_incidence_coverage": 0.95,
+      "body_bytes_sum": 162880,
+      "original_wrapper_bytes_sum": 166300,
+      "source_only_json_bytes": 170541,
+      "documents": [
+        {
+          "doc_id": "a2faa24229c5bd59149b61bb342a69f34928ec8d50734a229c646a5b62efdd3b",
+          "path": "references/a2faa24229c5bd59149b61bb342a69f34928ec8d50734a229c646a5b62efdd3b.md",
+          "body_bytes": 5241,
+          "wrapper_bytes": 5543,
+          "wrapper_sha256": "68a284de0462ea86b241cbe30afa39e2db4271a9fb974987b58a9d323d90a50f"
+        },
+        {
+          "doc_id": "d3172c982144948458b24c3ffa61ece062cfe9735caf56a419d31f59362eba2c",
+          "path": "references/d3172c982144948458b24c3ffa61ece062cfe9735caf56a419d31f59362eba2c.md",
+          "body_bytes": 5598,
+          "wrapper_bytes": 5962,
+          "wrapper_sha256": "762ab587d5ffa4ab3b2e8431b641ef03bc80fb15767788f9ec07f200995e07b9"
+        },
+        {
+          "doc_id": "748486620fb29d21f34852091dbb7462d2dbed2c98079cd68a61937d36867a3c",
+          "path": "references/748486620fb29d21f34852091dbb7462d2dbed2c98079cd68a61937d36867a3c.md",
+          "body_bytes": 5799,
+          "wrapper_bytes": 6193,
+          "wrapper_sha256": "e71a840f1696e1216f191054ff21a9d60b57d542c4b3b929e23039ff5e2d9413"
+        },
+        {
+          "doc_id": "5da45acb3a14629d43a46e8d237d54f051db097d57369ec9d724131cd12bdb3a",
+          "path": "references/5da45acb3a14629d43a46e8d237d54f051db097d57369ec9d724131cd12bdb3a.md",
+          "body_bytes": 6660,
+          "wrapper_bytes": 6927,
+          "wrapper_sha256": "b9e168a0d09bcfa873eb70e61e0901880b44cb8d1d5ebf74c835cabe8140efba"
+        },
+        {
+          "doc_id": "60e8a1622380e31b45354d25e390fa77e1ef2a47f93b386acd2053221c9e6f68",
+          "path": "references/60e8a1622380e31b45354d25e390fa77e1ef2a47f93b386acd2053221c9e6f68.md",
+          "body_bytes": 6411,
+          "wrapper_bytes": 6741,
+          "wrapper_sha256": "26fb5621171e50d26932080ab21690934814282388190f3c410ecd1694af3b8f"
+        },
+        {
+          "doc_id": "5414e6dab63999c3fee0f87bdbc4836bb57aebe40567ea9667ac586e2505e572",
+          "path": "references/5414e6dab63999c3fee0f87bdbc4836bb57aebe40567ea9667ac586e2505e572.md",
+          "body_bytes": 7235,
+          "wrapper_bytes": 7550,
+          "wrapper_sha256": "ad5e592b24ecc551587eb66c849c309d274dac5025fe0dab3c4e9c7aed807cbd"
+        },
+        {
+          "doc_id": "7067b622822b2677924a9e54415f233f241dd039b7f050172dfed73fc84dbfde",
+          "path": "references/7067b622822b2677924a9e54415f233f241dd039b7f050172dfed73fc84dbfde.md",
+          "body_bytes": 7925,
+          "wrapper_bytes": 8175,
+          "wrapper_sha256": "3cbff0f0ede92fa40f611b06111ecae61b93e3632736d43c357c8255ab28d7de"
+        },
+        {
+          "doc_id": "a3c932de7c92a9f40f2fdc11b8b0ba66c3f8ba9952a4b794efdfd9b14a721c80",
+          "path": "references/a3c932de7c92a9f40f2fdc11b8b0ba66c3f8ba9952a4b794efdfd9b14a721c80.md",
+          "body_bytes": 9009,
+          "wrapper_bytes": 9236,
+          "wrapper_sha256": "dee6ffb782b45d8f0b5305d80df97eea70f524c813924e6c00135d2c7725894d"
+        },
+        {
+          "doc_id": "6df4c083b7966078650724ca8f4e134f87f6a8c02b5f9ff2d5857d5218b9e92d",
+          "path": "references/6df4c083b7966078650724ca8f4e134f87f6a8c02b5f9ff2d5857d5218b9e92d.md",
+          "body_bytes": 10685,
+          "wrapper_bytes": 10902,
+          "wrapper_sha256": "b9231dc6caba2e549d80f473e9fbbff0c407ea90ffe2e4be1d3936a221b337c1"
+        },
+        {
+          "doc_id": "b011b12fe73bf4de991f306ce1c7eceb13bc0acd6ad4bd0b00994b2a658d703a",
+          "path": "references/b011b12fe73bf4de991f306ce1c7eceb13bc0acd6ad4bd0b00994b2a658d703a.md",
+          "body_bytes": 11278,
+          "wrapper_bytes": 11605,
+          "wrapper_sha256": "f0afa8246bd848b7d7655b157a90a67b0014fbafb8436b9513cefbac2b7c92ed"
+        },
+        {
+          "doc_id": "bfa33570f039c7cf2c1be7d366c27981948d221fe10f982f5e7e04356e3d8621",
+          "path": "references/bfa33570f039c7cf2c1be7d366c27981948d221fe10f982f5e7e04356e3d8621.md",
+          "body_bytes": 15920,
+          "wrapper_bytes": 16134,
+          "wrapper_sha256": "70d7eea69421ada6d275df421870f34796c98c1752df54eb340651dc37746ac2"
+        },
+        {
+          "doc_id": "6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b",
+          "path": "references/6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b.md",
+          "body_bytes": 71119,
+          "wrapper_bytes": 71332,
+          "wrapper_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309"
+        }
+      ],
+      "envelope_meaning": "source-only JSON lower bound; generated endpoint/member/relation framing remains bounded by the actual verifier and wire guard",
+      "provider_token_fit": "not established by source bytes; official exact rendered-request token guard remains mandatory"
+    },
+    "runtime_overlay_sha256": "9c13285e84c3785e1a9d9930cecf1fdfa8c309a22f7fbf28c923067564a862d2",
+    "runtime_receipt_sha256": "aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5",
+    "selected_documents": 12,
+    "selection_sha256": "e36722a07a47cdd2891295b4507520d4b4bd8c414a7bcd8bad290e59e81c23de",
+    "status": "offline_tokenizer_and_original_identity_pass"
+  },
+  "official_runtime_provenance": "reused reviewed pinned native wheel/runtime; not a rebuild-from-source supply-chain proof",
+  "scope": "offline corrected-source/config identity and official synthetic tokenizer preflight only; actual generated framing/token fit and semantic output remain unverified; no paid12/full609 admission"
+}

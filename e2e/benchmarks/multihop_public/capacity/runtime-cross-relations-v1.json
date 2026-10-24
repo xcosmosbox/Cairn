@@ -1,0 +1,16 @@
+{
+  "format": "cairn-capacity-runtime-overlay/v1",
+  "status": "offline_implementation_not_paid_admission",
+  "base_protocol_sha256": "9b5511c490f9cef84f0035fecb2e085f08509a5aaf37e64c17e456f6dca86901",
+  "selection_sha256": "e36722a07a47cdd2891295b4507520d4b4bd8c414a7bcd8bad290e59e81c23de",
+  "cross_relation_evidence_bytes": 1048576,
+  "minimum_actual_incidence_coverage": 0.95,
+  "selected_documents": 12,
+  "max_tokens": 65536,
+  "request_timeout_seconds": 600,
+  "stage_timeout_seconds": 5400,
+  "run_timeout_seconds": 5400,
+  "concurrency": 8,
+  "whole_run_retries": 0,
+  "admission": "requires actual attempt03 semantic PASS, merged independently reviewed integration, executable/source/config freeze, and root paid12 decision; full609 remains separate"
+}

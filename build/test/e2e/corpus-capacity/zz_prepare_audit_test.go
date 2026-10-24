@@ -89,7 +89,7 @@ func TestMembershipAuditRejectsOmissionsAndInvalidHintsButReportsNullUnknown(t *
 	docs[0].Items = docs[0].Items[:1]
 	rows = append(rows, sourceRow{Node: "uuid", Member: "shared", Path: "b.md", Skill: "s", Start: valid, End: valid})
 	r = auditMembership(s, docs, candidate, rows, map[string]bool{"uuid": true}, root, root)
-	if !r.Pass {
+	if !r.Pass || r.InputMemberIncidences != 2 || r.MaterializedMemberIncidences != 2 || r.InputUniqueMembers != 1 {
 		b, _ := json.Marshal(r)
 		t.Fatalf("complete membership failed: %s", b)
 	}
@@ -192,11 +192,57 @@ func TestTraceAuditRejectsSwappedLogicalAndProviderBindings(t *testing.T) {
 	}
 }
 
-func TestTraceSnapshotParsesExactlyItsBytesAndRejectsPartialTail(t *testing.T){
+func TestTraceSnapshotParsesExactlyItsBytesAndRejectsPartialTail(t *testing.T) {
 	t.Parallel()
-	prefix:=[]byte("{\"event\":\"logical_start\",\"call_id\":1}\n{\"event\":\"request\",\"call_id\":1,\"http_attempt\":1,\"provider_attempt\":1,\"admitted\":true}\n")
-	counts,failures:=auditTraceBytes(prefix);if counts["admitted_attempts"]!=1||counts["admitted_without_outcome"]!=1||len(failures)==0{t.Fatal("snapshot denominator lost")}
-	partial:=append(append([]byte(nil),prefix...),[]byte(`{"event":"response"`)...)
-	_,failures=auditTraceBytes(partial);found:=false;for _,failure:=range failures{if strings.Contains(failure,"incomplete tail"){found=true}}
-	if !found{t.Fatal("partial concurrent/kill tail was accepted")}
+	prefix := []byte("{\"event\":\"logical_start\",\"call_id\":1}\n{\"event\":\"request\",\"call_id\":1,\"http_attempt\":1,\"provider_attempt\":1,\"admitted\":true}\n")
+	counts, failures := auditTraceBytes(prefix)
+	if counts["admitted_attempts"] != 1 || counts["admitted_without_outcome"] != 1 || len(failures) == 0 {
+		t.Fatal("snapshot denominator lost")
+	}
+	partial := append(append([]byte(nil), prefix...), []byte(`{"event":"response"`)...)
+	_, failures = auditTraceBytes(partial)
+	found := false
+	for _, failure := range failures {
+		if strings.Contains(failure, "incomplete tail") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("partial concurrent/kill tail was accepted")
+	}
+}
+
+// A completed HTTP/logical pair may still be capacity-incomplete: truncation and
+// unresolved client errors must not disappear behind matched ledger identities.
+func TestTraceAuditRejectsTruncationUnknownStageAndLogicalErrors(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"length", "logical_error", "unknown_stage"} {
+		stageName := "cross_relation_verify"
+		finish := "stop"
+		completeError := false
+		if mode == "length" {
+			finish = "length"
+		}
+		if mode == "logical_error" {
+			completeError = true
+		}
+		if mode == "unknown_stage" {
+			stageName = "unknown"
+		}
+		rows := []map[string]any{
+			{"event": "logical_start", "call_id": 1, "stage": stageName},
+			{"event": "request", "call_id": 1, "provider_attempt": 1, "http_attempt": 1, "stage": stageName, "admitted": true},
+			{"event": "response", "call_id": 1, "provider_attempt": 1, "http_attempt": 1, "stage": stageName, "http_status": 200, "model_identity_expected": true, "usage_status": "reported", "finish_reason": finish},
+			{"event": "logical_end", "call_id": 1, "stage": stageName, "complete_error": completeError},
+		}
+		var raw []byte
+		for _, row := range rows {
+			b, _ := json.Marshal(row)
+			raw = append(raw, append(b, '\n')...)
+		}
+		_, failures := auditTraceBytes(raw)
+		if len(failures) == 0 {
+			t.Fatalf("%s falsely admitted", mode)
+		}
+	}
 }

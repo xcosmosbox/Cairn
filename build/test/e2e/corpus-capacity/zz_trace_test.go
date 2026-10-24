@@ -275,3 +275,28 @@ func TestProductionAnnotationPromptDocumentIdentity(t *testing.T) {
 		t.Fatal("real production annotation path was not bound")
 	}
 }
+
+// A 1MiB original-evidence allowance does not establish provider token fit.
+// The unchanged exact-wire counter still rejects cross-verifier overflow before send.
+func TestCrossVerifierWireStillRequiresOfficialContextReservation(t *testing.T) {
+	t.Parallel()
+	m := &memoryLog{}
+	ledger := &durableLedger{file: m}
+	var sent atomic.Int64
+	req := wire(t, context.Background())
+	req.Context().Value(callKey{}).(*callInfo).Stage = "cross_relation_verify"
+	observer := &traceTransport{ledger: ledger, counter: countFunc(func(_ context.Context, raw []byte) (tokenCount, error) {
+		var r wireRequest
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return tokenCount{}, err
+		}
+		return tokenCount{Input: 999900, Reserved: r.MaxTokens, Context: 1000000, CounterID: "test-official-contract", RuntimeSHA: "verified-fixture"}, nil
+	}), next: transportFunc(func(*http.Request) (*http.Response, error) { sent.Add(1); return response(`{}`), nil })}
+	if _, err := observer.RoundTrip(req); err == nil || sent.Load() != 0 {
+		t.Fatal("cross source byte budget bypassed token reservation")
+	}
+	rows := events(t, m)
+	if len(rows) != 1 || rows[0]["stage"] != "cross_relation_verify" || rows[0]["admitted"] != false || rows[0]["rejection"] != "context_reservation" {
+		t.Fatalf("crossstage overflow receipt lost: %+v", rows)
+	}
+}

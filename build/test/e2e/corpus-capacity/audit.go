@@ -39,20 +39,27 @@ type sourceRow struct {
 	Start, End                sql.NullInt64
 }
 type auditReport struct {
-	Format                    string           `json:"format"`
-	Pass                      bool             `json:"pass"`
-	Errors                    []string         `json:"errors"`
-	InputUniqueMembers        int              `json:"input_unique_members"`
-	CandidateUniqueMembers    int              `json:"candidate_unique_members"`
-	MaterializedUniqueMembers int              `json:"materialized_unique_members"`
-	SourceRows                int              `json:"source_rows"`
-	UnknownOriginalSpans      int              `json:"unknown_original_spans"`
-	InvalidOriginalSpans      int              `json:"invalid_original_spans"`
-	Documents                 []auditDoc       `json:"documents"`
-	DBSHA                     string           `json:"db_sha256"`
-	SpanMeaning               string           `json:"span_meaning"`
-	Bindings                  []map[string]any `json:"source_bindings"`
-	Trace                     map[string]int   `json:"trace"`
+	Format                       string            `json:"format"`
+	Pass                         bool              `json:"pass"`
+	Errors                       []string          `json:"errors"`
+	InputMemberIncidences        int               `json:"input_member_incidences"`
+	CandidateMemberIncidences    int               `json:"candidate_member_incidences"`
+	MaterializedMemberIncidences int               `json:"materialized_member_incidences"`
+	ActualIncidenceCoverage      float64           `json:"actual_incidence_coverage"`
+	MinimumIncidenceCoverage     float64           `json:"minimum_actual_incidence_coverage"`
+	CoverageDenominator          string            `json:"coverage_denominator"`
+	CrossRelations               *crossAuditReport `json:"cross_relations"`
+	InputUniqueMembers           int               `json:"input_unique_members"`
+	CandidateUniqueMembers       int               `json:"candidate_unique_members"`
+	MaterializedUniqueMembers    int               `json:"materialized_unique_members"`
+	SourceRows                   int               `json:"source_rows"`
+	UnknownOriginalSpans         int               `json:"unknown_original_spans"`
+	InvalidOriginalSpans         int               `json:"invalid_original_spans"`
+	Documents                    []auditDoc        `json:"documents"`
+	DBSHA                        string            `json:"db_sha256"`
+	SpanMeaning                  string            `json:"span_meaning"`
+	Bindings                     []map[string]any  `json:"source_bindings"`
+	Trace                        map[string]int    `json:"trace"`
 }
 
 func sortedSet(values map[string]bool) []string {
@@ -67,8 +74,14 @@ func triple(node, member, path string) string { return node + "\x00" + member + 
 
 // auditMembership distinguishes actual candidate members and durable source rows
 // from the production coverage gate's explained omissions. No gold is consulted.
-func auditMembership(selected *selection, docs []*dktypes.AnnotatedDocument, candidate *extract.Result, rows []sourceRow, nodeIDs map[string]bool, sourceRoot, originalRoot string) *auditReport {
-	r := &auditReport{Format: "cairn-capacity-audit/v1", SpanMeaning: "optional original-input span hints; NULL means unknown, bounded hints remain unverified; no rewritten-position or original-quote grounding claim"}
+func auditMembership(selected *selection, docs []*dktypes.AnnotatedDocument, candidate *extract.Result, rows []sourceRow, nodeIDs map[string]bool, sourceRoot, originalRoot string, minimum ...float64) *auditReport {
+	r := &auditReport{Format: "cairn-capacity-audit/v2", SpanMeaning: "optional original-input span hints; NULL means unknown, bounded hints remain unverified; no rewritten-position or original-quote grounding claim"}
+	threshold := 1.0
+	if len(minimum) > 0 {
+		threshold = minimum[0]
+	}
+	r.MinimumIncidenceCoverage = threshold
+	r.CoverageDenominator = "distinct(original_doc_id,accepted04member_id), from 04_extract_input before fusion/confidence/drops; global unique IDs are supplemental diagnostics"
 	fail := func(s string) { r.Errors = append(r.Errors, s) }
 	byPath := map[string]*auditDoc{}
 	docMembers := map[string]map[string]bool{}
@@ -204,8 +217,14 @@ func auditMembership(selected *selection, docs []*dktypes.AnnotatedDocument, can
 		}
 		sort.Strings(a.MissingMembers)
 		a.RetainedMembers = sortedSet(retained)
-		if len(a.MissingMembers) > 0 {
+		if len(a.MissingMembers) > 0 && threshold >= 1 {
 			fail("input members absent from materialized document: " + a.Path)
+		}
+		r.InputMemberIncidences += len(a.Members)
+		r.CandidateMemberIncidences += len(a.RetainedMembers)
+		r.MaterializedMemberIncidences += len(a.MaterializedMembers)
+		if len(a.MaterializedMembers) == 0 {
+			fail("selected document has no actual materialized member: " + a.Path)
 		}
 		raw, err := os.ReadFile(filepath.Join(sourceRoot, a.Path))
 		if err != nil {
@@ -213,6 +232,12 @@ func auditMembership(selected *selection, docs []*dktypes.AnnotatedDocument, can
 		} else {
 			a.RewrittenSHA = sha(raw)
 		}
+	}
+	if r.InputMemberIncidences > 0 {
+		r.ActualIncidenceCoverage = float64(r.MaterializedMemberIncidences) / float64(r.InputMemberIncidences)
+	}
+	if threshold < 0.95 || threshold > 1 || r.InputMemberIncidences == 0 || r.ActualIncidenceCoverage < threshold {
+		fail("actual prefilter document/member incidence coverage below frozen minimum")
 	}
 	r.InputUniqueMembers = len(memberPaths)
 	r.CandidateUniqueMembers = len(candidateMembers)
@@ -229,6 +254,47 @@ func audit(ctx context.Context, out string) (*auditReport, error) {
 	s, err := verifyPrepared(out, true)
 	if err != nil {
 		return nil, err
+	}
+	var start struct {
+		OverlaySHA         string  `json:"runtime_overlay_sha256"`
+		CrossEvidenceBytes int     `json:"cross_relation_evidence_bytes"`
+		MinimumIncidence   float64 `json:"minimum_actual_incidence_coverage"`
+	}
+	if err := readJSON(filepath.Join(out, "run-start.json"), &start); err != nil {
+		return nil, err
+	}
+	selectionRaw, err := os.ReadFile(filepath.Join(out, "selection.json"))
+	if err != nil {
+		return nil, err
+	}
+	cfg, _, err := loadRuntimeOverlay(filepath.Join(out, "runtime-overlay.json"), start.OverlaySHA, sha(selectionRaw), s)
+	if err != nil {
+		return nil, err
+	}
+	if start.CrossEvidenceBytes != cfg.CrossEvidenceBytes || start.MinimumIncidence != cfg.MinimumIncidence {
+		return nil, fmt.Errorf("run-start options differ from pinned runtime overlay")
+	}
+	var finish struct {
+		BuildError   *bool `json:"build_error"`
+		ContextError *bool `json:"context_error"`
+		LedgerOK     *bool `json:"ledger_ok"`
+		LogicalCalls int   `json:"logical_calls"`
+	}
+	if err := readJSON(filepath.Join(out, "run-finish.json"), &finish); err != nil {
+		return nil, err
+	}
+	freeze, err := freezeRuntime(out, start.OverlaySHA, sha(selectionRaw), s, cfg)
+	if err != nil {
+		return nil, err
+	}
+	var savedFreeze runtimeFreeze
+	if err := readJSON(filepath.Join(out, "runtime-freeze.json"), &savedFreeze); err != nil {
+		return nil, err
+	}
+	wantFreeze, _ := json.Marshal(freeze)
+	savedBytes, _ := json.Marshal(savedFreeze)
+	if !bytes.Equal(wantFreeze, savedBytes) {
+		return nil, fmt.Errorf("runtime freeze no longer binds originals/profile")
 	}
 	var docs []*dktypes.AnnotatedDocument
 	var candidate extract.Result
@@ -293,7 +359,33 @@ func audit(ctx context.Context, out string) (*auditReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := auditMembership(s, docs, &candidate, sources, nodes, filepath.Join(out, "source"), filepath.Join(out, "original"))
+	dbEdges := map[string]bool{}
+	edgeRows, err := db.QueryContext(ctx, "SELECT source_id,target_id,kind FROM edges")
+	if err != nil {
+		return nil, err
+	}
+	for edgeRows.Next() {
+		var source, target, kind string
+		if err := edgeRows.Scan(&source, &target, &kind); err != nil {
+			edgeRows.Close()
+			return nil, err
+		}
+		dbEdges[edgeIdentity(source, target, kind)] = true
+	}
+	if err := edgeRows.Err(); err != nil {
+		edgeRows.Close()
+		return nil, err
+	}
+	edgeRows.Close()
+	r := auditMembership(s, docs, &candidate, sources, nodes, filepath.Join(out, "source"), filepath.Join(out, "original"), cfg.MinimumIncidence)
+	r.CrossRelations = auditCrossArtifacts(out, s, docs, &candidate, cfg.CrossEvidenceBytes, report.CrossRelations, dbEdges, nodes)
+	r.Errors = append(r.Errors, r.CrossRelations.Errors...)
+	if finish.BuildError == nil || *finish.BuildError || finish.ContextError == nil || *finish.ContextError || finish.LedgerOK == nil || !*finish.LedgerOK || finish.LogicalCalls != trace["logical_calls"] {
+		r.Errors = append(r.Errors, "run-finish contains unresolved build/context/ledger boundary")
+	}
+	if trace["unexposed_stage_calls"] > 0 {
+		r.Errors = append(r.Errors, "actual run has unexposed logical stages")
+	}
 	r.Trace = trace
 	r.Errors = append(r.Errors, traceErrors...)
 	r.DBSHA = before
@@ -351,19 +443,21 @@ func auditTraceBytes(raw []byte) (map[string]int, []string) {
 	admitted := map[int64]binding{}
 	outcomes := map[int64]bool{}
 	logical := map[int64]bool{}
+	logicalStages := map[int64]string{}
 	finished := map[int64]bool{}
 	for scanner.Scan() {
 		var row struct {
-			Event    string `json:"event"`
-			Attempt  int64  `json:"http_attempt"`
-			Call     int64  `json:"call_id"`
-			Provider int64  `json:"provider_attempt"`
-			Stage    string `json:"stage"`
-			Admitted bool   `json:"admitted"`
-			Usage    string `json:"usage_status"`
-			Finish   string `json:"finish_reason"`
-			Expected *bool  `json:"model_identity_expected"`
-			Status   int    `json:"http_status"`
+			Event         string `json:"event"`
+			Attempt       int64  `json:"http_attempt"`
+			Call          int64  `json:"call_id"`
+			Provider      int64  `json:"provider_attempt"`
+			Stage         string `json:"stage"`
+			Admitted      bool   `json:"admitted"`
+			Usage         string `json:"usage_status"`
+			Finish        string `json:"finish_reason"`
+			Expected      *bool  `json:"model_identity_expected"`
+			Status        int    `json:"http_status"`
+			CompleteError bool   `json:"complete_error"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &row) != nil {
 			failures = append(failures, "malformed ledger row")
@@ -371,16 +465,38 @@ func auditTraceBytes(raw []byte) (map[string]int, []string) {
 		}
 		switch row.Event {
 		case "logical_start":
+			if row.Stage != "" && !knownStageName(row.Stage) {
+				counts["unknown_stage_calls"]++
+				failures = append(failures, "unknown logical stage")
+			}
 			if logical[row.Call] {
 				failures = append(failures, "duplicate logical call")
 			}
 			logical[row.Call] = true
+			logicalStages[row.Call] = row.Stage
+			counts["logical_calls"]++
+			if row.Stage == "" {
+				counts["unexposed_stage_calls"]++
+			}
+			if knownStageName(row.Stage) {
+				counts["stage:"+row.Stage+":logical_calls"]++
+			}
 		case "logical_end":
+			if row.Stage != logicalStages[row.Call] {
+				failures = append(failures, "logical completion stage mismatch")
+			}
+			if row.CompleteError {
+				counts["logical_execution_errors"]++
+				failures = append(failures, "logical call ended with unresolved execution error")
+			}
 			if finished[row.Call] || !logical[row.Call] {
 				failures = append(failures, "unbound logical completion")
 			}
 			finished[row.Call] = true
 		case "request":
+			if row.Stage != logicalStages[row.Call] {
+				failures = append(failures, "wire/logical stage mismatch")
+			}
 			if !logical[row.Call] {
 				failures = append(failures, "wire request missing logical start")
 			}
@@ -393,6 +509,9 @@ func auditTraceBytes(raw []byte) (map[string]int, []string) {
 				}
 				admitted[row.Attempt] = binding{row.Call, row.Provider, row.Stage}
 				counts["admitted_attempts"]++
+				if knownStageName(row.Stage) {
+					counts["stage:"+row.Stage+":admitted_attempts"]++
+				}
 			} else {
 				counts["rejected_attempts"]++
 			}
@@ -405,11 +524,15 @@ func auditTraceBytes(raw []byte) (map[string]int, []string) {
 			}
 			outcomes[row.Attempt] = true
 			counts["attempt_outcomes"]++
+			if knownStageName(row.Stage) {
+				counts["stage:"+row.Stage+":attempt_outcomes"]++
+			}
 			if row.Usage != "reported" {
 				counts["attempts_with_unknown_usage"]++
 			}
-			if row.Finish == "length" {
+			if row.Finish == "length" || row.Finish == "max_tokens" {
 				counts["length_responses"]++
+				failures = append(failures, "truncated response cannot establish capacity readiness")
 			}
 			if row.Status == 200 && (row.Expected == nil || !*row.Expected) {
 				failures = append(failures, "successful HTTP response model identity unknown/unexpected")

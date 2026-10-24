@@ -72,14 +72,17 @@ flags as `run` and a synthetic local request; no model call occurs.
 ## Separately admitted execution
 
 Only after root's explicit admission and independent exact-head review, use
-`--mode run --allow-paid --selection-sha256 SHA --token-python PYTHON
+`--mode run --allow-paid --selection-sha256 SHA
+--runtime-overlay PATH --runtime-overlay-sha256 SHA --token-python PYTHON
 --token-python-sha256 SHA --token-runtime-receipt RECEIPT
 --token-runtime-sha256 SHA --out PREPARED_DIRECTORY`, with the existing runtime
 `CAIRN_LLM_API_KEY` environment variable. The key is never a command argument.
 Defaults are65536 output tokens,600s per HTTP request,5400s per stage/run,
 annotation3 attempts ×3 total annotation rounds, HTTP3 retries, no whole-run
-retry. Positive finite timeouts/output reserve may be explicitly configured and
-are frozen in `run-start.json`. Other production stage limits remain unchanged.
+retry. The runtime flags must match the separately hash-pinned immutable overlay; changes need
+a new reviewed profile. The effective settings, executable SHA, compiled capacity-driver
+digest and production source digest are frozen in `run-start.json`. Other production
+stage limits remain unchanged.
 
 Each actual serialized HTTP attempt passes the token guard, then receives an
 fsync'd pre-dispatch record before any network send. SHA256 and exact wire,
@@ -127,3 +130,63 @@ success. All aggregate usage is provider-reported only; unknowns remain unknown,
 and no currency charge is invented. The12 measurements do not guarantee that
 any full609 extraction, supplement, description or relation request will fit.
 Every future actual request still needs the guard and separate root admission.
+
+## Cross-verifier integration profile (task #56)
+
+The new immutable `runtime-cross-relations-v1.json` extends the original protocol and
+selection by hash; it never replaces them. Both `preflight` and `run` require its exact
+`--runtime-overlay-sha256` (and optional explicit `--runtime-overlay` path). Preparation
+still creates the original identical selection. Use a new prepared attempt directory;
+previous preflight/run/roster/evidence files remain immutable. Audit reads the run's
+saved `runtime-overlay.json`, `runtime-freeze.json`, run-start and run-finish receipts.
+It does not reinterpret an old run using whichever configuration is current.
+
+This profile passes1048576bytes through `pipeline.Options.CrossRelationEvidenceBytes`.
+The independently checked12 original wrappers total166300bytes (bodies162880bytes),
+including a71332-byte largest wrapper. The driver rechecks actual bytes/hashes and
+rejects a source union or source-only JSON envelope above the bound before any paid
+call. This is a lower bound: generated endpoint/member/relation framing is checked by
+the actual production verifier, and every actual wire attempt still requires the
+unchanged official rendered-request token counter plus exact output reserve. Neither
+byte preflight nor the synthetic tokenizer probe establishes generated-request fit.
+
+The additional stage is `cross_relation_verify`. Logical/wire events retain all
+exposed source document IDs as `document_ids`; the legacy singular field alone is not
+per-document cost or coverage. Full stage counts, typed candidate dispositions and
+artifact hashes are retained. Required cross artifacts are `00_frozen_sources.json`,
+`05e_extract_related.json`, `05e_cross_relation_report.json` and
+`05e_cross_validated.json`. Missing best-effort production dumps fail this audit.
+Original source/quote/member/eligible-edge bindings are independently rechecked for
+accepted candidates, including original byte/line offsets, final UUID/candidate/DB
+edges, and complete original neighborhoods. Semantic support remains model-judged;
+these mechanical checks are not semantic proof.
+
+All eight dispositions are explicit, including zeros. Semantic, invalid-evidence,
+endpoint and invalid-relation rejections are visible safe rejections/model-quality
+issues; they receive no supported credit. Invalid ACCEPTED bindings hard-fail.
+Insufficient evidence (including overflow), invalid/incomplete verdicts, context or
+logical execution errors, unknown stages, truncated responses, missing reports/ledger,
+and unmatched attempts prevent capacity readiness. A matched response or fallback
+cannot erase those boundaries. Root uses the full counts for its scientific decision;
+audit success alone grants no execution or full-corpus admission.
+
+The new profile intentionally changes the historical strict100% member audit to a
+minimum0.95 actual incidence rate, with all12 documents nonempty in the materialized
+source ledger and every claimed candidate/source mapping valid. The authoritative
+prefilter denominator is **distinct(original_doc_id,accepted04member_id)** from the
+accepted04 input, before fusion, confidence filtering or drops. Candidate/materialized
+incidence totals and per-document missing members expose each loss. Global unique
+member counts remain supplemental; shared IDs cannot hide lost document incidences.
+Old evidence and the default direct audit helper retain their historical strict rule.
+
+Paid12 additionally requires actual attempt03 semantic PASS, merged independently
+reviewed integration, a final executable/source/configuration freeze and root's
+separate decision. No QA/HOLDOUT, paid12 or full609 call is authorized by this profile.
+
+The v1 offline runtime receipt preserves its original compiled-source identity.
+`offline-cross-relations-runtime-v2.json` records the corrected auditor's new
+source/binary preflight after review found a rejected-edge retention false pass.
+The auditor now compares the complete eligible validated semantic projection with
+both final candidate and DB inventories. A rejected-only identity cannot persist;
+an independently accepted duplicate or legitimate validated local edge can justify
+that same identity. Original v1/profile/roster evidence remains unchanged.
