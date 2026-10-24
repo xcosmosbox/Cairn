@@ -1,0 +1,67 @@
+{
+  "checked_at_utc": "2026-10-24T14:42:53.442774+00:00",
+  "original_fixture_final_inventories": {
+    "a": {
+      "checksums.sha256": {
+        "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+        "bytes": 162,
+        "inode": 1442497,
+        "mtime_ns": 1792850490157454761
+      },
+      "kb-manifest.json": {
+        "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+        "bytes": 646,
+        "inode": 1442421,
+        "mtime_ns": 1792850490157454761
+      },
+      "knowledge.db": {
+        "sha256": "36b05319823d62cd7624550cf1fdfbe87c57f024db71f2894e971b8d314bf0e0",
+        "bytes": 135168,
+        "inode": 1442481,
+        "mtime_ns": 1792850490150932912
+      }
+    },
+    "b": {
+      "checksums.sha256": {
+        "sha256": "7557bf02a08284ebb9a576590b2ab04fe800da2ba0a39ecfdc39ffe9a3559d7d",
+        "bytes": 162,
+        "inode": 1443442,
+        "mtime_ns": 1792850490219382011
+      },
+      "kb-manifest.json": {
+        "sha256": "c58678f8e3a1c0d167eeac6ed91baee835cd802066aeba16c9d12248b8d99cc8",
+        "bytes": 646,
+        "inode": 1442515,
+        "mtime_ns": 1792850490219382011
+      },
+      "knowledge.db": {
+        "sha256": "7eb0f961e7955379a3942931f279e22f81eb9c91f2a96dfa2afe209b9bc78472",
+        "bytes": 135168,
+        "inode": 1442529,
+        "mtime_ns": 1792850490212081116
+      }
+    },
+    "bad": {
+      "checksums.sha256": {
+        "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+        "bytes": 162,
+        "inode": 1443474,
+        "mtime_ns": 1792850490157454761
+      },
+      "kb-manifest.json": {
+        "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+        "bytes": 646,
+        "inode": 1443505,
+        "mtime_ns": 1792850490157454761
+      },
+      "knowledge.db": {
+        "sha256": "9cc5843fa81a7842fcf744699e7799d6d83aeb199b5bb56e1124b23cf92e76a1",
+        "bytes": 135196,
+        "inode": 1443490,
+        "mtime_ns": 1792850490221525652
+      }
+    }
+  },
+  "a_b_installed_inventory_equality": true,
+  "harness_sha_matches_executed_receipt": true
+}

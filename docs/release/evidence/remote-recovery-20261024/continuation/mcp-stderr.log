@@ -1,0 +1,37 @@
+Cairn MCP Server v2.0.0 (multi-DB)
+知识库文件不存在，将自动拉取 / KB file not found, will auto-pull: recovery (/tmp/cairn-remote-recovery-zr13gp1j/installed/current/knowledge.db)
+GitHub App 鉴权就绪（app_id=5454525, installation=174795212）
+MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 0 个知识库 / 0 KBs loaded（1 个 KB 启用 catalog 自动更新）
+[catalog-watch] recovery: 检测到新 stable（ → sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1），开始拉取...
+[catalog-watch] recovery: 热切换完成（digest=sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1）
+[catalog-watch] recovery: 启动轮询（间隔 10s, catalog=xcosmosbox/cairn-app-sandbox）
+2026/10/24 23:36:27 [search-pipeline] query rewritten: "LegacyAnchor" → "LegacyAnchor"; syntax=text profile=literal MATCH="\"LegacyAnchor\""
+2026/10/24 23:36:27 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 23:36:27 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 23:36:27 [search-pipeline] scoring produced 1 ranked results
+2026/10/24 23:36:27 [search-pipeline] query rewritten: "ModernAnchor" → "ModernAnchor"; syntax=text profile=literal MATCH="\"ModernAnchor\""
+2026/10/24 23:36:27 [search-pipeline] FTS5 returned 0 hits
+[catalog-watch] recovery: 检测到新 stable（sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1 → sha256:5b8d53991f6dd2938590534216e6d553a07204e3d9a5bfc94e600842ab4d4699），开始拉取...
+[catalog-watch] recovery: 热切换完成（digest=sha256:5b8d53991f6dd2938590534216e6d553a07204e3d9a5bfc94e600842ab4d4699）
+2026/10/24 23:36:38 [search-pipeline] query rewritten: "ModernAnchor" → "ModernAnchor"; syntax=text profile=literal MATCH="\"ModernAnchor\""
+2026/10/24 23:36:38 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 23:36:38 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 23:36:38 [search-pipeline] scoring produced 1 ranked results
+2026/10/24 23:36:38 [search-pipeline] query rewritten: "LegacyAnchor" → "LegacyAnchor"; syntax=text profile=literal MATCH="\"LegacyAnchor\""
+2026/10/24 23:36:38 [search-pipeline] FTS5 returned 0 hits
+[catalog-watch] recovery: 检测到新 stable（sha256:5b8d53991f6dd2938590534216e6d553a07204e3d9a5bfc94e600842ab4d4699 → sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1），开始拉取...
+[catalog-watch] recovery: 拉取失败: kbbundle.PullRemote: verify Bundle: kbbundle: knowledge.db 摘要不匹配（期望 36b05319823d 实际 9cc5843fa81a）
+2026/10/24 23:36:48 [search-pipeline] query rewritten: "ModernAnchor" → "ModernAnchor"; syntax=text profile=literal MATCH="\"ModernAnchor\""
+2026/10/24 23:36:48 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 23:36:48 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 23:36:48 [search-pipeline] scoring produced 1 ranked results
+2026/10/24 23:36:48 [search-pipeline] query rewritten: "LegacyAnchor" → "LegacyAnchor"; syntax=text profile=literal MATCH="\"LegacyAnchor\""
+2026/10/24 23:36:48 [search-pipeline] FTS5 returned 0 hits
+[catalog-watch] recovery: 检测到新 stable（sha256:5b8d53991f6dd2938590534216e6d553a07204e3d9a5bfc94e600842ab4d4699 → sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1），开始拉取...
+[catalog-watch] recovery: 热切换完成（digest=sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1）
+2026/10/24 23:36:58 [search-pipeline] query rewritten: "LegacyAnchor" → "LegacyAnchor"; syntax=text profile=literal MATCH="\"LegacyAnchor\""
+2026/10/24 23:36:58 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 23:36:58 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 23:36:58 [search-pipeline] scoring produced 1 ranked results
+2026/10/24 23:36:58 [search-pipeline] query rewritten: "ModernAnchor" → "ModernAnchor"; syntax=text profile=literal MATCH="\"ModernAnchor\""
+2026/10/24 23:36:58 [search-pipeline] FTS5 returned 0 hits

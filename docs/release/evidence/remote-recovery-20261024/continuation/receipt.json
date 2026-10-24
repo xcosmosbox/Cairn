@@ -1,0 +1,856 @@
+{
+  "result": "pass",
+  "scope": "private_sandbox_remote_catalog_native_app_mcp",
+  "source_sha": "a025546ab84cccb8ebbf83252782fe30439d009d",
+  "commands": [
+    {
+      "argv": [
+        "go",
+        "version"
+      ],
+      "exit_code": 0,
+      "stdout": "go version go1.22.12 linux/amd64\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-remote-recovery-zr13gp1j/mcp",
+        "./service/cmd/cairn-mcp"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-remote-recovery-zr13gp1j/fixture",
+        "./scripts/release/fixture"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-remote-recovery-zr13gp1j/remote-fixture",
+        "./scripts/release/remote_fixture"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "version",
+        "-m",
+        "/tmp/cairn-remote-recovery-zr13gp1j/mcp"
+      ],
+      "exit_code": 0,
+      "stdout": "/tmp/cairn-remote-recovery-zr13gp1j/mcp: go1.22.12\n\tpath\tgithub.com/xcosmosbox/cairn/service/cmd/cairn-mcp\n\tmod\tgithub.com/xcosmosbox/cairn\t(devel)\t\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgolang.org/x/sys\tv0.22.0\th1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=\n\tdep\tgopkg.in/yaml.v3\tv3.0.1\th1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=\n\tdep\tmodernc.org/libc\tv1.55.3\th1:AzcW1mhlPNrRtjS5sS+eW2ISCgSOLLNyFzRh/V3Qj/U=\n\tdep\tmodernc.org/mathutil\tv1.6.0\th1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=\n\tdep\tmodernc.org/memory\tv1.8.0\th1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=\n\tdep\tmodernc.org/sqlite\tv1.30.1\th1:YFhPVfu2iIgUf9kuA1CR7iiHdcEEsI2i+yjRYHscyxk=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=5d99a24b94b1465b59cc19f0de772a499451fe91\n\tbuild\tvcs.time=2026-10-24T14:24:35Z\n\tbuild\tvcs.modified=false\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-remote-recovery-zr13gp1j/remote-fixture",
+        "token",
+        "<runtime-key>",
+        "<private-token-output>"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"app_id\":5454525,\"expires_at\":\"2026-10-24T15:35:28Z\",\"installation_id\":174795212,\"permissions\":{\"contents\":\"write\",\"metadata\":\"read\"},\"repository_ids\":[1432125826],\"status\":201}\n",
+      "stderr": ""
+    }
+  ],
+  "http": [
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E022EE:616233E:6ADCC230"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/git/ref/heads/acceptance/recovery-20261024T140151-2",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E0472E:61699A9:6ADCC238"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765591",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E06C4A:6171404:6ADCC23F"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765709",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E0911D:6178B73:6ADCC246"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765864",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E0B7AC:6180836:6ADCC24E"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/contents/knowledge-bases/recovery/stable.json",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E0E20E:61891D4:6ADCC255"
+    },
+    {
+      "method": "PUT",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/contents/knowledge-bases/recovery/stable.json",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E15EF1:61A247D:6ADCC264"
+    },
+    {
+      "method": "PUT",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/contents/knowledge-bases/recovery/stable.json",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E1974A:61ADA9A:6ADCC276"
+    },
+    {
+      "method": "PUT",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/contents/knowledge-bases/recovery/stable.json",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E1CBAC:61B84B3:6ADCC280"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765591",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E203B9:61C3ABB:6ADCC28A"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765709",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E22F10:61CC5E7:6ADCC291"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765864",
+      "status": 200,
+      "request_id": "8E63:20D49A:1E2556D:61D417D:6ADCC299"
+    }
+  ],
+  "rpc": [
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "LegacyAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: LegacyAnchor（知识库: recovery）\n\n## 1. LegacyAnchor (1.00)\n- ID: recovery-a\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要: synthetic LegacyAnchor generation\n- 置信度/Confidence: 1.00\n\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "ModernAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: ModernAnchor（知识库: recovery）\n\n未找到匹配结果 / No matching results found.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "recovery",
+            "uuid": "recovery-a",
+            "include_sources": true
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✓ UUID recovery-a 存活 / alive。\n- 名称/Name: LegacyAnchor\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要/Summary: synthetic LegacyAnchor generation\n"
+            },
+            {
+              "type": "text",
+              "text": "{\"requested_uuid\":\"recovery-a\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"recovery-a\",\"status\":\"available\",\"source_refs\":[\"synthetic/reference.md\"],\"locations\":[{\"member_id\":\"member-a\",\"skill\":\"synthetic\",\"file_path\":\"synthetic/reference.md\",\"start_line\":3,\"end_line\":5,\"span_status\":\"available\"}]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "ModernAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: ModernAnchor（知识库: recovery）\n\n## 1. ModernAnchor (1.00)\n- ID: recovery-b\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要: synthetic ModernAnchor generation\n- 置信度/Confidence: 1.00\n\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "LegacyAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: LegacyAnchor（知识库: recovery）\n\n未找到匹配结果 / No matching results found.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "recovery",
+            "uuid": "recovery-b",
+            "include_sources": true
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✓ UUID recovery-b 存活 / alive。\n- 名称/Name: ModernAnchor\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要/Summary: synthetic ModernAnchor generation\n"
+            },
+            {
+              "type": "text",
+              "text": "{\"requested_uuid\":\"recovery-b\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"recovery-b\",\"status\":\"available\",\"source_refs\":[\"synthetic/reference.md\"],\"locations\":[{\"member_id\":\"member-b\",\"skill\":\"synthetic\",\"file_path\":\"synthetic/reference.md\",\"start_line\":3,\"end_line\":5,\"span_status\":\"available\"}]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "ModernAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: ModernAnchor（知识库: recovery）\n\n## 1. ModernAnchor (1.00)\n- ID: recovery-b\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要: synthetic ModernAnchor generation\n- 置信度/Confidence: 1.00\n\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "LegacyAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: LegacyAnchor（知识库: recovery）\n\n未找到匹配结果 / No matching results found.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "recovery",
+            "uuid": "recovery-b",
+            "include_sources": true
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✓ UUID recovery-b 存活 / alive。\n- 名称/Name: ModernAnchor\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要/Summary: synthetic ModernAnchor generation\n"
+            },
+            {
+              "type": "text",
+              "text": "{\"requested_uuid\":\"recovery-b\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"recovery-b\",\"status\":\"available\",\"source_refs\":[\"synthetic/reference.md\"],\"locations\":[{\"member_id\":\"member-b\",\"skill\":\"synthetic\",\"file_path\":\"synthetic/reference.md\",\"start_line\":3,\"end_line\":5,\"span_status\":\"available\"}]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "LegacyAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 10,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: LegacyAnchor（知识库: recovery）\n\n## 1. LegacyAnchor (1.00)\n- ID: recovery-a\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要: synthetic LegacyAnchor generation\n- 置信度/Confidence: 1.00\n\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "recovery",
+            "keyword": "ModernAnchor"
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 11,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: ModernAnchor（知识库: recovery）\n\n未找到匹配结果 / No matching results found.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "recovery",
+            "uuid": "recovery-a",
+            "include_sources": true
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 12,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✓ UUID recovery-a 存活 / alive。\n- 名称/Name: LegacyAnchor\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要/Summary: synthetic LegacyAnchor generation\n"
+            },
+            {
+              "type": "text",
+              "text": "{\"requested_uuid\":\"recovery-a\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"recovery-a\",\"status\":\"available\",\"source_refs\":[\"synthetic/reference.md\"],\"locations\":[{\"member_id\":\"member-a\",\"skill\":\"synthetic\",\"file_path\":\"synthetic/reference.md\",\"start_line\":3,\"end_line\":5,\"span_status\":\"available\"}]}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "remote_objects": [
+    {
+      "name": "a",
+      "tag": "recovery-20261024T140151-2-a",
+      "release_id": 422765591,
+      "html_url": "https://github.com/xcosmosbox/cairn-app-sandbox/releases/tag/recovery-20261024T140151-2-a",
+      "asset": {
+        "id": 672412561,
+        "name": "bundle.tar.gz",
+        "size": 4830,
+        "digest": "sha256:94eb7c2daba65dcf609a6aff620033c39fc704990500a3a19b4e3db7312d1cd9",
+        "created_at": "2026-10-24T14:02:15Z",
+        "updated_at": "2026-10-24T14:02:15Z",
+        "state": "uploaded"
+      }
+    },
+    {
+      "name": "b",
+      "tag": "recovery-20261024T140151-2-b",
+      "release_id": 422765709,
+      "html_url": "https://github.com/xcosmosbox/cairn-app-sandbox/releases/tag/recovery-20261024T140151-2-b",
+      "asset": {
+        "id": 672413017,
+        "name": "bundle.tar.gz",
+        "size": 4604,
+        "digest": "sha256:321168fc8553a4744ff17a45c33fd2513b3c4aac2b575fa7d12138bed897ee60",
+        "created_at": "2026-10-24T14:02:31Z",
+        "updated_at": "2026-10-24T14:02:31Z",
+        "state": "uploaded"
+      }
+    },
+    {
+      "name": "bad",
+      "tag": "recovery-20261024T140151-2-bad",
+      "release_id": 422765864,
+      "html_url": "https://github.com/xcosmosbox/cairn-app-sandbox/releases/tag/recovery-20261024T140151-2-bad",
+      "asset": {
+        "id": 672413625,
+        "name": "bundle.tar.gz",
+        "size": 4858,
+        "digest": "sha256:6a709f55536734a535490d5a0930200d056d277f6edbce633854ac0550834ce1",
+        "created_at": "2026-10-24T14:02:47Z",
+        "updated_at": "2026-10-24T14:02:47Z",
+        "state": "uploaded"
+      }
+    }
+  ],
+  "pointer_commits": [
+    {
+      "selected": "b",
+      "commit": "325d7b5a94dcd575b6337699b9540ab2655d7e45",
+      "blob": "0c5a677910ef08cd9f55944e8143d2389cb9892b",
+      "catalog": {
+        "format": "dk-kb-bundle/v1",
+        "kg": "recovery",
+        "source_repo": "synthetic/local-recovery",
+        "source_ref": "fixture",
+        "source_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "builder_version": "synthetic-test",
+        "builder_commit": "cccccccccccccccccccccccccccccccccccccccc",
+        "schema_version": 5,
+        "prompt_set_version": "none",
+        "model": "none",
+        "config_digest": "sha256:3b7ae9da5c78071fdb39d3b8b9d14b0a15b8db043c79f22f241f1ffd9c4ac972",
+        "bundle_digest": "sha256:5b8d53991f6dd2938590534216e6d553a07204e3d9a5bfc94e600842ab4d4699",
+        "kb_version": "b",
+        "created_at": "2026-10-24T00:00:00Z",
+        "minimum_reader_version": "",
+        "channel": "stable",
+        "published_at": "2026-10-24T14:36:27Z",
+        "release_tag": "recovery-20261024T140151-2-b",
+        "asset_name": "bundle.tar.gz"
+      }
+    },
+    {
+      "selected": "bad",
+      "commit": "66548864c502dce3a60ddf05fa1a458e963e5be0",
+      "blob": "3045e932b2105737647f0e675872761bacc78142",
+      "catalog": {
+        "format": "dk-kb-bundle/v1",
+        "kg": "recovery",
+        "source_repo": "synthetic/local-recovery",
+        "source_ref": "fixture",
+        "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "builder_version": "synthetic-test",
+        "builder_commit": "cccccccccccccccccccccccccccccccccccccccc",
+        "schema_version": 4,
+        "prompt_set_version": "none",
+        "model": "none",
+        "config_digest": "sha256:3b7ae9da5c78071fdb39d3b8b9d14b0a15b8db043c79f22f241f1ffd9c4ac972",
+        "bundle_digest": "sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1",
+        "kb_version": "a",
+        "created_at": "2026-10-24T00:00:00Z",
+        "minimum_reader_version": "",
+        "channel": "stable",
+        "published_at": "2026-10-24T14:36:38Z",
+        "release_tag": "recovery-20261024T140151-2-bad",
+        "asset_name": "bundle.tar.gz"
+      }
+    },
+    {
+      "selected": "a",
+      "commit": "73ea1b31aa199ab0b969fcd0fbf70c86515ac34f",
+      "blob": "a35fe70bce22f8a68965e7999d245aaa713b45ae",
+      "catalog": {
+        "format": "dk-kb-bundle/v1",
+        "kg": "recovery",
+        "source_repo": "synthetic/local-recovery",
+        "source_ref": "fixture",
+        "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "builder_version": "synthetic-test",
+        "builder_commit": "cccccccccccccccccccccccccccccccccccccccc",
+        "schema_version": 4,
+        "prompt_set_version": "none",
+        "model": "none",
+        "config_digest": "sha256:3b7ae9da5c78071fdb39d3b8b9d14b0a15b8db043c79f22f241f1ffd9c4ac972",
+        "bundle_digest": "sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1",
+        "kb_version": "a",
+        "created_at": "2026-10-24T00:00:00Z",
+        "minimum_reader_version": "",
+        "channel": "stable",
+        "published_at": "2026-10-24T14:36:48Z",
+        "release_tag": "recovery-20261024T140151-2-a",
+        "asset_name": "bundle.tar.gz"
+      }
+    }
+  ],
+  "started_at_utc": "2026-10-24T14:35:19.824658+00:00",
+  "script_sha256": "03bc8b32bbfabb9ce9a67fd1b59bc085496a6e2d3150f30ded3d63d4fd554fb6",
+  "helper_sha256": "fab366483de16588942b22d0e6c66546badc48245e982c2ac15d5544e6e70d64",
+  "mode": "existing_objects_continuation",
+  "limits": {
+    "overall_live_seconds": 600,
+    "phase_seconds": 90,
+    "watch_interval_seconds": 10,
+    "postcondition_poll_target": 3,
+    "postcondition_target_is_hard_gate": false,
+    "poll_count": "unknown: unchanged-digest watcher polls are not logged"
+  },
+  "phase_events": [
+    {
+      "phase": "initial-A",
+      "event": "start",
+      "utc": "2026-10-24T14:36:12.678999+00:00"
+    },
+    {
+      "phase": "B",
+      "event": "start",
+      "utc": "2026-10-24T14:36:27.837740+00:00"
+    },
+    {
+      "phase": "bad-A-rejection",
+      "event": "start",
+      "utc": "2026-10-24T14:36:38.534321+00:00"
+    },
+    {
+      "phase": "original-A-rollback",
+      "event": "start",
+      "utc": "2026-10-24T14:36:48.521182+00:00"
+    },
+    {
+      "phase": "original-A-rollback",
+      "event": "required-checks-complete",
+      "utc": "2026-10-24T14:36:58.470762+00:00"
+    }
+  ],
+  "original_receipt_sha256": "93983751ab27ebdc120cfec900a547c5dfa7695123930e4d92a2d542c90d739d",
+  "product_source_sha": "5d99a24b94b1465b59cc19f0de772a499451fe91",
+  "binaries": {
+    "mcp": "161f882245689198dbb034ff1ce5ca6a641128d350878429673113bc37fe90ad",
+    "fixture": "f1c389c7f1daa6f74e64b3f935f8894b7245398173dda220556c7988f14c4b20",
+    "remote-fixture": "3673093a66a08c2c63a2b7b07d61d370591fd1c8f24aac350a53dfce523655fe"
+  },
+  "mcp_build_info": "/tmp/cairn-remote-recovery-zr13gp1j/mcp: go1.22.12\n\tpath\tgithub.com/xcosmosbox/cairn/service/cmd/cairn-mcp\n\tmod\tgithub.com/xcosmosbox/cairn\t(devel)\t\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgolang.org/x/sys\tv0.22.0\th1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=\n\tdep\tgopkg.in/yaml.v3\tv3.0.1\th1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=\n\tdep\tmodernc.org/libc\tv1.55.3\th1:AzcW1mhlPNrRtjS5sS+eW2ISCgSOLLNyFzRh/V3Qj/U=\n\tdep\tmodernc.org/mathutil\tv1.6.0\th1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=\n\tdep\tmodernc.org/memory\tv1.8.0\th1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=\n\tdep\tmodernc.org/sqlite\tv1.30.1\th1:YFhPVfu2iIgUf9kuA1CR7iiHdcEEsI2i+yjRYHscyxk=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=5d99a24b94b1465b59cc19f0de772a499451fe91\n\tbuild\tvcs.time=2026-10-24T14:24:35Z\n\tbuild\tvcs.modified=false\n",
+  "source_inventories": {
+    "a": {
+      "checksums.sha256": {
+        "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+        "bytes": 162,
+        "inode": 1442497,
+        "mtime_ns": 1792850490157454761
+      },
+      "kb-manifest.json": {
+        "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+        "bytes": 646,
+        "inode": 1442421,
+        "mtime_ns": 1792850490157454761
+      },
+      "knowledge.db": {
+        "sha256": "36b05319823d62cd7624550cf1fdfbe87c57f024db71f2894e971b8d314bf0e0",
+        "bytes": 135168,
+        "inode": 1442481,
+        "mtime_ns": 1792850490150932912
+      }
+    },
+    "b": {
+      "checksums.sha256": {
+        "sha256": "7557bf02a08284ebb9a576590b2ab04fe800da2ba0a39ecfdc39ffe9a3559d7d",
+        "bytes": 162,
+        "inode": 1443442,
+        "mtime_ns": 1792850490219382011
+      },
+      "kb-manifest.json": {
+        "sha256": "c58678f8e3a1c0d167eeac6ed91baee835cd802066aeba16c9d12248b8d99cc8",
+        "bytes": 646,
+        "inode": 1442515,
+        "mtime_ns": 1792850490219382011
+      },
+      "knowledge.db": {
+        "sha256": "7eb0f961e7955379a3942931f279e22f81eb9c91f2a96dfa2afe209b9bc78472",
+        "bytes": 135168,
+        "inode": 1442529,
+        "mtime_ns": 1792850490212081116
+      }
+    },
+    "bad": {
+      "checksums.sha256": {
+        "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+        "bytes": 162,
+        "inode": 1443474,
+        "mtime_ns": 1792850490157454761
+      },
+      "kb-manifest.json": {
+        "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+        "bytes": 646,
+        "inode": 1443505,
+        "mtime_ns": 1792850490157454761
+      },
+      "knowledge.db": {
+        "sha256": "9cc5843fa81a7842fcf744699e7799d6d83aeb199b5bb56e1124b23cf92e76a1",
+        "bytes": 135196,
+        "inode": 1443490,
+        "mtime_ns": 1792850490221525652
+      }
+    }
+  },
+  "archives": {
+    "a": {
+      "sha256": "94eb7c2daba65dcf609a6aff620033c39fc704990500a3a19b4e3db7312d1cd9",
+      "bytes": 4830
+    },
+    "b": {
+      "sha256": "321168fc8553a4744ff17a45c33fd2513b3c4aac2b575fa7d12138bed897ee60",
+      "bytes": 4604
+    },
+    "bad": {
+      "sha256": "6a709f55536734a535490d5a0930200d056d277f6edbce633854ac0550834ce1",
+      "bytes": 4858
+    }
+  },
+  "live_started_at_utc": "2026-10-24T14:35:21.267463+00:00",
+  "remote_branch": {
+    "repository": "xcosmosbox/cairn-app-sandbox",
+    "branch": "acceptance/recovery-20261024T140151-2",
+    "base_sha": "12033cabbf506a59538c6cee56f44ded09509edd"
+  },
+  "config_sha256": "2c63026ab80085fd0497167b97b6cd6cce6e67518ab717934619b09749a17cdb",
+  "sanitized_config": "github:\n  app_id: 5454525\n  private_key_file: \"<runtime-key>\"\n  api_base_url: https://api.github.com\nmcp:\n  knowledge_bases:\n    - name: recovery\n      path: \"/tmp/cairn-remote-recovery-zr13gp1j/installed/current/knowledge.db\"\n      catalog_repo: xcosmosbox/cairn-app-sandbox\n      catalog_branch: acceptance/recovery-20261024T140151-2\n      manifest_dir: knowledge-bases\n      install_dir: \"/tmp/cairn-remote-recovery-zr13gp1j/installed\"\n      poll_interval: 10s\n",
+  "a_initial_inventory": {
+    "checksums.sha256": {
+      "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+      "bytes": 162,
+      "inode": 1442487,
+      "mtime_ns": 1792852587731570707
+    },
+    "kb-manifest.json": {
+      "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+      "bytes": 646,
+      "inode": 1442486,
+      "mtime_ns": 1792852587731066705
+    },
+    "knowledge.db": {
+      "sha256": "36b05319823d62cd7624550cf1fdfbe87c57f024db71f2894e971b8d314bf0e0",
+      "bytes": 135168,
+      "inode": 1443219,
+      "mtime_ns": 1792852587729178581
+    }
+  },
+  "initialize": {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "result": {
+      "capabilities": {
+        "tools": {}
+      },
+      "protocolVersion": "2024-11-05",
+      "serverInfo": {
+        "name": "cairn",
+        "version": "2.0.0"
+      }
+    }
+  },
+  "b_initial_inventory": {
+    "checksums.sha256": {
+      "sha256": "7557bf02a08284ebb9a576590b2ab04fe800da2ba0a39ecfdc39ffe9a3559d7d",
+      "bytes": 162,
+      "inode": 1442519,
+      "mtime_ns": 1792852598461340933
+    },
+    "kb-manifest.json": {
+      "sha256": "c58678f8e3a1c0d167eeac6ed91baee835cd802066aeba16c9d12248b8d99cc8",
+      "bytes": 646,
+      "inode": 1442517,
+      "mtime_ns": 1792852598460861388
+    },
+    "knowledge.db": {
+      "sha256": "7eb0f961e7955379a3942931f279e22f81eb9c91f2a96dfa2afe209b9bc78472",
+      "bytes": 135168,
+      "inode": 1442530,
+      "mtime_ns": 1792852598459944402
+    }
+  },
+  "a_final_inventory": {
+    "checksums.sha256": {
+      "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+      "bytes": 162,
+      "inode": 1442487,
+      "mtime_ns": 1792852587731570707
+    },
+    "kb-manifest.json": {
+      "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+      "bytes": 646,
+      "inode": 1442486,
+      "mtime_ns": 1792852587731066705
+    },
+    "knowledge.db": {
+      "sha256": "36b05319823d62cd7624550cf1fdfbe87c57f024db71f2894e971b8d314bf0e0",
+      "bytes": 135168,
+      "inode": 1443219,
+      "mtime_ns": 1792852587729178581
+    }
+  },
+  "b_final_inventory": {
+    "checksums.sha256": {
+      "sha256": "7557bf02a08284ebb9a576590b2ab04fe800da2ba0a39ecfdc39ffe9a3559d7d",
+      "bytes": 162,
+      "inode": 1442519,
+      "mtime_ns": 1792852598461340933
+    },
+    "kb-manifest.json": {
+      "sha256": "c58678f8e3a1c0d167eeac6ed91baee835cd802066aeba16c9d12248b8d99cc8",
+      "bytes": 646,
+      "inode": 1442517,
+      "mtime_ns": 1792852598460861388
+    },
+    "knowledge.db": {
+      "sha256": "7eb0f961e7955379a3942931f279e22f81eb9c91f2a96dfa2afe209b9bc78472",
+      "bytes": 135168,
+      "inode": 1442530,
+      "mtime_ns": 1792852598459944402
+    }
+  },
+  "mcp_exit_code": -15,
+  "observed_watcher_log_events": {
+    "new_digest_detected": 4,
+    "swap_complete": 3,
+    "pull_failure": 1
+  },
+  "observed_rpc_requests": 12,
+  "observed_helper_http_requests": 12,
+  "actual_watcher_http_request_count": "unknown: product HTTP transport is uninstrumented",
+  "finished_at_utc": "2026-10-24T14:37:20.849835+00:00"
+}
