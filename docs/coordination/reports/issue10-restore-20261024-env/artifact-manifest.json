@@ -1,0 +1,152 @@
+{
+  "session": "cairn-10-20261024T0923Z-env",
+  "source_sha": "1492bfdab9702f7a214083032c9ec514c07f7906",
+  "location": "immutable commit pinned by task checkpoint and PR",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 10412,
+      "sha256": "6103d548b678e974d06e9096b7155e6e1363ad7b2838c05ae8f16090b67cad51"
+    },
+    {
+      "path": "bundle-metadata/checksums.sha256",
+      "bytes": 162,
+      "sha256": "70cc5f91d5bf1dfc04cb88236e4f7c60f1104f9a3f2e7182e86270b42f95b98a"
+    },
+    {
+      "path": "bundle-metadata/kb-manifest.json",
+      "bytes": 800,
+      "sha256": "a3f2301d0125f8def73424a27c3e09b39864bc7431843789c7e8447923c7f531"
+    },
+    {
+      "path": "logs/01-go-download-metadata.log",
+      "bytes": 456,
+      "sha256": "e6a64903988b576b2c300adf9f23f2b228470c0bdebf74d4daebae91c60d5d24"
+    },
+    {
+      "path": "logs/02-environment.log",
+      "bytes": 1211,
+      "sha256": "e7792221b788204928cf86c23c91652ccd29ed11dce84cfa0b7ad0a35a465b7b"
+    },
+    {
+      "path": "logs/03-npm-ci.log",
+      "bytes": 350,
+      "sha256": "6b4994e5ca05d9476ca0e7f87cf5b8441dbab4a33bb82b00f96954bc3154d14a"
+    },
+    {
+      "path": "logs/04-python-quality.log",
+      "bytes": 434,
+      "sha256": "f223f334155f45c622552984aaa1e771f284c14a3bf5b0ee22003909a777f044"
+    },
+    {
+      "path": "logs/05-mcp-script-regressions.log",
+      "bytes": 325,
+      "sha256": "9b3a80db66fc98100620f41509888683150a51c0803e80c2a1dbe7061fa77cde"
+    },
+    {
+      "path": "logs/06-go-install.log",
+      "bytes": 1309,
+      "sha256": "53056a32af81c9c249b7d6482f61dff59793033de3f2e706492fc631b2b1be96"
+    },
+    {
+      "path": "logs/07-viewer-subpath.log",
+      "bytes": 1286,
+      "sha256": "82e9e0da0f13796979aa70b0e025c6d3bd6479abc07b10235b7e6ffae61b2117"
+    },
+    {
+      "path": "logs/08-invariants.log",
+      "bytes": 535,
+      "sha256": "7e36702b9b64d7c8e2168c34ef3e54a923441792433a2c3077b479fda0a3f8e8"
+    },
+    {
+      "path": "logs/09-make-verify.log",
+      "bytes": 1163,
+      "sha256": "f1f738bcb0bd09c05ae9a8b832037e66458e55a7f9f953b7b907cd2def856478"
+    },
+    {
+      "path": "logs/10-go-race.log",
+      "bytes": 3182,
+      "sha256": "9a3f4eabd8d27262466da27a6eee7c1e85e31c572e686437760ef73cc10d1353"
+    },
+    {
+      "path": "logs/11-export-receipts.log",
+      "bytes": 270,
+      "sha256": "229e61aa353159d148f15db226dfb6a8416e9227ea0fd27a1ad30dda4edd892d"
+    },
+    {
+      "path": "logs/12-shell-syntax.log",
+      "bytes": 209,
+      "sha256": "f2980f18fcde4a894e7156d23a39847f20ed51521060f93bfe69b5b288a05971"
+    },
+    {
+      "path": "logs/13-fake-demo.log",
+      "bytes": 1996,
+      "sha256": "a217e282617375f37224f2cc8a3baa06834da24c22511350cbf455566b184df0"
+    },
+    {
+      "path": "logs/14-fake-artifact-inspection.log",
+      "bytes": 5937,
+      "sha256": "ec1d3a52a61b13b505a81c5bfc4de71f7ee0f8f332a7569a58dd72fc4ed57c1c"
+    },
+    {
+      "path": "logs/15-cli-status.log",
+      "bytes": 739,
+      "sha256": "773b9078869abbd8d588c7629327eb3a563c41a2d1b9a0a04f6f786ce99fa86e"
+    },
+    {
+      "path": "logs/16-cli-query.log",
+      "bytes": 1125,
+      "sha256": "e13207b88aab82b3d262191223b055790339597484e8289c4cc186836efed102"
+    },
+    {
+      "path": "logs/17-mcp-smoke.log",
+      "bytes": 1037,
+      "sha256": "73b81fa555b432f1f450f9c4687b71a1ae9598fd34049ff7558818bed8b180cc"
+    },
+    {
+      "path": "logs/18-mcp-semantic.log",
+      "bytes": 2322,
+      "sha256": "b5a1d408b9e6dc668b736eb1641dc78b033433ca03e84cf1d211e638369b7801"
+    },
+    {
+      "path": "logs/19-provenance.log",
+      "bytes": 1225,
+      "sha256": "13911359dc5e63cbae24b5f97051665ad5bd8a5cbbf40370ebbdfe51be0c9d75"
+    },
+    {
+      "path": "logs/19b-provenance.log",
+      "bytes": 2044,
+      "sha256": "26458da81afdd1d1f757e17c8b9579f89ee13d136b4c5da357e56606335ace5e"
+    },
+    {
+      "path": "logs/19c-provenance.log",
+      "bytes": 1356,
+      "sha256": "abf8ca9f8c8f72d29bfcd3ffe657a69ef2fb44ea792aa9f7837d73cdb8cf4c5a"
+    },
+    {
+      "path": "logs/20-integrity.json",
+      "bytes": 1133,
+      "sha256": "0eb817acbd61b3cd6350e8cef0dba53d695f1bf6cf2fb57d304fc6e72c4e8689"
+    },
+    {
+      "path": "scripts/inspect.py",
+      "bytes": 2020,
+      "sha256": "3e85fd2431a72e995b25eb845b2effd8a261e787736e9c089d9fe1860959267c"
+    },
+    {
+      "path": "scripts/provenance.py",
+      "bytes": 1747,
+      "sha256": "0b08d2380fb2f06f8f6440dc26d469199a27300288d7e1bdaac1530d5e8f2b7b"
+    },
+    {
+      "path": "scripts/semantic.py",
+      "bytes": 1910,
+      "sha256": "989e216632f592aa212f3cf465993a6533865552330480a1f74afffabb74ac64"
+    },
+    {
+      "path": "scripts/verify.py",
+      "bytes": 979,
+      "sha256": "7cfef790260bfe7cc511bf091b456dd86daacfa2d1f92f9e70ec10e89dad770c"
+    }
+  ]
+}

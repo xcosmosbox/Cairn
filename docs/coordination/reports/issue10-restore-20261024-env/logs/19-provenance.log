@@ -1,0 +1,27 @@
+{"name": "19-provenance", "command": ["python3", ".local/provenance.py"], "cwd": ".", "started_at": "2026-10-24T09:29:39.711264+00:00", "ended_at": "2026-10-24T09:29:39.741664+00:00", "exit_code": 1}
+{
+  "node": {
+    "id": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+    "name": "阻塞队列",
+    "provenance": "llm_inferred",
+    "source_refs": "fake"
+  },
+  "sources": [
+    {
+      "node_uuid": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+      "member_id": "fake-concept-blocking-queue",
+      "skill": "fake",
+      "file_path": "SKILL.md",
+      "start_line": 6,
+      "end_line": 8
+    }
+  ],
+  "manifest_source_repo": "synthetic/source",
+  "manifest_source_commit": "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98",
+  "mcp_source_citation_scope": "domain_search and resolve_node format ID/name/type/domain/summary/confidence; no source-file citation field exposed by these tools at this baseline"
+}
+Traceback (most recent call last):
+  File "/workspace/scratch/110c4593aeb1/cairn-env/.local/provenance.py", line 9, in <module>
+    else: raise AssertionError('source Git object could not be checked')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: source Git object could not be checked

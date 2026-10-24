@@ -1,0 +1,17 @@
+{"name": "13-fake-demo", "command": ["./bin/cairnd", "run", "--once", "--fake", "--config", "configs/cairnd-fake.example.yaml"], "cwd": ".", "started_at": "2026-10-24T09:27:30.067134+00:00", "ended_at": "2026-10-24T09:27:30.517690+00:00", "exit_code": 0}
+2026/10/24 18:27:30 [fake] 本地模拟会话: /workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636（固定样例知识，无 GitHub/LLM；自动模拟合并本地 PR）
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: Idle → FetchSource
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: FetchSource → FullBuild
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: FullBuild → ValidateCandidate
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: ValidateCandidate → CreateSourcePR
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: CreateSourcePR → AwaitSourcePR
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: AwaitSourcePR → AwaitSourcePR
+2026/10/24 18:27:30 [fake] 模拟合并本地 source_writeback PR #1
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: AwaitSourcePR → ReconcileMergedSource
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: ReconcileMergedSource → UploadCandidate
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: UploadCandidate → CreateCatalogPR
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: CreateCatalogPR → AwaitCatalogPR
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: AwaitCatalogPR → AwaitCatalogPR
+2026/10/24 18:27:30 [fake] 模拟合并本地 catalog_publish PR #2
+2026/10/24 18:27:30 [once] run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo: AwaitCatalogPR → Stable
+run run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo 最终状态: Stable

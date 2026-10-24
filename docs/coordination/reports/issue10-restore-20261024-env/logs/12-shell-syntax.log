@@ -1,0 +1,1 @@
+{"name": "12-shell-syntax", "command": ["bash", "-n", "scripts/dev/smoke-mcp.sh"], "cwd": ".", "started_at": "2026-10-24T09:27:09.790089+00:00", "ended_at": "2026-10-24T09:27:09.792390+00:00", "exit_code": 0}

@@ -1,0 +1,2 @@
+{"name": "01-go-download-metadata", "command": ["curl", "--fail", "--location", "--silent", "--show-error", "--retry", "1", "--retry-max-time", "25", "--connect-timeout", "5", "--max-time", "12", "-o", ".local/toolchain/downloads.json", "https://go.dev/dl/?mode=json&include=all"], "cwd": ".", "started_at": "2026-10-24T09:25:50.462394+00:00", "ended_at": "2026-10-24T09:25:57.062035+00:00", "exit_code": 0}
+curl: (28) Proxy CONNECT aborted due to timeout

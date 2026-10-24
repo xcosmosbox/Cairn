@@ -1,0 +1,23 @@
+{"name": "18-mcp-semantic", "command": ["timeout", "30", "python3", ".local/semantic.py"], "cwd": ".", "started_at": "2026-10-24T09:28:54.985190+00:00", "ended_at": "2026-10-24T09:28:55.027791+00:00", "exit_code": 0}
+Cairn MCP Server v2.0.0 (multi-DB)
+MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 1 个知识库 / 1 KBs loaded
+{"request": {"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "issue10-semantic-acceptance", "version": "1"}}, "id": 1}, "response": {"jsonrpc": "2.0", "id": 1, "result": {"capabilities": {"tools": {}}, "protocolVersion": "2024-11-05", "serverInfo": {"name": "cairn", "version": "2.0.0"}}}}
+2026/10/24 18:28:55 [search-pipeline] query rewritten: "阻塞队列" → "阻塞队列"; syntax=text profile=literal MATCH="\"阻塞队列\""
+2026/10/24 18:28:55 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 18:28:55 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 18:28:55 [search-pipeline] scoring produced 1 ranked results
+{"request": {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "domain_search", "arguments": {"kg": "demo", "keyword": "阻塞队列", "limit": 5}}, "id": 2}, "response": {"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "搜索关键词: 阻塞队列（知识库: demo）\n\n## 1. 阻塞队列 (1.00)\n- ID: ccd9e2cf-1848-51c3-b013-229fbcef88b2\n- 类型/Type: Concept\n- 域/Domain: demo/queue\n- 摘要: Bounded queue blocks when full or empty\n- 置信度/Confidence: 1.00\n\n"}]}}}
+PASS: real MCP nonempty known concept ID/name/queue summary match; zero-result success excluded
+{
+  "bundle_before": {
+    "checksums.sha256": "70cc5f91d5bf1dfc04cb88236e4f7c60f1104f9a3f2e7182e86270b42f95b98a",
+    "kb-manifest.json": "a3f2301d0125f8def73424a27c3e09b39864bc7431843789c7e8447923c7f531",
+    "knowledge.db": "8cc8022fb64ed4f0305ae754734b4fb92ec66efab7305ba73ca092e91a79061a"
+  },
+  "bundle_after": {
+    "checksums.sha256": "70cc5f91d5bf1dfc04cb88236e4f7c60f1104f9a3f2e7182e86270b42f95b98a",
+    "knowledge.db": "8cc8022fb64ed4f0305ae754734b4fb92ec66efab7305ba73ca092e91a79061a",
+    "kb-manifest.json": "a3f2301d0125f8def73424a27c3e09b39864bc7431843789c7e8447923c7f531"
+  },
+  "byte_identical": true
+}
