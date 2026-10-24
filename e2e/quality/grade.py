@@ -8,17 +8,21 @@ aggregates and emits detailed bad cases only for dev. This is AI, not human revi
 import argparse
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import ExitStack
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
 import random
 import re
 import time
+import threading
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from audit_gold import evidence, questions, safe_source, sha
+from durable_ledger import JSONLedger, LedgerIntegrityError, read_jsonl
 
 JUDGE_SCHEMA_VERSION = "cairn-ai-judge/v2"
 FINAL_CONTENT_LIMIT = 120000
@@ -313,7 +317,79 @@ def scores(case, verdict):
             "grounded_strict_pass": strict_pass and retrieval_unsupported == 0}
 
 
+def validate_judge_recovery(grades, events, cases, blind_sha, config_sha):
+    """恢复时核对事件身份，未知在途不重发；validate without reconstructing history."""
+    case_ids = {case["blind_id"] for case in cases}
+    if len(case_ids) != len(cases):
+        raise LedgerIntegrityError("duplicate blind case identity")
+    requests, responses, results, case_attempts = {}, {}, {}, Counter()
+    fields = ("request_id", "blind_id", "judge_model", "judge_config_sha256", "blind_input_sha256",
+              "request_sha256", "attempt", "retry_feedback")
+    for row in [*events, *grades]:
+        if (row.get("blind_input_sha256") != blind_sha or row.get("judge_config_sha256") != config_sha
+                or row.get("blind_id") not in case_ids or not isinstance(row.get("request_id"), str)
+                or not row["request_id"]):
+            raise LedgerIntegrityError("judge ledger belongs to another input/configuration or case")
+    for row in events:
+        rid, kind = row["request_id"], row.get("event")
+        if kind == "request":
+            if (rid in requests or type(row.get("reserved_tokens")) is not int or row["reserved_tokens"] < 0
+                    or type(row.get("attempt")) is not int
+                    or row["attempt"] != case_attempts[row["blind_id"]] + 1):
+                raise LedgerIntegrityError("duplicate or invalid judge request")
+            requests[rid] = row
+            case_attempts[row["blind_id"]] += 1
+        elif kind == "response":
+            if (rid not in requests or rid in responses
+                    or any(json.dumps(row.get(k), sort_keys=True) != json.dumps(requests[rid].get(k), sort_keys=True)
+                           for k in fields)):
+                raise LedgerIntegrityError("judge response has no matching earlier request")
+            if (type(row.get("accounted_tokens")) is not int or row["accounted_tokens"] < 0
+                    or row.get("status") not in ("ok", "error")):
+                raise LedgerIntegrityError("invalid judge response accounting")
+            usage = row.get("usage")
+            if not isinstance(usage, dict):
+                raise LedgerIntegrityError("invalid judge response usage")
+            actual = usage.get("total_tokens")
+            metered = type(actual) is int and actual >= 0
+            expected_tokens = actual if metered else requests[rid]["reserved_tokens"]
+            if (row["accounted_tokens"] != expected_tokens
+                    or type(row.get("usage_unknown")) is not bool or row["usage_unknown"] == metered
+                    or type(row.get("usage_is_estimate")) is not bool or row["usage_is_estimate"] == metered
+                    or (row.get("http_status") is not None and type(row["http_status"]) is not int)):
+                raise LedgerIntegrityError("judge usage/unknown/reservation accounting disagrees")
+            responses[rid] = row
+        else:
+            raise LedgerIntegrityError("invalid judge ledger event")
+    for row in grades:
+        rid = row["request_id"]
+        if (rid not in responses or rid in results
+                or any(json.dumps(row.get(k), sort_keys=True) != json.dumps(responses[rid].get(k), sort_keys=True)
+                       for k in (*fields, "status", "response_sha256", "http_status", "usage", "usage_unknown"))):
+            raise LedgerIntegrityError("judge result has no matching response or is duplicated")
+        results[rid] = row
+    if set(responses) != set(results):
+        raise LedgerIntegrityError("judge response lacks its grade; explicit crash audit required")
+    return requests, responses
+
+
 def judge(args):
+    paths = [Path(args.out), Path(args.usage)]
+    if paths[0].resolve() == paths[1].resolve():
+        raise LedgerIntegrityError("judge result and usage ledgers must be different files")
+    with ExitStack() as stack:
+        ledgers = []
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            ledger = JSONLedger(path, resume=True)
+            stack.callback(ledger.close)
+            ledgers.append(ledger)
+        if ledgers[0].identity == ledgers[1].identity:
+            raise LedgerIntegrityError("judge ledgers alias the same file")
+        return _judge(args, *ledgers)
+
+
+def _judge(args, result_ledger, usage_ledger):
     blind = read(args.blind)
     blind_sha = sha(Path(args.blind).read_bytes())
     extra = read(args.extra_body) if args.extra_body else {}
@@ -322,30 +398,39 @@ def judge(args):
         raise ValueError("extra body may not override model, prompts or token limit")
     config = {"model": args.model, "api_base": args.api_base.rstrip("/"), "temperature": args.temperature,
               "judge_schema_version": JUDGE_SCHEMA_VERSION,
+              "runner_instrumentation": "cairn-durable-judge/v1",
+              "runner_source_sha256": {name: sha(Path(__file__).with_name(name).read_bytes())
+                                       for name in ("grade.py", "durable_ledger.py", "audit_gold.py")},
               "max_tokens": args.max_tokens, "extra_body": extra, "system_sha256": sha(SYSTEM.encode()),
               "max_calls": args.max_calls, "max_total_tokens": args.max_total_tokens,
               "max_input_chars": args.max_input_chars, "timeout_seconds": args.timeout,
               "validation_retries_per_case": args.validation_retries,
               "final_content_limit_chars": FINAL_CONTENT_LIMIT}
     config_sha = sha(json.dumps(config, sort_keys=True).encode())
-    existing = jsonl(args.out) if Path(args.out).exists() else []
-    for row in existing:
-        if row["blind_input_sha256"] != blind_sha or row["judge_config_sha256"] != config_sha:
-            raise ValueError("existing grades belong to another input/configuration")
+    existing, ledger = result_ledger.initial_records, usage_ledger.initial_records
+    requests, outcomes = validate_judge_recovery(existing, ledger, blind["cases"], blind_sha, config_sha)
+    if any(row.get("http_status") in (401, 403) for row in outcomes.values()):
+        raise RuntimeError("judge run stopped after authorization failure; explicit new-run review required")
     complete = {row["blind_id"] for row in existing if row["status"] == "ok"}
     latest_existing = {row["blind_id"]: row for row in existing}
-    ledger = jsonl(args.usage) if Path(args.usage).exists() else []
-    for row in ledger:
-        if row.get("blind_input_sha256") != blind_sha or row.get("judge_config_sha256") != config_sha:
-            raise ValueError("existing usage ledger belongs to another input/configuration")
-    calls = sum(row.get("event") == "request" for row in ledger)
-    attempts = Counter(row["blind_id"] for row in ledger if row.get("event") == "request")
+    calls = len(requests)
+    attempts = Counter(row["blind_id"] for row in requests.values())
     if args.validation_retries not in (0, 1):
         raise ValueError("at most one validation/length retry per case is allowed")
-    # Charge actual returned usage, reserve a full estimate for interrupted/unmetered requests.
-    outcomes = {row["request_id"]: row for row in ledger if row.get("event") == "response"}
-    used_tokens = sum(outcomes.get(row["request_id"], {}).get("accounted_tokens", row["reserved_tokens"])
-                      for row in ledger if row.get("event") == "request")
+    # 未返回请求继续按原预留计费，不能把未知 usage 当零或自动重发。
+    # Retain conservative reservations for interrupted or unmetered calls.
+    interrupted = sorted(set(requests) - set(outcomes))
+    used_tokens = sum(outcomes.get(rid, {}).get("accounted_tokens", row["reserved_tokens"])
+                      for rid, row in requests.items())
+    admission_lock = threading.Lock()
+    stopped = {"authorization": None, "persistence": None, "worker": None}
+    persistence_errors = []
+
+    def stop(kind, error):
+        with admission_lock:
+            if stopped[kind] is None:
+                stopped[kind] = str(error)
+
     key = os.environ.get(args.api_key_env)
     if not key:
         raise ValueError("judge API key environment variable is unset")
@@ -357,6 +442,7 @@ def judge(args):
         try:
             req = Request(endpoint, data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
             with urlopen(req, timeout=args.timeout) as resp:
+                record["http_status"] = getattr(resp, "status", 200)
                 raw = resp.read(4 * 1024 * 1024 + 1)
                 if len(raw) > 4 * 1024 * 1024:
                     raise ValueError("judge response exceeds bounded limit")
@@ -389,14 +475,23 @@ def judge(args):
             verdict = validate_verdict(case, parsed)
             record.update(status="ok", verdict=verdict, scores=scores(case, verdict))
             record.pop("failure_kind", None)
-        except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, URLError) as exc:
+        except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, URLError, http.client.HTTPException) as exc:
             # Do not log HTTP response bodies or request headers containing credentials.
-            record["error"] = ("HTTP status %s" % exc.code) if isinstance(exc, HTTPError) else str(exc)[:500]
+            if isinstance(exc, HTTPError):
+                record["http_status"] = exc.code
+                if exc.code in (401, 403):
+                    # worker 立即锁住新准入，不等待主线程取 future。
+                    # Stop admission at observation, while already admitted calls drain.
+                    stop("authorization", "HTTP status %s" % exc.code)
+                    record["failure_kind"] = "authorization_abort"
+            record["error"] = ("HTTP status %s" % exc.code) if isinstance(exc, HTTPError) else str(exc).replace(key, "[REDACTED]")[:500]
         actual = usage.get("total_tokens")
-        accounted = actual if type(actual) is int and actual >= 0 else reserved
-        record.update(usage=usage, response_sha256=sha(raw))
+        metered = type(actual) is int and actual >= 0
+        accounted = actual if metered else reserved
+        record.update(usage=usage, usage_unknown=not metered, response_sha256=sha(raw))
         response_event = {**base, "event": "response", "status": record["status"], "usage": usage,
-                          "accounted_tokens": accounted, "usage_is_estimate": actual is None,
+                          "accounted_tokens": accounted, "usage_is_estimate": not metered,
+                          "usage_unknown": not metered, "http_status": record.get("http_status"),
                           "response_sha256": sha(raw), "latency_seconds": time.monotonic() - start}
         if record["status"] != "ok":
             response_event.update(failure_kind=record["failure_kind"], error=record.get("error"))
@@ -419,9 +514,9 @@ def judge(args):
     for case, _ in pending:
         if len(json.dumps(case, ensure_ascii=False)) > args.max_input_chars:
             raise ValueError("judge case exceeds max-input-chars; refusing silent truncation: " + case["blind_id"])
-    # One scheduler owns all accounting and durable writes; workers do HTTP only.
-    # Reserve each in-flight request before submission to keep concurrent budgets bounded.
-    active, reserved_live, index, budget_stop = {}, 0, 0, False
+    # 主线程独占持久化；worker 仅在收到鉴权失败时参与准入锁。
+    # Admission serializes ledger verification, request persistence and dispatch.
+    active, reserved_live, index, budget_stop, collected = {}, 0, 0, False, 0
     if not 1 <= args.concurrency <= 8:
         raise ValueError("judge concurrency must be between 1 and 8")
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
@@ -429,8 +524,6 @@ def judge(args):
             while index < len(pending) and len(active) < args.concurrency and not budget_stop:
                 case, feedback = pending[index]
                 user = json.dumps(case, ensure_ascii=False)
-                if len(user) > args.max_input_chars:
-                    raise ValueError("judge case exceeds max-input-chars; refusing silent truncation: " + case["blind_id"])
                 reserved = len((SYSTEM + user + (feedback or "")).encode()) + args.max_tokens
                 if calls >= args.max_calls:
                     budget_stop = True
@@ -451,33 +544,89 @@ def judge(args):
                         "judge_config_sha256": config_sha, "blind_input_sha256": blind_sha,
                         "review_type": "AI judge, not human", "request_sha256": sha(body),
                         "attempt": attempts[case["blind_id"]] + 1, "retry_feedback": feedback}
-                append(args.usage, {**base, "event": "request", "reserved_tokens": reserved,
-                                   "started_at_unix": time.time(), "concurrency": args.concurrency})
-                calls += 1
-                attempts[case["blind_id"]] += 1
-                reserved_live += reserved
-                active[pool.submit(execute, case, body, base, reserved)] = (reserved, case)
-                index += 1
+                with admission_lock:
+                    if any(stopped.values()):
+                        break
+                    try:
+                        result_ledger.verify()
+                        usage_ledger.verify()
+                        usage_ledger.append({**base, "event": "request", "reserved_tokens": reserved,
+                                             "started_at_unix": time.time(), "concurrency": args.concurrency})
+                    except (LedgerIntegrityError, OSError) as exc:
+                        stopped["persistence"] = str(exc)
+                        persistence_errors.append(str(exc))
+                        break
+                    # The durable request is admission. No HTTP can precede it.
+                    calls += 1
+                    attempts[case["blind_id"]] += 1
+                    reserved_live += reserved
+                    active[pool.submit(execute, case, body, base, reserved)] = (reserved, case, base)
+                    index += 1
             if not active:
                 break
             finished, _ = wait(active, return_when=FIRST_COMPLETED)
             for future in finished:
-                reserved, case = active.pop(future)
+                reserved, case, base = active.pop(future)
                 reserved_live -= reserved
-                record, event = future.result()
+                try:
+                    record, event = future.result()
+                except Exception as exc:
+                    # 非预期 worker 失败也不能跳出收集，未计量费用保持未知。
+                    # Keep collecting other futures; never claim this unknown outcome succeeded.
+                    error = str(exc).replace(key, "[REDACTED]")[:500]
+                    stop("worker", error)
+                    record = {**base, "status": "error", "failure_kind": "worker_error", "error": error,
+                              "usage": {}, "usage_unknown": True, "response_sha256": None}
+                    event = {**record, "event": "response", "accounted_tokens": reserved, "usage_is_estimate": True}
+                collected += 1
                 used_tokens += event["accounted_tokens"]
-                append(args.usage, event)
-                append(args.out, record)
+                # 任一账本失败后仍逐个收集并分别写两个结果；不能提前退出 executor。
+                # Each failed append retains its independent receipt, including later responses.
+                for target, value in ((usage_ledger, event), (result_ledger, record)):
+                    try:
+                        target.append(value)
+                    except (LedgerIntegrityError, OSError) as exc:
+                        stop("persistence", exc)
+                        persistence_errors.append(str(exc))
                 if record["status"] == "ok":
                     complete.add(record["blind_id"])
-                elif attempts[record["blind_id"]] < 1 + args.validation_retries:
+                elif not any(stopped.values()) and attempts[record["blind_id"]] < 1 + args.validation_retries:
                     feedback = retry_feedback(record)
                     if feedback:
                         pending.append((case, feedback))
                 print(json.dumps({"blind_id": record["blind_id"], "status": record["status"], "http_calls": calls,
                                   "accounted_tokens": used_tokens}), flush=True)
+    for target in (usage_ledger, result_ledger):
+        try:
+            target.verify()
+        except (LedgerIntegrityError, OSError) as exc:
+            stop("persistence", exc)
+            persistence_errors.append(str(exc))
+    if stopped["persistence"] is None:
+        try:
+            final_requests, final_responses = validate_judge_recovery(
+                read_jsonl(result_ledger.path), read_jsonl(usage_ledger.path), blind["cases"], blind_sha, config_sha)
+            if len(final_requests) != calls or len(final_responses) != len(outcomes) + collected:
+                raise LedgerIntegrityError("judge final request/response coverage mismatch")
+        except (LedgerIntegrityError, OSError, ValueError, KeyError) as exc:
+            stop("persistence", exc)
+            persistence_errors.append(str(exc))
+    status = {"format": "cairn-judge-run-status/v1", "completed": len(complete), "http_calls": calls,
+              "collected_responses_this_invocation": collected, "accounted_tokens": used_tokens,
+              "interrupted_request_ids": interrupted, "interrupted_usage_unknown": len(interrupted),
+              "not_admitted_blind_ids": [case["blind_id"] for case, _ in pending[index:]],
+              "authorization_stop": stopped["authorization"], "persistence_errors": persistence_errors,
+              "worker_error": stopped["worker"],
+              "budget_stop": budget_stop}
+    dump(str(args.out) + ".run-status.json", status)
+    if stopped["persistence"] is not None:
+        raise LedgerIntegrityError("judge stopped after persistence failure: " + stopped["persistence"])
+    if stopped["authorization"] is not None:
+        raise RuntimeError("judge stopped after authorization failure: " + stopped["authorization"])
+    if stopped["worker"] is not None:
+        raise RuntimeError("judge stopped after worker failure: " + stopped["worker"])
     if budget_stop:
-        print(json.dumps({"stopped": "budget", "completed": len(complete), "http_calls": calls, "accounted_tokens": used_tokens}))
+        print(json.dumps({"stopped": "budget", **status}))
 
 
 def summarize(args):
