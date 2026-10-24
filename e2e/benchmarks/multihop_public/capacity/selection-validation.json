@@ -1,0 +1,32 @@
+{
+  "format": "cairn-capacity-selection-validation/v1",
+  "observed_at_utc": "2026-10-24T14:15:42.237285+00:00",
+  "model_calls": 0,
+  "qa_or_holdout_reads": 0,
+  "source_manifest": "e2e/benchmarks/multihop_public/manifest.json",
+  "source_manifest_sha256": "1c3c3087cf908fdcb161c1978b5066edd3fae7ace365808e7a860d27efbfe07b",
+  "corpus_sha256": "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f",
+  "corpus_bytes": 6785567,
+  "corpus_records": 609,
+  "selection_sha256": "e36722a07a47cdd2891295b4507520d4b4bd8c414a7bcd8bad290e59e81c23de",
+  "protocol_sha256": "9b5511c490f9cef84f0035fecb2e085f08509a5aaf37e64c17e456f6dca86901",
+  "independent_python_selection_matches": true,
+  "original_body_wrapper_and_metadata_checks": 12,
+  "rank_list": [
+    0,
+    75,
+    151,
+    152,
+    227,
+    303,
+    304,
+    379,
+    455,
+    456,
+    532,
+    608
+  ],
+  "max_selected_whitespace_tokens": 12387,
+  "largest_selected_body_bytes": 71119,
+  "scope": "free corpus-only preparation and tokenizer preflight; not actual graph, paid12 admission, full609 fit, quality, or original quote grounding"
+}
