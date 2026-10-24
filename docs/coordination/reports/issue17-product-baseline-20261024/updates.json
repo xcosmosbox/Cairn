@@ -1,0 +1,450 @@
+{
+  "updates": [
+    {
+      "index": 0,
+      "target": "b",
+      "published_ns": 34283709059126,
+      "visible_ns": 34284700518535,
+      "update_to_visible_ms": 991.459409,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 97.952142,
+      "asset_write_end_to_visible_ms": 886.388986,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 1,
+      "target": "a",
+      "published_ns": 34284700706208,
+      "visible_ns": 34285535523257,
+      "update_to_visible_ms": 834.817049,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 6.591305,
+      "asset_write_end_to_visible_ms": 821.394316,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 2,
+      "target": "b",
+      "published_ns": 34285535658442,
+      "visible_ns": 34286620164765,
+      "update_to_visible_ms": 1084.506323,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 72.211174,
+      "asset_write_end_to_visible_ms": 985.98832,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 3,
+      "target": "a",
+      "published_ns": 34286620311737,
+      "visible_ns": 34287534837295,
+      "update_to_visible_ms": 914.525558,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 86.627303,
+      "asset_write_end_to_visible_ms": 824.487914,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 4,
+      "target": "b",
+      "published_ns": 34287536156178,
+      "visible_ns": 34288451497552,
+      "update_to_visible_ms": 915.341374,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 70.76612,
+      "asset_write_end_to_visible_ms": 839.404177,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 5,
+      "target": "a",
+      "published_ns": 34288451744535,
+      "visible_ns": 34289288997035,
+      "update_to_visible_ms": 837.2525,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 55.510586,
+      "asset_write_end_to_visible_ms": 777.206433,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 6,
+      "target": "b",
+      "published_ns": 34289289352232,
+      "visible_ns": 34290089792069,
+      "update_to_visible_ms": 800.439837,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 17.525225,
+      "asset_write_end_to_visible_ms": 779.198289,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 7,
+      "target": "a",
+      "published_ns": 34290090113475,
+      "visible_ns": 34290845889401,
+      "update_to_visible_ms": 755.775926,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 16.668259,
+      "asset_write_end_to_visible_ms": 733.097256,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 8,
+      "target": "b",
+      "published_ns": 34290846249605,
+      "visible_ns": 34291691152369,
+      "update_to_visible_ms": 844.902764,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 61.150125,
+      "asset_write_end_to_visible_ms": 779.959595,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    },
+    {
+      "index": 9,
+      "target": "a",
+      "published_ns": 34291691583871,
+      "visible_ns": 34292550170749,
+      "update_to_visible_ms": 858.586878,
+      "completed_watcher_log_observed": true,
+      "first_catalog_poll_ms": 16.924458,
+      "asset_write_end_to_visible_ms": 837.538353,
+      "server_baseline_rss_kib": null,
+      "server_peak_rss_kib": null
+    }
+  ],
+  "catalog_events": [
+    {
+      "t_ns": 34283071205028,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34283071517490
+    },
+    {
+      "t_ns": 34283072154910,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34283072290795
+    },
+    {
+      "t_ns": 34283072849265,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-a",
+      "generation": "a",
+      "response_write_end_ns": 34283072936186
+    },
+    {
+      "t_ns": 34283073370288,
+      "path": "/asset/a",
+      "generation": "a",
+      "response_write_end_ns": 34283075664759
+    },
+    {
+      "t_ns": 34283807011268,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34283807193273
+    },
+    {
+      "t_ns": 34283807770491,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34283807905155
+    },
+    {
+      "t_ns": 34283810751833,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-b",
+      "generation": "b",
+      "response_write_end_ns": 34283811139489
+    },
+    {
+      "t_ns": 34283811592994,
+      "path": "/asset/b",
+      "generation": "b",
+      "response_write_end_ns": 34283814129549
+    },
+    {
+      "t_ns": 34284676151989,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34284676335076
+    },
+    {
+      "t_ns": 34284707297513,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34284707756893
+    },
+    {
+      "t_ns": 34284708197429,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34284708370651
+    },
+    {
+      "t_ns": 34284708871067,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-a",
+      "generation": "a",
+      "response_write_end_ns": 34284708962986
+    },
+    {
+      "t_ns": 34284710117617,
+      "path": "/asset/a",
+      "generation": "a",
+      "response_write_end_ns": 34284714128941
+    },
+    {
+      "t_ns": 34285515279724,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34285515499917
+    },
+    {
+      "t_ns": 34285607869616,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34285613017148
+    },
+    {
+      "t_ns": 34285614482338,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34285615203669
+    },
+    {
+      "t_ns": 34285621772875,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-b",
+      "generation": "b",
+      "response_write_end_ns": 34285621901730
+    },
+    {
+      "t_ns": 34285623074122,
+      "path": "/asset/b",
+      "generation": "b",
+      "response_write_end_ns": 34285634176445
+    },
+    {
+      "t_ns": 34286609428350,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34286609617035
+    },
+    {
+      "t_ns": 34286706939040,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34286707156710
+    },
+    {
+      "t_ns": 34286707796476,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34286707979012
+    },
+    {
+      "t_ns": 34286708595539,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-a",
+      "generation": "a",
+      "response_write_end_ns": 34286708672916
+    },
+    {
+      "t_ns": 34286709005529,
+      "path": "/asset/a",
+      "generation": "a",
+      "response_write_end_ns": 34286710349381
+    },
+    {
+      "t_ns": 34287521792374,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34287522151547
+    },
+    {
+      "t_ns": 34287606922298,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34287607077373
+    },
+    {
+      "t_ns": 34287607477593,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34287607612266
+    },
+    {
+      "t_ns": 34287608128171,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-b",
+      "generation": "b",
+      "response_write_end_ns": 34287608292119
+    },
+    {
+      "t_ns": 34287610204250,
+      "path": "/asset/b",
+      "generation": "b",
+      "response_write_end_ns": 34287612093375
+    },
+    {
+      "t_ns": 34288439211852,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34288439473999
+    },
+    {
+      "t_ns": 34288507255121,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34288507504578
+    },
+    {
+      "t_ns": 34288508426286,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34288509079774
+    },
+    {
+      "t_ns": 34288509572323,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-a",
+      "generation": "a",
+      "response_write_end_ns": 34288509679796
+    },
+    {
+      "t_ns": 34288510114548,
+      "path": "/asset/a",
+      "generation": "a",
+      "response_write_end_ns": 34288511790602
+    },
+    {
+      "t_ns": 34289278720457,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34289278882832
+    },
+    {
+      "t_ns": 34289306877457,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34289307186044
+    },
+    {
+      "t_ns": 34289307993770,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34289308412052
+    },
+    {
+      "t_ns": 34289308904471,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-b",
+      "generation": "b",
+      "response_write_end_ns": 34289308966214
+    },
+    {
+      "t_ns": 34289309220054,
+      "path": "/asset/b",
+      "generation": "b",
+      "response_write_end_ns": 34289310593780
+    },
+    {
+      "t_ns": 34290083555697,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34290088321691
+    },
+    {
+      "t_ns": 34290106781734,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34290106947264
+    },
+    {
+      "t_ns": 34290107618599,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34290109109593
+    },
+    {
+      "t_ns": 34290109614476,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-a",
+      "generation": "a",
+      "response_write_end_ns": 34290109922462
+    },
+    {
+      "t_ns": 34290110305566,
+      "path": "/asset/a",
+      "generation": "a",
+      "response_write_end_ns": 34290112792145
+    },
+    {
+      "t_ns": 34290844632636,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34290844831557
+    },
+    {
+      "t_ns": 34290907399730,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34290907570328
+    },
+    {
+      "t_ns": 34290908061916,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34290908231322
+    },
+    {
+      "t_ns": 34290908609614,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-b",
+      "generation": "b",
+      "response_write_end_ns": 34290908682604
+    },
+    {
+      "t_ns": 34290909019839,
+      "path": "/asset/b",
+      "generation": "b",
+      "response_write_end_ns": 34290911192774
+    },
+    {
+      "t_ns": 34291676585146,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "b",
+      "response_write_end_ns": 34291679006175
+    },
+    {
+      "t_ns": 34291708508329,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34291708704515
+    },
+    {
+      "t_ns": 34291709292809,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34291709676519
+    },
+    {
+      "t_ns": 34291710318940,
+      "path": "/repos/synthetic/catalog/releases/tags/generation-a",
+      "generation": "a",
+      "response_write_end_ns": 34291710410819
+    },
+    {
+      "t_ns": 34291710711753,
+      "path": "/asset/a",
+      "generation": "a",
+      "response_write_end_ns": 34291712632396
+    },
+    {
+      "t_ns": 34292535156970,
+      "path": "/repos/synthetic/catalog/contents/knowledge-bases/bench/stable.json?ref=main",
+      "generation": "a",
+      "response_write_end_ns": 34292536500962
+    }
+  ]
+}

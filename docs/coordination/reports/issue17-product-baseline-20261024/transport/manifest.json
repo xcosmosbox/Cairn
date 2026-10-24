@@ -1,0 +1,97 @@
+{
+  "format": "cairn-product-baseline-raw-transport/v1",
+  "ordered_parts": [
+    {
+      "path": "part-000.bin",
+      "bytes": 65536,
+      "sha256": "3ab72c6542d0597bdc0c13aa1c152df99d3e8b5484fe5d1ff3dabc27b7dae31a"
+    },
+    {
+      "path": "part-001.bin",
+      "bytes": 65536,
+      "sha256": "646e1ebdf9a84081ac2dea9b11ddbd0c43ba67b3864e5c72dd9c51c836d348fa"
+    },
+    {
+      "path": "part-002.bin",
+      "bytes": 65536,
+      "sha256": "a4403f653244ee0a07c5a65d01a10a3c8d51f5bb947c6a399a91d1c77a37293c"
+    },
+    {
+      "path": "part-003.bin",
+      "bytes": 65536,
+      "sha256": "9592ffd336bdba8c11ff9c5eab880dc61f5b9d4d0ba604d72c97a6238d8f6e16"
+    },
+    {
+      "path": "part-004.bin",
+      "bytes": 65536,
+      "sha256": "dc302d74113ba1318cf7ad1123e01cd45c20342a240d1cc9297bcf9de2bde2f4"
+    },
+    {
+      "path": "part-005.bin",
+      "bytes": 65536,
+      "sha256": "421be5bf49b0ca52ad9cb530a7d78552a0725788d209545273448eb66d71c8fd"
+    },
+    {
+      "path": "part-006.bin",
+      "bytes": 65536,
+      "sha256": "c81c471dfa68ac2d516c2e1cbd31fef2ba0f402f5fcad06218b86da57903ac49"
+    },
+    {
+      "path": "part-007.bin",
+      "bytes": 14608,
+      "sha256": "caf03c1271b128e0091328066395b42ac683d18851924a3491d91ce33f1215d6"
+    }
+  ],
+  "archive_bytes": 473360,
+  "archive_sha256": "02815e119464b073c698afae6538847ce5eee66494568965a6069168d37e4bb1",
+  "compression": "tar.gz mtime=0",
+  "raw_rows": 21271,
+  "files": [
+    {
+      "path": "environment-observed.json",
+      "bytes": 3150,
+      "sha256": "00860306157d3956e227c680eded3c94feaf0cc1ab42f425d327541acbd50382"
+    },
+    {
+      "path": "generate.go",
+      "bytes": 4834,
+      "sha256": "f3954d922c047ae967ae9bb13b46acc238dc7ed27e2e30882335e16ee3f4b073"
+    },
+    {
+      "path": "measurement-cells.jsonl",
+      "bytes": 25041,
+      "sha256": "f1904bcff304d12d77d87ef0423d2ad496a4ad3a8ec3202d0bba1ae39e7149be"
+    },
+    {
+      "path": "run.py",
+      "bytes": 25734,
+      "sha256": "81c0b3aafe0e255d51a62168267e3f9f06415ae55cf3639f3248f92258f1865f"
+    },
+    {
+      "path": "samples.jsonl",
+      "bytes": 7256802,
+      "sha256": "a1f3da44a40e919a009e9cb90bf423734ad3d56d6a77289a3f566b8d5e875e3e"
+    },
+    {
+      "path": "summary-observed.json",
+      "bytes": 112833,
+      "sha256": "f22bb3a36dbfd4b392bcea4fd013854d0d5821ea34673e0d3405a063652985e9"
+    },
+    {
+      "path": "test_measurement.py",
+      "bytes": 2606,
+      "sha256": "35b5cff0c39e437dc3e5dbee50ab0d5c15b81a4dae290ad73a27ecf21ca4a5bf"
+    },
+    {
+      "path": "updates-observed.json",
+      "bytes": 14023,
+      "sha256": "227476f69a2ded1611e3fdeac5ebcb81698e23002e5e4386c9ce1a6e0bdaebde"
+    },
+    {
+      "path": "watcher-stderr.log",
+      "bytes": 1214532,
+      "sha256": "a827e336a83c73decbab37003c977e051ea978945b33ad93137474d39c9d03f5"
+    }
+  ],
+  "normalization": "These are exact original bytes, including unsupported server RSS zero placeholders. Public summary/update zero RSS fields are separately normalized to null/unknown. run.py is the exact measured version."
+}
