@@ -160,7 +160,7 @@ func TestDriverPublicationReplayAndRemoteConsumer(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]any{"id": 9, "name": "bundle.tar.gz"})
-		case r.Method == http.MethodGet && r.URL.Path == "/asset":
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/releases/assets/9"):
 			w.Write(asset)
 		default:
 			t.Errorf("unexpected remote effect: %s %s", r.Method, r.URL.Path)

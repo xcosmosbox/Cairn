@@ -59,8 +59,8 @@ func TestPullRequiresCompleteMatchingCatalogAndExactAsset(t *testing.T) {
 					if scenario == "exact-asset" {
 						wanted = cm.AssetName
 					}
-					_ = json.NewEncoder(w).Encode(ghRelease{TagName: cm.ReleaseTag, Assets: []ghAsset{{Name: "knowledge.db", BrowserDownloadURL: base + "/wrong"}, {Name: wanted, BrowserDownloadURL: base + "/asset"}}})
-				case r.URL.Path == "/asset":
+					_ = json.NewEncoder(w).Encode(ghRelease{TagName: cm.ReleaseTag, Assets: []ghAsset{{ID: 8, Name: "knowledge.db", BrowserDownloadURL: base + "/wrong"}, {ID: 9, Name: wanted, BrowserDownloadURL: base + "/asset"}}})
+				case r.URL.Path == "/repos/owner/catalog/releases/assets/9":
 					_, _ = w.Write(asset)
 				default:
 					t.Errorf("unexpected substitute release/asset request: %s", r.URL.Path)

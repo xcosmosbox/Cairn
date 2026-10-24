@@ -87,10 +87,10 @@ func TestRemotePullCancellationCannotInstall(t *testing.T) {
 						t.Error(err)
 					}
 				case strings.Contains(r.URL.Path, "/releases/tags/"):
-					if err := json.NewEncoder(w).Encode(ghRelease{TagName: cm.ReleaseTag, Assets: []ghAsset{{Name: cm.AssetName, BrowserDownloadURL: base + "/asset"}}}); err != nil {
+					if err := json.NewEncoder(w).Encode(ghRelease{TagName: cm.ReleaseTag, Assets: []ghAsset{{ID: 8, Name: cm.AssetName, BrowserDownloadURL: base + "/asset"}}}); err != nil {
 						t.Error(err)
 					}
-				case r.URL.Path == "/asset":
+				case r.URL.Path == "/repos/owner/catalog/releases/assets/8":
 					w.WriteHeader(http.StatusOK)
 					if atEOF {
 						_, _ = w.Write(asset)
@@ -147,11 +147,11 @@ func TestRemotePullCancellationCannotInstall(t *testing.T) {
 func TestRequestedCatalogAssetSelection(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(ghRelease{TagName: "release", Assets: []ghAsset{{Name: "knowledge.db", BrowserDownloadURL: "wrong"}, {Name: "bundle-custom.tar.gz", BrowserDownloadURL: "correct"}}})
+		_ = json.NewEncoder(w).Encode(ghRelease{TagName: "release", Assets: []ghAsset{{ID: 8, Name: "knowledge.db", BrowserDownloadURL: "wrong"}, {ID: 9, Name: "bundle-custom.tar.gz", BrowserDownloadURL: "correct"}}})
 	}))
 	defer server.Close()
 	url, name, err := getReleaseAssetURLContext(context.Background(), server.URL, "owner", "catalog", "release", "synthetic-token", "bundle-custom.tar.gz")
-	if err != nil || url != "correct" || name != "bundle-custom.tar.gz" {
+	if err != nil || url != server.URL+"/repos/owner/catalog/releases/assets/9" || name != "bundle-custom.tar.gz" {
 		t.Fatalf("wrong asset selected: %s %s %v", url, name, err)
 	}
 	if _, _, err := getReleaseAssetURLContext(context.Background(), server.URL, "owner", "catalog", "release", "synthetic-token", "missing.tar.gz"); err == nil {
