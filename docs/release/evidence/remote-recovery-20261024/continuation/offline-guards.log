@@ -1,0 +1,9 @@
+test_empty_receipt_cannot_fall_back_to_new_fixture_mode (test_preflight_guards.ResumePreflightGuards.test_empty_receipt_cannot_fall_back_to_new_fixture_mode) ... ok
+test_wrong_asset_id_is_rejected (test_preflight_guards.ResumePreflightGuards.test_wrong_asset_id_is_rejected) ... ok
+test_wrong_branch_cannot_target_other_content (test_preflight_guards.ResumePreflightGuards.test_wrong_branch_cannot_target_other_content) ... ok
+test_wrong_starting_tip_is_rejected (test_preflight_guards.ResumePreflightGuards.test_wrong_starting_tip_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.262s
+
+OK

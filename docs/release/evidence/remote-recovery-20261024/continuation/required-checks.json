@@ -1,0 +1,45 @@
+[
+  {
+    "name": "offline-guards",
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "docs/release/evidence/remote-recovery-20261024/continuation",
+      "-p",
+      "test_*.py",
+      "-v"
+    ],
+    "source_sha": "8168a98775127bc07affd3674636b0bb024a79fb",
+    "started_at_utc": "2026-10-24T14:42:53.961820+00:00",
+    "finished_at_utc": "2026-10-24T14:42:54.276282+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "repository-race",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "./..."
+    ],
+    "source_sha": "8168a98775127bc07affd3674636b0bb024a79fb",
+    "started_at_utc": "2026-10-24T14:42:54.276561+00:00",
+    "finished_at_utc": "2026-10-24T14:43:18.561452+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "make-verify",
+    "command": [
+      "make",
+      "verify"
+    ],
+    "source_sha": "8168a98775127bc07affd3674636b0bb024a79fb",
+    "started_at_utc": "2026-10-24T14:43:18.561753+00:00",
+    "finished_at_utc": "2026-10-24T14:43:23.370273+00:00",
+    "exit_code": 0
+  }
+]
