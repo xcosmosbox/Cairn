@@ -1,0 +1,186 @@
+{
+  "status": "passed",
+  "error": null,
+  "elapsed_s": 7.368364374000521,
+  "cells": [
+    {
+      "size": "fake",
+      "transport": "stdio",
+      "concurrency": 1,
+      "phase": "warm_memory",
+      "requests": 100,
+      "warm_idle_rss_kib": 13232,
+      "peak_rss_or_hwm_kib": 19592,
+      "pid": 8
+    },
+    {
+      "size": "fake",
+      "transport": "sse",
+      "concurrency": 4,
+      "phase": "warm_memory",
+      "requests": 100,
+      "warm_idle_rss_kib": 19356,
+      "peak_rss_or_hwm_kib": 23076,
+      "pid": 17
+    },
+    {
+      "size": "1000",
+      "transport": "stdio",
+      "concurrency": 1,
+      "phase": "warm_memory",
+      "requests": 100,
+      "warm_idle_rss_kib": 22284,
+      "peak_rss_or_hwm_kib": 26624,
+      "pid": 30
+    },
+    {
+      "size": "1000",
+      "transport": "sse",
+      "concurrency": 4,
+      "phase": "warm_memory",
+      "requests": 100,
+      "warm_idle_rss_kib": 27564,
+      "peak_rss_or_hwm_kib": 28808,
+      "pid": 40
+    },
+    {
+      "size": "10000",
+      "transport": "stdio",
+      "concurrency": 1,
+      "phase": "warm_memory",
+      "requests": 100,
+      "warm_idle_rss_kib": 27860,
+      "peak_rss_or_hwm_kib": 28844,
+      "pid": 54
+    },
+    {
+      "size": "10000",
+      "transport": "sse",
+      "concurrency": 4,
+      "phase": "warm_memory",
+      "requests": 100,
+      "warm_idle_rss_kib": 28576,
+      "peak_rss_or_hwm_kib": 32140,
+      "pid": 67
+    }
+  ],
+  "query_samples": 1791,
+  "business_errors": 0,
+  "identities": [
+    {
+      "pid": 8,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/fake.json"
+      ],
+      "identity": [
+        111514,
+        4416928
+      ],
+      "reason": null
+    },
+    {
+      "pid": 17,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/fake.json",
+        "--listen",
+        "127.0.0.1:51605"
+      ],
+      "identity": [
+        111523,
+        4416936
+      ],
+      "reason": null
+    },
+    {
+      "pid": 30,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/1000.json"
+      ],
+      "identity": [
+        111536,
+        4416958
+      ],
+      "reason": null
+    },
+    {
+      "pid": 40,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/1000.json",
+        "--listen",
+        "127.0.0.1:46717"
+      ],
+      "identity": [
+        111546,
+        4416985
+      ],
+      "reason": null
+    },
+    {
+      "pid": 54,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/10000.json"
+      ],
+      "identity": [
+        111560,
+        4417033
+      ],
+      "reason": null
+    },
+    {
+      "pid": 67,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/10000.json",
+        "--listen",
+        "127.0.0.1:36673"
+      ],
+      "identity": [
+        111575,
+        4417074
+      ],
+      "reason": null
+    },
+    {
+      "pid": 84,
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+        "--config",
+        "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1/watcher.json",
+        "--listen",
+        "127.0.0.1:35093"
+      ],
+      "identity": [
+        111592,
+        4417137
+      ],
+      "reason": null
+    }
+  ],
+  "rss_samples": 578,
+  "unavailable_rss_samples": 2,
+  "peaks_kib": {
+    "8": 19592,
+    "17": 23076,
+    "30": 26624,
+    "40": 28808,
+    "54": 28844,
+    "67": 32140,
+    "84": 43716
+  },
+  "sampling_interval_seconds": 0.01,
+  "sampling_budget_reason": null,
+  "input_hashes_unchanged": true,
+  "os_memory_reservation_verified": false,
+  "subinterval_peak_exclusion": false
+}

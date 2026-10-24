@@ -1,0 +1,60 @@
+{
+  "source_commit": "18e7e7bfc989fc0216625b0851e105690edd3950",
+  "binary_sha256": "9991381fb803fe8acba932a1f1afafd9426ac10751d6d7ddeb99e4e2e15baae5",
+  "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "python": "3.12.14",
+  "loadavg_before": [
+    0.572265625,
+    0.38916015625,
+    0.20166015625
+  ],
+  "input_sha256_before": {
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fake/knowledge.db": "8cc8022fb64ed4f0305ae754734b4fb92ec66efab7305ba73ca092e91a79061a",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/1000/a/bundle/knowledge.db": "54c19ec7154864273db005aa944ab24469790020040a55eb1b7591607e74600d",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/10000/a/bundle/knowledge.db": "c4c6d26d483feb404528ba6f08fdd6e676ff4137d41e71b7a6ea38c0d68be421",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/1000/b/bundle/knowledge.db": "d6e473cbc7b83326ec6790b4903280f2cd8e2dc10dcc654f8576170e15f98f0e",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/10000/b/bundle/knowledge.db": "565118a6745d39f08f860477174da43b1b52f8d51dfc9191015a529a4274fca9"
+  },
+  "parameters": {
+    "binary": "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/bin/cairn-mcp",
+    "synthetic_root": "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures",
+    "fake_bundle": "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fake",
+    "source_commit": "18e7e7bfc989fc0216625b0851e105690edd3950",
+    "output": "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/measured-1",
+    "updates": 4
+  },
+  "allocation_probe": {
+    "child_self_pid": 7,
+    "popen_pid": 7,
+    "before": {
+      "inner_pid": 7,
+      "outer_pid": 111513,
+      "parent_outer_pid": 111508,
+      "start_ticks": 4416925,
+      "rss_kib": 6460,
+      "hwm_kib": 6460
+    },
+    "after": {
+      "inner_pid": 7,
+      "outer_pid": 111513,
+      "parent_outer_pid": 111508,
+      "start_ticks": 4416925,
+      "rss_kib": 39240,
+      "hwm_kib": 39240
+    },
+    "acknowledged": true,
+    "rss_delta_kib": 32780
+  },
+  "input_sha256_after": {
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fake/knowledge.db": "8cc8022fb64ed4f0305ae754734b4fb92ec66efab7305ba73ca092e91a79061a",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/1000/a/bundle/knowledge.db": "54c19ec7154864273db005aa944ab24469790020040a55eb1b7591607e74600d",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/10000/a/bundle/knowledge.db": "c4c6d26d483feb404528ba6f08fdd6e676ff4137d41e71b7a6ea38c0d68be421",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/1000/b/bundle/knowledge.db": "d6e473cbc7b83326ec6790b4903280f2cd8e2dc10dcc654f8576170e15f98f0e",
+    "/workspace/scratch/c1bb49a45412/cairn-runtime17/.local/product-rss/fixtures/10000/b/bundle/knowledge.db": "565118a6745d39f08f860477174da43b1b52f8d51dfc9191015a529a4274fca9"
+  },
+  "loadavg_after": [
+    0.71875,
+    0.42626953125,
+    0.2158203125
+  ]
+}
