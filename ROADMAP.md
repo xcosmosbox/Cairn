@@ -22,3 +22,18 @@ simplification or stopping a candidate. More graph structure is not itself a ben
 Task Issues own status and acceptance criteria. This document owns the stable direction;
 avoid maintaining duplicate status tables here. New work should include a falsifiable
 goal, module boundaries, dependencies, compatibility impact and an acceptance test.
+
+## 2026-10-24 maintainer direction: Alpha toward first stable release
+
+The goal is the first stable release; no version number is assigned and stable readiness
+has not been established. Keep the M0–M3 gates above. Require a reproducible engineering
+baseline, same-resource retrieval controls and a new holdout with source provenance,
+and verified critical update/recovery/authentication/MCP scenarios before the relevant
+release decision. CI success alone is insufficient.
+
+Research should first assess mature benchmarks and reusable environments, then justify
+small supplements for Cairn-specific gaps. [Quality benchmark task #21](https://github.com/xcosmosbox/Cairn/issues/21)
+tracks the adopted public multihop thin adapter separately from #17's performance work;
+its live protocol and acceptance remain in that task. See the [execution policy](docs/coordination/EXECUTION_POLICY.md)
+for the delegated decision/execution split and model defaults, and [#8](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6382509063)
+for the recorded maintainer decision. This addition preserves the earlier roadmap history.
