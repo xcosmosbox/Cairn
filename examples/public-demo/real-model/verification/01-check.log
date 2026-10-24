@@ -1,0 +1,12 @@
+Prepared frozen two-reference inputs; no credential read or model request.
+Prepared frozen two-reference inputs; no credential read or model request.
+Prepared frozen two-reference inputs; no credential read or model request.
+test_canary_receipt_rejects_model_mismatch_without_logging_secret (test_run.RealDemoTests.test_canary_receipt_rejects_model_mismatch_without_logging_secret) ... ok
+test_live_mode_refuses_before_reading_key_without_opt_in (test_run.RealDemoTests.test_live_mode_refuses_before_reading_key_without_opt_in) ... ok
+test_prepare_does_not_include_extra_readme_or_verification_files (test_run.RealDemoTests.test_prepare_does_not_include_extra_readme_or_verification_files) ... ok
+test_prepare_freezes_exact_inputs_and_refuses_mutation_or_reuse (test_run.RealDemoTests.test_prepare_freezes_exact_inputs_and_refuses_mutation_or_reuse) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.013s
+
+OK
