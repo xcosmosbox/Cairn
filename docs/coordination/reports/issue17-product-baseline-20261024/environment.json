@@ -1,0 +1,87 @@
+{
+  "product_source_commit": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+  "hostname": "cc4e982dac4d",
+  "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "cpu_count": 9,
+  "cpu_max": "800000 100000",
+  "memory_max": "8589934592",
+  "loadavg_before": [
+    0.13525390625,
+    0.400390625,
+    0.5546875
+  ],
+  "python": "3.12.14",
+  "binary_sha256": {
+    "cairn": "539cde89f50bf4a315e79a759200c4bf6aa106165cbee5655464fd54e12949eb",
+    "cairn-mcp": "3637d0b70ba58d8956448011e533f60a3c793579df3fb27539cc040d2f6a3896"
+  },
+  "input_db_sha256_before": {
+    "/workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636/bundles/demo/stable/knowledge.db": "8cc8022fb64ed4f0305ae754734b4fb92ec66efab7305ba73ca092e91a79061a",
+    "/workspace/scratch/110c4593aeb1/cairn-perf/.local/product-perf/fixtures-v1/1000/a/bundle/knowledge.db": "54c19ec7154864273db005aa944ab24469790020040a55eb1b7591607e74600d",
+    "/workspace/scratch/110c4593aeb1/cairn-perf/.local/product-perf/fixtures-v1/10000/a/bundle/knowledge.db": "c4c6d26d483feb404528ba6f08fdd6e676ff4137d41e71b7a6ea38c0d68be421"
+  },
+  "parameters": {
+    "bin_dir": "/workspace/scratch/110c4593aeb1/cairn-perf/.local/product-perf/bin",
+    "synthetic_root": "/workspace/scratch/110c4593aeb1/cairn-perf/.local/product-perf/fixtures-v1",
+    "fake_bundle": "/workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636/bundles/demo/stable",
+    "output": "/workspace/scratch/110c4593aeb1/cairn-perf/.local/product-perf/measured-1",
+    "source_commit": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+    "seconds": 600.0,
+    "rss_mib": 2048,
+    "samples": 500,
+    "repeats": 3,
+    "warmup": 20,
+    "cold_samples": 30,
+    "updates": 10
+  },
+  "synthetic_fixture_specs": {
+    "1000": {
+      "degree": 3,
+      "edges": 3000,
+      "generation_method": "public storage batch APIs; fixed timestamps and deterministic UUIDs; no model",
+      "generations": [
+        "a",
+        "b"
+      ],
+      "nodes": 1000,
+      "product_commit": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+      "seed": 20261024
+    },
+    "10000": {
+      "degree": 3,
+      "edges": 30000,
+      "generation_method": "public storage batch APIs; fixed timestamps and deterministic UUIDs; no model",
+      "generations": [
+        "a",
+        "b"
+      ],
+      "nodes": 10000,
+      "product_commit": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+      "seed": 20261024
+    }
+  },
+  "fixture_semantic_checks": {
+    "1000a": {
+      "nodes": 1000,
+      "edges": 3000,
+      "marker": "generationa"
+    },
+    "1000b": {
+      "nodes": 1000,
+      "edges": 3000,
+      "marker": "generationb"
+    },
+    "10000a": {
+      "nodes": 10000,
+      "edges": 30000,
+      "marker": "generationa"
+    },
+    "10000b": {
+      "nodes": 10000,
+      "edges": 30000,
+      "marker": "generationb"
+    }
+  },
+  "concurrent_work": "Shared Codex host; other agents may run tests/builds. No exclusive CPU/host reservation or OS cache drop.",
+  "cache_definition": "New process is not a disk-cold cache claim; warm cells use the same prewarmed process. Input hashing itself warms OS pages."
+}

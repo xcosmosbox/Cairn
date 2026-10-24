@@ -1,0 +1,77 @@
+{
+  "synthetic": [
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/fixture.json",
+      "bytes": 281,
+      "sha256": "f82c2408e9579de45cb38b71e1a49b6d16fef4ac53a98bdfd33335294e824ee2"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/fixture.json",
+      "bytes": 283,
+      "sha256": "38711b630256918d535a6e1887769178d9e5216f72e9472627f66033fb080525"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/a/bundle/knowledge.db",
+      "bytes": 2048000,
+      "sha256": "54c19ec7154864273db005aa944ab24469790020040a55eb1b7591607e74600d"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/b/bundle/knowledge.db",
+      "bytes": 2048000,
+      "sha256": "d6e473cbc7b83326ec6790b4903280f2cd8e2dc10dcc654f8576170e15f98f0e"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/a/bundle/knowledge.db",
+      "bytes": 19050496,
+      "sha256": "c4c6d26d483feb404528ba6f08fdd6e676ff4137d41e71b7a6ea38c0d68be421"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/b/bundle/knowledge.db",
+      "bytes": 19050496,
+      "sha256": "565118a6745d39f08f860477174da43b1b52f8d51dfc9191015a529a4274fca9"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/a/catalog.json",
+      "bytes": 807,
+      "sha256": "e068fdaa6a81ed1908665c1537ef2f42b5e9093bf4eb48952f820f7c9e0b3d85"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/b/catalog.json",
+      "bytes": 807,
+      "sha256": "05b203b6349743755fadd903131b5aadee5848b5d401a02bf4df40e051c0e961"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/a/catalog.json",
+      "bytes": 807,
+      "sha256": "9e5e54c7707efeade2c8feaaccd134df7624ec3be72cc3006ec881a3ce5aaf2c"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/b/catalog.json",
+      "bytes": 807,
+      "sha256": "c0cb7c12d5d0817be5c336671f32dd0f10482581df97e3a12adab3450237ce0d"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/a/bundle.tar.gz",
+      "bytes": 319583,
+      "sha256": "7b7e96c54ad56e145e7984caa674e1c2a6789068cecad9e287db6926f6024118"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/1000/b/bundle.tar.gz",
+      "bytes": 319587,
+      "sha256": "465728356b585c5c79c44b148fd87a29fe91ba7e33c003019250d27c8606f8ed"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/a/bundle.tar.gz",
+      "bytes": 2872253,
+      "sha256": "12531047c48f9ddf89e8605090045583cfbd1ac36fcf73c16b0b032efe442565"
+    },
+    {
+      "path": ".local/product-perf/fixtures-v1/10000/b/bundle.tar.gz",
+      "bytes": 2872257,
+      "sha256": "ad61d861c1649411cb3c9abc8854493966884f84e71832c5c2e53fd49180a65c"
+    }
+  ],
+  "product_base": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+  "seed": 20261024,
+  "raw_binary_files_not_committed": true
+}
