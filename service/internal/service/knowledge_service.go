@@ -54,6 +54,10 @@ type KnowledgeService interface {
 	// GetNode returns a single node with its incident edges.
 	GetNode(ctx context.Context, id string) (*NodeDetail, error)
 
+	// GetNodeSources 只读返回指定存活 UUID 已存的来源元数据，不自行跟随血缘。
+	// GetNodeSources reads stored metadata for an exact live UUID, without lineage resolution.
+	GetNodeSources(ctx context.Context, id string) (*NodeSources, error)
+
 	// ListCrossKGLinks 返回所有标记为 external_kg 的跨知识图谱链接。
 	// ListCrossKGLinks returns all cross-knowledge-graph links marked external_kg.
 	ListCrossKGLinks(ctx context.Context) ([]dktypes.CrossKGLink, error)

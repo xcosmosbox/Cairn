@@ -1056,6 +1056,11 @@ func handleToolsList(req *jsonRPCRequest) *jsonRPCResponse {
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
+					"include_sources": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "显式 true 才附已解析存活节点的库内相对来源元数据；不读取原文 / Opt in to stored relative source metadata for the resolved live node; no source content is fetched",
+					},
 					"uuid": map[string]interface{}{
 						"type":        "string",
 						"description": "待解析的节点UUID / Node UUID to resolve",
@@ -1278,6 +1283,14 @@ func toolResolveNode(state *serverState, args map[string]interface{}) (*toolResu
 	if uuid == "" {
 		return nil, "uuid 参数不能为空 / uuid parameter must not be empty"
 	}
+	includeSources := false
+	if value, exists := args["include_sources"]; exists {
+		var ok bool
+		includeSources, ok = value.(bool)
+		if !ok {
+			return nil, "include_sources 必须为布尔值 / include_sources must be a boolean"
+		}
+	}
 
 	svc, dbName, release, err := state.getSvc(extractKG(args))
 	if err != nil {
@@ -1294,7 +1307,11 @@ func toolResolveNode(state *serverState, args map[string]interface{}) (*toolResu
 	if detail == nil {
 		sb.WriteString(fmt.Sprintf("✗ UUID %s 在知识库 %s 中不存在，且无血缘记录（可能从未存在或已被物理清除）。\nUUID %s does not exist in KB %s and has no lineage record.\n",
 			uuid, dbName, uuid, dbName))
-		return &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}}, ""
+		result := &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}}
+		if includeSources {
+			appendNodeSources(result, uuid, &service.NodeSources{Status: "unknown", Reason: "node_not_found"})
+		}
+		return result, ""
 	}
 
 	if detail.ResolvedFrom != "" {
@@ -1309,7 +1326,29 @@ func toolResolveNode(state *serverState, args map[string]interface{}) (*toolResu
 	}
 	sb.WriteString(fmt.Sprintf("- 名称/Name: %s\n- 类型/Type: %s\n- 域/Domain: %s/%s\n- 摘要/Summary: %s\n",
 		detail.Node.Name, detail.Node.Label, detail.Node.Domain, detail.Node.Subdomain, detail.Node.Summary))
-	return &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}}, ""
+	result := &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}}
+	if includeSources {
+		// 使用同一已租用的 KG 代和已解析 UUID；不跨库或拼接 split 兄弟的来源。
+		// Keep the same leased KG generation and resolved UUID; do not merge sibling sources.
+		sources, err := svc.GetNodeSources(context.Background(), detail.Node.ID)
+		if err != nil {
+			return nil, fmt.Sprintf("来源元数据查询失败 / Source metadata failed: %v", err)
+		}
+		appendNodeSources(result, uuid, sources)
+	}
+	return result, ""
+}
+
+// 单独追加 JSON 文本块，使默认结果逐字兼容，并保留调用 UUID 与实际来源归属。
+// Append a JSON text item only on opt-in, retaining exact legacy output and UUID ownership.
+func appendNodeSources(result *toolResult, requested string, sources *service.NodeSources) {
+	value := struct {
+		RequestedUUID  string               `json:"requested_uuid"`
+		Scope          string               `json:"scope"`
+		SourceMetadata *service.NodeSources `json:"source_metadata"`
+	}{requested, "resolved_node_only", sources}
+	data, _ := json.Marshal(value)
+	result.Content = append(result.Content, toolContent{Type: "text", Text: string(data)})
 }
 
 // countPair 是计数 map 排序后的键值对。
