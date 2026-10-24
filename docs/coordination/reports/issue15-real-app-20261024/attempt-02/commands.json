@@ -1,0 +1,33 @@
+{
+  "source_sha": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775",
+  "app_id": 5454525,
+  "installation_id": 174795212,
+  "repository": "xcosmosbox/cairn-app-sandbox",
+  "key_reference": "user supplied runtime file",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "test",
+        "-tags=livegithubapp",
+        "-count=1",
+        "-v",
+        "-run",
+        "^TestLiveAppAcceptance$",
+        "./core/githubapp"
+      ],
+      "exit_code": 0,
+      "log": "01-native-auth-live.log"
+    },
+    {
+      "command": [
+        "go",
+        "run",
+        "-buildvcs=false",
+        "./build/test/e2e/github-app"
+      ],
+      "exit_code": 0,
+      "log": "02-native-forge-live.log"
+    }
+  ]
+}

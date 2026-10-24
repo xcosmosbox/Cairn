@@ -1,0 +1,6 @@
+tree d7aee4cd090c81eee1a1b11264efe19015d1774c
+parent 10f2f4d44b01b9e8657136af8094353a24eec4e2
+author Codex <codex@openai.com> 1792843263 +0900
+committer Codex <codex@openai.com> 1792843263 +0900
+
+test(githubapp): add opt-in real App and sandbox acceptance

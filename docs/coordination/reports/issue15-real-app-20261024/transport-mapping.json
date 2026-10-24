@@ -1,0 +1,24 @@
+{
+  "reason": "Native Git push lacked an HTTPS username credential; selected GitHub connector uploaded exact blobs and verified identical trees. Its create_commit interface lacks original author/date fields, yielding different commit SHAs.",
+  "mappings": [
+    {
+      "local_sha": "5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2",
+      "remote_sha": "f9afeeee18003b38dc395afdf069cb021720c45b",
+      "identical_tree_sha": "d7aee4cd090c81eee1a1b11264efe19015d1774c",
+      "raw_local_commit": "source-commits/5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2.txt"
+    },
+    {
+      "local_sha": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775",
+      "remote_sha": "c565b3714fad013447b42db17c0ead468cab32d4",
+      "identical_tree_sha": "bb565ae8c5ed4f2768d24fb9f4d0ae9d4d2bdb25",
+      "raw_local_commit": "source-commits/c1c3c90d6626b974b9cb9a5c527ae2dbea890775.txt"
+    },
+    {
+      "local_sha": "2464c5079570759578f2832fbf3c70a609450e89",
+      "remote_sha": "df6d971c65e7025d43fa426f92cb48622e80a143",
+      "identical_tree_sha": "6902867dfd1dad19be7b3c36aeaa353c88574cd5",
+      "raw_local_commit": "source-commits/2464c5079570759578f2832fbf3c70a609450e89.txt"
+    }
+  ],
+  "reconstruct": "After fetching remote branch/tree objects, feed each raw commit file in order to git hash-object -t commit -w --stdin; the resulting IDs equal local tested SHAs."
+}

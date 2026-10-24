@@ -1,0 +1,48 @@
+{"command": ["go", "test", "-race", "-count=1", "./..."], "source_sha": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775", "started_utc": "2026-10-24T12:02:43.306038+00:00"}
+?   	github.com/xcosmosbox/cairn/benchmarks/product_baseline	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-evolve	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-incremental	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-ingest	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-rebalance	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairnctl	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/annotation	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/controller/model	[no test files]
+ok  	github.com/xcosmosbox/cairn/build/cmd/cairnd	5.252s
+ok  	github.com/xcosmosbox/cairn/build/internal	1.015s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/fakeforge	1.159s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/githubapp	1.975s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/publisher	2.527s
+?   	github.com/xcosmosbox/cairn/build/internal/discovery	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/ingest	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/rebalance/community	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/rebalance/patch	[no test files]
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/reconcile	6.601s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/runner	5.839s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/scheduler	1.352s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/store	1.562s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/workspace	1.388s
+ok  	github.com/xcosmosbox/cairn/build/internal/extract	1.021s
+?   	github.com/xcosmosbox/cairn/build/test/e2e/github-app	[no test files]
+?   	github.com/xcosmosbox/cairn/core/dktypes	[no test files]
+?   	github.com/xcosmosbox/cairn/core/metrics	[no test files]
+?   	github.com/xcosmosbox/cairn/core/observe	[no test files]
+?   	github.com/xcosmosbox/cairn/core/parallel	[no test files]
+?   	github.com/xcosmosbox/cairn/service/internal/config	[no test files]
+ok  	github.com/xcosmosbox/cairn/build/internal/incremental	11.081s
+ok  	github.com/xcosmosbox/cairn/build/internal/llm	1.029s
+ok  	github.com/xcosmosbox/cairn/build/internal/pipeline	2.493s
+ok  	github.com/xcosmosbox/cairn/build/internal/writeback	1.079s
+ok  	github.com/xcosmosbox/cairn/build/test/e2e/actions-publish	4.796s
+ok  	github.com/xcosmosbox/cairn/build/test/e2e/real-build	1.046s
+ok  	github.com/xcosmosbox/cairn/core/dkconfig	1.045s
+ok  	github.com/xcosmosbox/cairn/core/evolve	4.184s
+ok  	github.com/xcosmosbox/cairn/core/githubapp	1.840s
+ok  	github.com/xcosmosbox/cairn/core/kbbundle	10.818s
+ok  	github.com/xcosmosbox/cairn/core/repoidentity	1.117s
+ok  	github.com/xcosmosbox/cairn/core/storage	7.076s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn	1.900s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-eval-index-copy	1.673s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-eval-retrieve	4.576s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-mcp	6.924s
+ok  	github.com/xcosmosbox/cairn/service/internal/service	3.379s
+{"exit_code": 0, "ended_utc": "2026-10-24T12:03:09.525978+00:00"}

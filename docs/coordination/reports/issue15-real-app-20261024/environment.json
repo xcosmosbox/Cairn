@@ -1,0 +1,16 @@
+{
+  "source_base": "10f2f4d44b01b9e8657136af8094353a24eec4e2",
+  "tested_harness": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775",
+  "os": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "python": "3.12.14",
+  "go": "go version go1.22.12 linux/amd64",
+  "git": "git version 2.51.1",
+  "key_reference": "user supplied runtime file",
+  "credential_material_in_artifacts": false,
+  "product_source_blobs": {
+    "core/githubapp/auth.go": "3e9eadd8559e70a021b8d061874d834f7374e333",
+    "core/githubapp/jwt.go": "2540fb194a7746144f12a9755bcce4330985495d",
+    "build/internal/controller/githubapp/httpforge.go": "3e34f7c2b9d4fc642a54e41ec434d3afb1058ccf",
+    "build/internal/controller/githubapp/forge.go": "29a755dca23dc5b803bd8c6e6635e1eeebdd8333"
+  }
+}

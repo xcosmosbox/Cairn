@@ -31,6 +31,13 @@ make verify
 也不证明 GitHub 已接受生产 JWT 或完成真实 token 到期刷新。本次没有可用生产
 私钥，未执行这些线上验证。
 
+2026-10-24 后续使用专用测试 App 完成了[真实隔离沙箱验收](../../docs/coordination/reports/issue15-real-app-20261024/README.md)：
+实际 JWT、installation token、缓存命中、只读临时 token 的写入拒绝，以及真实
+`HTTPForge` 分支/PR/预发布与重放均有脱敏回执。撤销后真实拒绝约两秒后才被观察到；
+刷新测试显式把本地缓存到期时间设为剩余 60 秒，再由生产代码向 GitHub 换取新 token。
+它不代表等待过自然一小时，也不提供收到 401 后透明失效缓存和自动重试的保证。
+普通测试不编译 `livegithubapp` 构建标签下的测试；额外启用标签仍需要运行时明确 opt-in。
+
 刷新仍在全局互斥锁内进行。已取消的等待者须等当前刷新释放锁，之后会在命中
 缓存或发送请求前返回取消错误；本次不提供即时取消等待的保证。按 installation
 隔离缓存也不等于上层支持多 installation 路由：daemon 和 MCP 现有的首次仓库

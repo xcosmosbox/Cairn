@@ -1,0 +1,8 @@
+{
+  "event": "artifact_validation",
+  "files_checked": 17,
+  "local_links_checked": 14,
+  "credential_pattern_findings": 0,
+  "private_reference_findings": 0,
+  "missing_local_links": 0
+}

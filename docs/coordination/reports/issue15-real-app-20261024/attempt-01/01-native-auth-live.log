@@ -1,0 +1,24 @@
+{"command": ["go", "test", "-tags=livegithubapp", "-count=1", "-v", "-run", "^TestLiveAppAcceptance$", "./core/githubapp"], "source_sha": "5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2", "started_utc": "2026-10-24T12:01:03.647111+00:00"}
+=== RUN   TestLiveAppAcceptance
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"GET","path":"/app","request_id":"45FB:E8E55:FEA182:3458CB4:6ADC9E09","status":200,"time_utc":"2026-10-24T12:01:13Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"GET","path":"/app/installations/174795212","request_id":"45FB:E8E55:FEA240:3458EB6:6ADC9E09","status":200,"time_utc":"2026-10-24T12:01:13Z"}
+    zz_live_acceptance_test.go:41: {"account":"xcosmosbox","app_id":5454525,"contents":"write","event":"identity","installation_id":174795212,"key_reference":"user supplied runtime file","native_token_request_scope":"installation default (no body)","pull_requests":"write","repo":"xcosmosbox/cairn-app-sandbox","repo_id":1432125826,"repository_selection":"all","time_utc":"2026-10-24T12:01:13Z"}
+    zz_live_acceptance_test.go:41: {"event":"native_http","host":"api.github.com","method":"GET","path":"/repos/xcosmosbox/cairn-app-sandbox/installation","status":200,"time_utc":"2026-10-24T12:01:13Z"}
+    zz_live_acceptance_test.go:41: {"event":"native_http","host":"api.github.com","method":"POST","path":"/app/installations/174795212/access_tokens","status":201,"time_utc":"2026-10-24T12:01:13Z"}
+    zz_live_acceptance_test.go:41: {"event":"cache_hit","expiry":"2026-10-24T13:01:13Z","extra_exchange_count":0,"time_utc":"2026-10-24T12:01:13Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"GET","path":"/repos/xcosmosbox/cairn-app-sandbox","request_id":"45FB:E8E55:FEA3D4:345942F:6ADC9E09","status":200,"time_utc":"2026-10-24T12:01:14Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"GET","path":"/repos/xcosmosbox/cairn-app-sandbox/branches/main","request_id":"45FB:E8E55:FEA500:3459831:6ADC9E0A","status":200,"time_utc":"2026-10-24T12:01:14Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"POST","path":"/app/installations/174795212/access_tokens","request_id":"45FB:E8E55:FEA64E:3459C11:6ADC9E0A","status":201,"time_utc":"2026-10-24T12:01:14Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"GET","path":"/repos/xcosmosbox/cairn-app-sandbox/contents/.cairn-acceptance/README.md?ref=main","request_id":"45FB:E8E55:FEA728:3459ED5:6ADC9E0A","status":404,"time_utc":"2026-10-24T12:01:14Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"PUT","path":"/repos/xcosmosbox/cairn-app-sandbox/contents/.cairn-acceptance/denied-20261024T120114.633931723.txt","request_id":"45FB:E8E55:FEA7AF:345A088:6ADC9E0A","status":403,"time_utc":"2026-10-24T12:01:14Z"}
+    zz_live_acceptance_test.go:41: {"boundary":"reduced temporary token within sandbox; not installation repository exclusion","event":"permission_negative","requested_contents":"read","requested_repository_ids":[1432125826],"time_utc":"2026-10-24T12:01:14Z","write_status":403}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"DELETE","path":"/installation/token","request_id":"45FB:E8E55:FEA85A:345A2EF:6ADC9E0A","status":204,"time_utc":"2026-10-24T12:01:14Z"}
+    zz_live_acceptance_test.go:41: {"event":"http","host":"api.github.com","method":"GET","path":"/repos/xcosmosbox/cairn-app-sandbox","request_id":"45FB:E8E55:FEA92A:345A55E:6ADC9E0A","status":200,"time_utc":"2026-10-24T12:01:15Z"}
+    zz_live_acceptance_test.go:202: HTTP status=200 want=401; response body suppressed
+    zz_live_acceptance_test.go:41: {"event":"cleanup_created_token","ordinal":1,"status":204,"time_utc":"2026-10-24T12:01:15Z","transport_ok":true}
+    zz_live_acceptance_test.go:41: {"event":"cleanup_created_token","ordinal":2,"status":204,"time_utc":"2026-10-24T12:01:15Z","transport_ok":true}
+--- FAIL: TestLiveAppAcceptance (10.64s)
+FAIL
+FAIL	github.com/xcosmosbox/cairn/core/githubapp	10.647s
+FAIL
+{"exit_code": 1, "ended_utc": "2026-10-24T12:01:15.604643+00:00"}

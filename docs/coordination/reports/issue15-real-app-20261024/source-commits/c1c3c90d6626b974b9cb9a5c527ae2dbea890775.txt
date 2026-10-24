@@ -1,0 +1,6 @@
+tree bb565ae8c5ed4f2768d24fb9f4d0ae9d4d2bdb25
+parent 5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2
+author Codex <codex@openai.com> 1792843331 +0900
+committer Codex <codex@openai.com> 1792843331 +0900
+
+test(githubapp): bound revocation observation and enforce cleanup
