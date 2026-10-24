@@ -1,0 +1,40 @@
+[
+  {
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-run",
+      "^TestResolveNode(SourceContract|SplitSourcesFollowExplicitNewerSuccessor)$",
+      "./service/cmd/cairn-mcp"
+    ],
+    "started_at": "2026-10-24T14:14:08.600307+00:00",
+    "finished_at": "2026-10-24T14:14:11.891509+00:00",
+    "exit_code": 0,
+    "log": "focused.log"
+  },
+  {
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "./..."
+    ],
+    "started_at": "2026-10-24T14:14:11.891708+00:00",
+    "finished_at": "2026-10-24T14:14:35.448735+00:00",
+    "exit_code": 0,
+    "log": "full-race.log"
+  },
+  {
+    "command": [
+      "make",
+      "verify"
+    ],
+    "started_at": "2026-10-24T14:14:35.449110+00:00",
+    "finished_at": "2026-10-24T14:14:40.211521+00:00",
+    "exit_code": 0,
+    "log": "make-verify.log"
+  }
+]

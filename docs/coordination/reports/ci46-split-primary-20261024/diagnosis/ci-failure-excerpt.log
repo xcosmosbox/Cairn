@@ -1,0 +1,8 @@
+2026-10-24T14:05:45.5029301Z HEAD is now at 0571249 Merge ce5aa5c1f34a22d99b1045c425866f6816e91b16 into 2d87bbdf075960eade455fac2aa2f5148ee31530
+2026-10-24T14:05:57.7785755Z go version go1.27.3 linux/amd64
+2026-10-24T14:05:57.8126900Z ##[group]Run go test -race -count=1 ./...
+2026-10-24T14:06:37.7324287Z --- FAIL: TestResolveNodeSourceContract (0.49s)
+2026-10-24T14:06:37.7326047Z     zz_source_citations_test.go:115: source ownership (split): &{NodeUUID:b Status:available Reason: SourceRefs:[first-skill] Locations:[{MemberID:member-b Skill:first-skill FilePath:first/b.md StartLine:0 EndLine:0 SpanStatus:unknown}] Omitted:0}
+2026-10-24T14:06:37.7331840Z FAIL
+2026-10-24T14:06:37.7332259Z FAIL	github.com/xcosmosbox/cairn/service/cmd/cairn-mcp	5.302s
+2026-10-24T14:06:37.7333621Z FAIL

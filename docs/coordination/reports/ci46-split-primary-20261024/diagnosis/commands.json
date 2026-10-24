@@ -1,0 +1,54 @@
+[
+  {
+    "variant": "original",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-run",
+      "^TestResolveNodeSourceContract$",
+      "./service/cmd/cairn-mcp"
+    ],
+    "started_at": "2026-10-24T14:09:43.006704+00:00",
+    "finished_at": "2026-10-24T14:09:45.306798+00:00",
+    "exit_code": 0,
+    "output": "ok  \tgithub.com/xcosmosbox/cairn/service/cmd/cairn-mcp\t1.678s\n"
+  },
+  {
+    "variant": "tied",
+    "command": [
+      "go",
+      "test",
+      "-overlay",
+      "/workspace/scratch/c1bb49a45412/cairn-live16/.local/ci46-diagnosis/tied-overlay.json",
+      "-race",
+      "-count=1",
+      "-run",
+      "^TestResolveNodeSourceContract$",
+      "./service/cmd/cairn-mcp"
+    ],
+    "started_at": "2026-10-24T14:09:45.306969+00:00",
+    "finished_at": "2026-10-24T14:09:47.891663+00:00",
+    "exit_code": 0,
+    "output": "ok  \tgithub.com/xcosmosbox/cairn/service/cmd/cairn-mcp\t1.569s\n"
+  },
+  {
+    "variant": "b_newer",
+    "command": [
+      "go",
+      "test",
+      "-overlay",
+      "/workspace/scratch/c1bb49a45412/cairn-live16/.local/ci46-diagnosis/b_newer-overlay.json",
+      "-race",
+      "-count=1",
+      "-run",
+      "^TestResolveNodeSourceContract$",
+      "./service/cmd/cairn-mcp"
+    ],
+    "started_at": "2026-10-24T14:09:47.891902+00:00",
+    "finished_at": "2026-10-24T14:09:49.349251+00:00",
+    "exit_code": 1,
+    "output": "--- FAIL: TestResolveNodeSourceContract (0.29s)\n    zz_source_citations_test.go:117: source ownership (split): &{NodeUUID:b Status:available Reason: SourceRefs:[first-skill] Locations:[{MemberID:member-b Skill:first-skill FilePath:first/b.md StartLine:0 EndLine:0 SpanStatus:unknown}] Omitted:0}\nFAIL\nFAIL\tgithub.com/xcosmosbox/cairn/service/cmd/cairn-mcp\t0.298s\nFAIL\n"
+  }
+]

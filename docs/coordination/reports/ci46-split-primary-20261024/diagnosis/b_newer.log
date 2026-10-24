@@ -1,0 +1,5 @@
+--- FAIL: TestResolveNodeSourceContract (0.29s)
+    zz_source_citations_test.go:117: source ownership (split): &{NodeUUID:b Status:available Reason: SourceRefs:[first-skill] Locations:[{MemberID:member-b Skill:first-skill FilePath:first/b.md StartLine:0 EndLine:0 SpanStatus:unknown}] Omitted:0}
+FAIL
+FAIL	github.com/xcosmosbox/cairn/service/cmd/cairn-mcp	0.298s
+FAIL
