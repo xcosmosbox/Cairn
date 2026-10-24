@@ -262,7 +262,7 @@ class DurableLedgerTests(unittest.TestCase):
                 return Response()
 
             with mock.patch("socket.create_connection", side_effect=AssertionError("network forbidden")), \
-                    mock.patch("urllib.request.urlopen", side_effect=replace_before_response) as http:
+                    mock.patch("agent_eval_native.urlopen", side_effect=replace_before_response) as http:
                 result = native.evaluate_question("q-ledger", "Question", "raw", None, client, config)
                 self.assertEqual(result["status"], "error", result)
                 self.assertEqual(http.call_count, 1)

@@ -327,7 +327,7 @@ class NativeHarnessTests(unittest.TestCase):
                 captured.append(payload)
                 return MockResponse(next(responses))
 
-            with mock.patch("urllib.request.urlopen", side_effect=open_request):
+            with mock.patch("agent_eval_native.urlopen", side_effect=open_request):
                 message, attempts = client.complete([{"role": "user", "content": "question"}],
                     {"question_id": "q6", "arm": "fts", "turn": 1}, tool_choice_for_turn(1, EvalConfig()))
             self.assertEqual(len(captured), 2)
@@ -347,7 +347,7 @@ class NativeHarnessTests(unittest.TestCase):
             self.addCleanup(ledger.close)
             client = NativeDeepSeekClient(EvalConfig(), "test-native-credential", CallBudget(5), ledger)
             payload = provider_response("stop", {"role": "assistant", "content": "plain answer", "tool_calls": []})
-            with mock.patch("urllib.request.urlopen", return_value=MockResponse(payload)) as request:
+            with mock.patch("agent_eval_native.urlopen", return_value=MockResponse(payload)) as request:
                 result = evaluate_question("q7", "Question", "raw", FakeEngine(), client, EvalConfig())
             self.assertEqual(request.call_count, 1)
             self.assertEqual(result["status"], "error", result)

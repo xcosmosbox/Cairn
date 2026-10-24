@@ -1,0 +1,141 @@
+{
+  "format": "cairn-public-paired-answer/v1",
+  "status": "offline_implementation; no QA, model, DEV or HOLDOUT admission",
+  "decision_references": [
+    "https://github.com/xcosmosbox/Cairn/issues/54",
+    "docs/decisions/0004-public-graph-evaluation.md",
+    "docs/research/real-model-multihop-proposal-20261024.md (PR37 METHOD)",
+    "docs/decisions/0002-mcp-source-citations.md (source semantics)",
+    "docs/decisions/0003-source-grounded-cross-relations.md (construction invariant)"
+  ],
+  "scientific_adr_status": "ADR0004 records actual root adoption in issue54; implementation/review/execution admission separate",
+  "source_manifest": "e2e/benchmarks/multihop_public/manifest.json",
+  "source_revision": "71ac0d0bd1f951d2d6b70311f7d2ae404e1ffa82",
+  "corpus_documents": 609,
+  "raw_arm": "raw_source_fts_sqlite; existing256-whitespace-token chunks/224 stride; frozen full original corpus",
+  "graph_arm": "existing cairn-eval-retrieve --mode graph --query-syntax fts5; actual SearchPipeline; no algorithm tuning",
+  "query": "one original question; identical whitespace atoms double-quote escaped and joined by explicit OR",
+  "top_k": 10,
+  "context_codepoints": 10000,
+  "packing": "exact canonical serialized evidence JSON including all shown metadata, source bindings and relations; no hidden count caps; only final body prefix clipped; raw original end offsets shrink",
+  "excluded": [
+    "follow-up retrieval",
+    "query rewrite",
+    "source backfill",
+    "oracle originals shown to graph solver",
+    "native adaptive3search/4turn agent",
+    "winning-route selection"
+  ],
+  "solver": {
+    "model": "deepseek-flash",
+    "endpoint": "https://api.deepseek.com/chat/completions",
+    "thinking": "disabled",
+    "max_tokens": 4096,
+    "http_retries": 0,
+    "workers": 8,
+    "request_timeout_seconds": 120,
+    "schema": [
+      "answer",
+      "abstain",
+      "citations",
+      "quotes"
+    ]
+  },
+  "explicit_abstention": "schema-valid abstain=true, answer='', citations=[], quotes=[] only; every other malformed/empty/error result is an attempted failure",
+  "judge": {
+    "engine": "unchanged grade.judge durable scheduler plus scoped adapter validator",
+    "model": "deepseek-flash",
+    "thinking": "disabled",
+    "max_tokens": 32768,
+    "max_input_chars": 500000,
+    "timeout_seconds": 180,
+    "concurrency": 8,
+    "validation_retries": 1,
+    "no_null_judge": true,
+    "source_excerpt_policy": "exact original body substring,500-codepoint surrounding window for each gold unit plus complete cited originals; oversized judge input blocks admission, no silent source truncation"
+  },
+  "positive_judge_cases": {
+    "A": "actual answer; required_facts=[unchanged expected_answer]; GC requires target met, overall correct, at least1substantive claim, every claim original-supported and supported by solver-cited actually visible substantive evidence, no ambiguity or invalid citations/quotes",
+    "B": "candidate answer=exact full packed visible context; required_facts=dedup(originalURL,goldfact) within question; only met=1, all other statuses=0; ignore B overall/strict/claim aggregate scores"
+  },
+  "fact_credit_guard": "credited authoritative ref binds target originalURL/bodyhash; exact answer_quote maps to actually visible substantive description/relation/body content bound to that URL; metadata/sourceIDs/titles/serialization alone cannot prove a proposition; semantic judge must establish full conditions/numbers/time entailment",
+  "construction_gate": {
+    "all_original_documents_materialized": 609,
+    "minimum_distinct_doc_accepted04member_incidence_fraction": 0.95,
+    "denominator": "distinct(doc_id,accepted04member_id) before fusion/confidence/drop; sharedID across docs remains multiple incidences",
+    "explained_omission_credit": false,
+    "ownership": "actual UUID/member/document source tuples; optional original span hints are unknown/unverified and never rewritten positions"
+  },
+  "formal_denominator": {
+    "positive_questions": 192,
+    "each_positive_type": 64,
+    "null_questions": 64,
+    "DEV_smoke": "existing smoke8 then DEV128 diagnostics; fixed HOLDOUT256 opens separately"
+  },
+  "bootstrap": {
+    "accepted_replicates": 20000,
+    "rng": "NumPy PCG64",
+    "positive_seed": 20261024,
+    "null_seed": 20261025,
+    "positive_sampling": "G global support-group draws with replacement; carry every question and both arms using shared group multiplicity; compute question mean within each positive type then equal-average3types; cross-type group remains one cluster",
+    "empty_type": "reject/redraw and count; finite guard2000000draws fails closed without estimate",
+    "generation_order": "generate/store all accepted positive vectors first; separate independent null singleton count vectors, combine by replicate index, both arms share vectors",
+    "lower": "numpy.quantile(values,0.05,method='linear')",
+    "undefined_replicate_precision": 0,
+    "degenerate": "retain mathematical endpoint and flag nominal degenerate percentile bootstrap, never exact finite-sample guarantee",
+    "no_fallback": [
+      "Wilson",
+      "pseudo-counts",
+      "dropped failures",
+      "alternate RNG"
+    ]
+  },
+  "infrastructure_gates": {
+    "primary_noninferiority": "one-sided95% support-group-cluster lower(graphGC-rawGC)>-0.05 strictly",
+    "intrinsic_visible_supported_fact_recall": "graph type-balanced semantic recall one-sided95% lower>=0.30; explicit evidence-discovery policy, not answer-utility law",
+    "source_and_citations": "valid original bindings;100% observed emitted citation resolution/exact declared quote verification",
+    "unresolved_judge": "retain original denominator as provisional0; no formal pass until frozen recovery/adjudication resolves"
+  },
+  "answer_demo_gates": {
+    "graph_GC_lower": 0.5,
+    "attempt_precision_point": 0.95,
+    "attempt_precision_lower": 0.9,
+    "null_success_point": 0.9,
+    "null_success_lower": 0.8,
+    "precision_denominator": "all attempts over256, successes=positiveGC; only valid explicit abstention is not an attempt; zero point denominator undefined/no pass",
+    "absolute_GC_lower": "same accepted positive bootstrap as primary",
+    "precision_bootstrap": "positive group multiplicities plus independent64null singleton draws; pooled successes/attempts; undefined replicate contributes0",
+    "null_lower": "same independent null count vectors"
+  },
+  "interpretation": "Graph infrastructure and cited-answer integration are separate acceptance outputs; no answer pass when demo floors fail, no superiority, no hosted answer SLA, no numerical comparison with old raw exact-span39.76%, no stable-release claim",
+  "freeze_required_before_execution": [
+    "implementation/source/binary hashes",
+    "protocol/runtime/NumPyPCG64 identity",
+    "unchanged original corpus/raw index/graph/construction hashes",
+    "admitted question projection/roster hashes",
+    "exact contexts and source bindings",
+    "judge rubric/schema/config/private blind map",
+    "stored bootstrap vectors and seed/version",
+    "all attempts/failures/unknown usage and fixed paired denominator"
+  ],
+  "declared_quote_scope": "mechanically validate every declared quotes[] item; report emitted/invalid counts and undefined rate when none; no claim of detecting all natural-language quotations",
+  "transport_fence": {
+    "shared_helper": "e2e/quality/safe_http.py",
+    "redirects": "reject all unexpected3xx before forwarding; stop new admissions, drain/persist admitted calls",
+    "transactions": "Native http_attempt and grade request_id ledgers remain separate and independently validated/namespaced; never nest or double-admit",
+    "callbacks": "local per-invocation transport/validator injection, no global monkeypatch",
+    "compatibility": "ordinary payload/header/model defaults unchanged; redirect behavior intentionally changed by issue54ACK6386191624"
+  },
+  "structural_evidence_policy": {
+    "decision": "https://github.com/xcosmosbox/Cairn/issues/54#issuecomment-6386430179",
+    "labels": [
+      "Skill",
+      "Domain",
+      "Subdomain"
+    ],
+    "visibility": "retain original top10 ranking and budget; explicit structural_unbound marker, empty sources, all displayed text/metadata counted",
+    "support": "no original-source citation, quotation, claim support or bound-source fact credit; sole-unbound met verdict invalid under existing one-validation-retry then unresolved0/no-pass",
+    "forbidden": "no source backfill, filtering, reranking, replacement or inferred original ownership",
+    "leaf_failure": "Entity/Concept missing or invalid original/member/UUID ownership globally halts provenance admission"
+  }
+}

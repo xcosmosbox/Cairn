@@ -67,7 +67,7 @@ class NativeLedgerAbortTests(unittest.TestCase):
             results.path.rename(root / "original-results.jsonl")
             replacement = b"REPLACEMENT MUST NOT BE WRITTEN\n"
             results.path.write_bytes(replacement)
-            with mock.patch("urllib.request.urlopen", side_effect=AssertionError("HTTP must not be admitted")) as http:
+            with mock.patch("agent_eval_native.urlopen", side_effect=AssertionError("HTTP must not be admitted")) as http:
                 row = native.evaluate_question("blocked", "Question", "fts", EmptyEngine(), client, native.EvalConfig())
                 again = native.evaluate_question("queued", "Question", "fts", EmptyEngine(), client, native.EvalConfig())
             for result in (row, again):
@@ -140,7 +140,7 @@ class NativeLedgerAbortTests(unittest.TestCase):
             with mock.patch("sys.argv", argv), mock.patch.dict("os.environ", {"CAIRN_LLM_API_KEY": "offline-only-key"}), \
                     mock.patch.object(native, "RetrievalEngine", EmptyEngine), \
                     mock.patch.object(JSONLedger, "append", new=replace_before_first_result), \
-                    mock.patch("urllib.request.urlopen", side_effect=transport), \
+                    mock.patch("agent_eval_native.urlopen", side_effect=transport), \
                     mock.patch("sys.stdout", new_callable=io.StringIO):
                 with self.assertRaises(LedgerIntegrityError):
                     native.main()
@@ -191,7 +191,7 @@ class NativeLedgerAbortTests(unittest.TestCase):
                 payload["choices"][0]["finish_reason"] = "length"
                 return Response(payload)
 
-            with mock.patch("urllib.request.urlopen", side_effect=invalid_response) as http:
+            with mock.patch("agent_eval_native.urlopen", side_effect=invalid_response) as http:
                 row = native.evaluate_question("retry", "Question", "fts", EmptyEngine(), client, native.EvalConfig())
             self.assertEqual(http.call_count, 1)
             self.assertEqual(budget.used, 1)
