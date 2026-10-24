@@ -20,6 +20,8 @@ import threading
 import time
 from urllib.parse import urlsplit
 
+from process_rss import ProcessRSS
+
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("consumer_smoke", ROOT / "e2e/real-consumer-smoke.py")
 smoke = importlib.util.module_from_spec(spec)
@@ -28,13 +30,6 @@ spec.loader.exec_module(smoke)
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def current_rss(pid):
-    try:
-        return next(int(line.split()[1]) for line in Path(f"/proc/{pid}/status").read_text().splitlines() if line.startswith("VmRSS:"))
-    except (OSError, StopIteration, ValueError):
-        return None
 
 
 def quantiles(values):
@@ -57,21 +52,33 @@ class Budget:
         self.deadline = self.start + seconds
         self.ceiling_kib = rss_mib * 1024
         self.pids, self.peaks = set(), {}
+        self.observers, self.rss_samples, self.identities = {}, [], []
         self.reason = None
         self.lock = threading.Lock()
         self.done = threading.Event()
         self.thread = threading.Thread(target=self.watch, daemon=True)
         self.thread.start()
 
-    def register(self, pid):
+    def register(self, pid, argv):
+        observer = ProcessRSS(pid, argv)
         with self.lock:
             self.pids.add(pid)
-            self.peaks[pid] = 0
+            self.peaks[pid] = None
+            self.observers[pid] = observer
+            self.identities.append({"pid": pid, "argv": [str(arg) for arg in argv],
+                                    "identity": observer.identity, "reason": observer.reason})
 
     def remove(self, pid):
         with self.lock:
             self.pids.discard(pid)
-        return self.peaks.get(pid, 0)
+            self.observers.pop(pid, None)
+        return self.peaks.get(pid)
+
+    def current_rss(self, pid):
+        with self.lock:
+            observer = self.observers.get(pid)
+        sample = observer.sample() if observer else None
+        return sample["rss_kib"] if sample else None
 
     def check(self):
         if time.monotonic() >= self.deadline:
@@ -82,16 +89,18 @@ class Budget:
     def watch(self):
         while not self.done.wait(.01):
             with self.lock:
+                entries = list(self.observers.items())
                 pids = list(self.pids)
-            for pid in pids:
-                try:
-                    fields = dict(line.split(":", 1) for line in Path(f"/proc/{pid}/status").read_text().splitlines() if ":" in line)
-                    rss = max(int(fields.get(key, "0 kB").split()[0]) for key in ("VmRSS", "VmHWM"))
-                    self.peaks[pid] = max(rss, self.peaks.get(pid, 0))
+            for pid, observer in entries:
+                sample = observer.sample()
+                with self.lock:
+                    self.rss_samples.append({"t_ns": time.perf_counter_ns(), "pid": pid,
+                                             "sample": sample, "reason": observer.reason})
+                if sample is not None:
+                    rss = max(sample["rss_kib"], sample["hwm_kib"])
+                    self.peaks[pid] = max(rss, self.peaks.get(pid) or 0)
                     if rss > self.ceiling_kib:
                         self.reason = "child RSS ceiling exceeded"
-                except (OSError, ValueError):
-                    pass
             if time.monotonic() >= self.deadline:
                 self.reason = self.reason or "measured wall deadline exhausted"
             if self.reason:
@@ -162,7 +171,7 @@ def client_server(kind, binary, config, budget):
     client = None
     try:
         client = smoke.MCP(binary, config) if kind == "stdio" else smoke.HTTPMCP(binary, config)
-        budget.register(client.proc.pid)
+        budget.register(client.proc.pid, client.proc.args)
         initialize(client)
         yield client
     finally:
@@ -279,7 +288,7 @@ class Runner:
                        (os.POSIX_SPAWN_OPEN, 2, str(stderr), os.O_WRONLY | os.O_CREAT, 0o600)]
             binary = str(self.args.bin_dir / "cairn")
             pid = os.posix_spawn(binary, [binary, "--db-path", str(db), "find", query], os.environ, file_actions=actions)
-            self.budget.register(pid)
+            self.budget.register(pid, [binary, "--db-path", str(db), "find", query])
             try:
                 while True:
                     done, status, usage = os.wait4(pid, os.WNOHANG)
@@ -324,7 +333,7 @@ class Runner:
                                 self.budget.check()
                                 query, hit, _ = queries[i % len(queries)]
                                 search(client, query, hit)
-                        warm_rss = current_rss(pid)
+                        warm_rss = self.budget.current_rss(pid)
                         def worker(worker_id):
                             client = clients[worker_id]
                             for i in range(worker_id, self.args.samples, concurrency):
@@ -348,7 +357,7 @@ class Runner:
                     def once():
                         client = smoke.MCP(binary, config) if kind == "stdio" else smoke.HTTPMCP(binary, config)
                         holder.append(client)
-                        self.budget.register(client.proc.pid)
+                        self.budget.register(client.proc.pid, client.proc.args)
                         initialize(client)
                         return search(client, queries[0][0], True)
                     try:
@@ -383,7 +392,7 @@ class Runner:
                     if time.monotonic() >= wait_until:
                         raise RuntimeError("initial real watcher pull did not finish in 10 seconds")
                     time.sleep(.01)
-                baseline_rss = current_rss(primary.proc.pid)
+                baseline_rss = self.budget.current_rss(primary.proc.pid)
                 def load(client):
                     while not stop.is_set():
                         self.budget.check()

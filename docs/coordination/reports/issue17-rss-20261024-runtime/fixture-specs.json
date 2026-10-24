@@ -1,0 +1,26 @@
+{
+  "1000": {
+    "degree": 3,
+    "edges": 3000,
+    "generation_method": "public storage batch APIs; fixed timestamps and deterministic UUIDs; no model",
+    "generations": [
+      "a",
+      "b"
+    ],
+    "nodes": 1000,
+    "product_commit": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+    "seed": 20261024
+  },
+  "10000": {
+    "degree": 3,
+    "edges": 30000,
+    "generation_method": "public storage batch APIs; fixed timestamps and deterministic UUIDs; no model",
+    "generations": [
+      "a",
+      "b"
+    ],
+    "nodes": 10000,
+    "product_commit": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+    "seed": 20261024
+  }
+}

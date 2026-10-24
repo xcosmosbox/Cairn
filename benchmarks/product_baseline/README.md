@@ -95,3 +95,33 @@ and update p99 values are descriptive, not stable tail estimates. Preserve
 partial results, environment CPU/memory limits, workload/data/binary hashes and
 shared-host concurrency noise. This initial synthetic single-host baseline is
 not a production SLO, capacity proof, or evidence of GraphRAG answer quality.
+
+## Trustworthy RSS follow-up
+
+`process_rss.py` resolves each direct child by exact argv, outer parent PID,
+innermost NSpid and process start ticks, then rechecks that identity on every
+sample. This supports a nested PID namespace where `/proc/<Popen.pid>` can point
+to an unrelated host process. Missing, ambiguous or changed identities and absent
+memory fields produce unknown (`None`), never zero. A watchdog can act on observed
+RSS/HWM above its configured ceiling; missing observations leave enforcement
+unknown. Ten-millisecond sampling is not an OS memory reservation and cannot
+exclude subinterval spikes. The original archived run's unavailable RSS remains
+unchanged; this resolver does not retroactively repair that evidence.
+
+The separate `memory_only.py` command exercises warm stdio/SSE at fake/1k/10k,
+and the existing actual watcher under four SSE clients, within180 measured seconds.
+It validates identity using a child-acknowledged32MiB allocation, preserves raw
+valid/null samples, and does not rerun the timing matrix. Inputs must be isolated
+copies of the public fixtures; use the fixture generator above on a new machine.
+
+```sh
+python3 -m unittest discover -s benchmarks/product_baseline -p 'test_*.py'
+python3 benchmarks/product_baseline/memory_only.py \
+  --binary /ABSOLUTE/CURRENT/BUILD/cairn-mcp \
+  --synthetic-root /ABSOLUTE/ISOLATED/FIXTURES \
+  --fake-bundle /ABSOLUTE/ISOLATED/FAKE/BUNDLE \
+  --source-commit ACTUAL_PRODUCT_SOURCE_SHA --output /ABSOLUTE/NEW/OUTPUT --updates 4
+```
+
+The [recorded follow-up](../../docs/coordination/reports/issue17-rss-20261024-runtime/README.md)
+retains current-source memory observations, source/data identities and limits.
