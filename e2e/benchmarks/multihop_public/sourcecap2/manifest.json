@@ -1,0 +1,46 @@
+{
+  "adoption": "experimental DEV evidence only; maintainer decision and independent review required; no holdout opening",
+  "baseline_file_sha256": {
+    "benchmark.py": "4a8121d352bd2385badedcd24feea1d7fc3e29029b7ae109150ff7bdfc96966e",
+    "dev-summary.json": "0129e6ad9c100f946dd6f9b7749d41245719f5f6f0717ba9d2ad1da16a8efa54",
+    "index-receipt.json": "71fc1cbacf7bb28e8a2c2c05f28b0f34d3737233b5580417600bf5c45b99a5c6",
+    "manifest.json": "1c3c3087cf908fdcb161c1978b5066edd3fae7ace365808e7a860d27efbfe07b",
+    "protocol.json": "12b76e3fae841c3b5a507c1771ff0bf805266c58fdd335dec5e2bc8055ed7d70",
+    "split-freeze.json": "5edc8738190bf63fc4293259c1fd98428c16cd07f8044fc7663ad08d77086d2e"
+  },
+  "baseline_merge_sha": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+  "control": {
+    "final_top_k": 10,
+    "selection": "original rank prefix"
+  },
+  "diagnostic_aggregate_sha256": "e26d395a6e844fa82d7acdc7d3b749de7cf69d8cc074964d9eacb1f1c8749394",
+  "diagnostic_original_sha256": "836ed6ae4d2e6a074712bc9b0f8557fe59904f3d60b84f0bd6dc5dbf91990ebd",
+  "format": "cairn-mhr-sourcecap2/v1",
+  "index_sha256": "9d38e152df5ff1dde536367a5d4654879ce95f9a00338ae6fbca78dde1ddc4d0",
+  "paid_or_graph_calls": 0,
+  "shared_candidate_pool": {
+    "arm": "raw_source_fts_sqlite",
+    "limit": 50,
+    "ordering": "bm25 ASC, chunk_id ASC",
+    "query_calls_per_question": 1
+  },
+  "split": "DEV128 only; HOLDOUT not evaluated",
+  "task": 27,
+  "treatment": {
+    "final_top_k": 10,
+    "insufficient_pool": "retain actual count; no fallback search or cap relaxation",
+    "per_doc_cap": 2,
+    "selection": "original rank order, greedily accept at most 2 chunks per doc_id"
+  },
+  "unchanged": [
+    "609 original documents",
+    "index and source identities",
+    "DEV128 question IDs",
+    "original query and FTS compiler",
+    "256 whitespace token chunks, stride224",
+    "title/source/published_at metadata",
+    "baseline pack_context serialization",
+    "10000 Unicode code-point context budget",
+    "all original metric definitions"
+  ]
+}
