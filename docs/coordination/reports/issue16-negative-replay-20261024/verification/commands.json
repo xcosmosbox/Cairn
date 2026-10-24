@@ -1,0 +1,57 @@
+{
+  "source_commit": "b3c94909da60491282b933e36cf6b67eb1fd4fa1",
+  "production_base": "75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8",
+  "environment": {
+    "Go": "1.22.12",
+    "GOTOOLCHAIN": "local"
+  },
+  "commands": [
+    {
+      "argv": [
+        "go",
+        "test",
+        "-race",
+        "-parallel",
+        "8",
+        "-count=1",
+        "./..."
+      ],
+      "exit_code": 0,
+      "log": "full-race.log"
+    },
+    {
+      "argv": [
+        "make",
+        "verify"
+      ],
+      "exit_code": 0,
+      "log": "verify.log"
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "bin/cross-verifier-replay",
+        "./build/test/e2e/cross-verifier-replay"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "./bin/cross-verifier-replay",
+        "--mode",
+        "preflight",
+        "--out",
+        ".local/negative-replay/attempt-01-final"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "initial_offline_preflight_preserved": {
+    "driver_commit": "00df392e6b7b21e417537da3d48d69ace15ea5d4",
+    "freeze_sha256": "df55d42c172967dda0f01fe436f705888b558752b7fa91b8c097e00e81894533",
+    "no_model_calls": true
+  },
+  "guard_correction": "directory entry sync before any request admission; previous preflight was offline only"
+}

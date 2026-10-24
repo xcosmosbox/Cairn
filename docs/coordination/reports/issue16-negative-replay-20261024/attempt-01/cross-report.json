@@ -1,0 +1,183 @@
+{
+  "candidates": 2,
+  "accepted": 1,
+  "max_evidence_bytes": 65536,
+  "decisions": [
+    {
+      "owner_domain": "并发队列与背压控制",
+      "owner_subdomain": "生产者重试与预算",
+      "relation": {
+        "source": "retry-budget",
+        "target": "blocking-queue",
+        "kind": "depends_on",
+        "description": "重试预算依赖阻塞队列的容量与等待行为。",
+        "confidence": 0.9
+      },
+      "source": {
+        "domain": "并发队列与背压控制",
+        "subdomain": "生产者重试与预算",
+        "alias": "retry-budget",
+        "name": "重试预算",
+        "members": [
+          "public-synthetic-queue-concept-重试预算"
+        ]
+      },
+      "target": {
+        "domain": "并发队列与背压控制",
+        "subdomain": "阻塞队列模型",
+        "alias": "blocking-queue",
+        "name": "阻塞队列",
+        "members": [
+          "public-synthetic-queue-entity-阻塞队列"
+        ]
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "skill": "public-synthetic-queue",
+          "path": "references/queue.md",
+          "sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135"
+        },
+        {
+          "id": "s2",
+          "skill": "public-synthetic-queue",
+          "path": "references/timeout.md",
+          "sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587"
+        }
+      ],
+      "evidence_bytes": 2275,
+      "disposition": "accepted",
+      "reason": "原文明确写明重试预算依赖阻塞队列的容量与等待行为：timeout.md 直接给出该依赖断言，queue.md 说明阻塞队列容量为 8，且满时生产者等待、空时消费者等待。方向为 retry-budget 依赖 blocking-queue，未发现相反限定条件或例外；合成说明及 fixed fake 零结果不否定该语义关系。",
+      "verifier": {
+        "disposition": "supported",
+        "reason": "原文明确写明重试预算依赖阻塞队列的容量与等待行为：timeout.md 直接给出该依赖断言，queue.md 说明阻塞队列容量为 8，且满时生产者等待、空时消费者等待。方向为 retry-budget 依赖 blocking-queue，未发现相反限定条件或例外；合成说明及 fixed fake 零结果不否定该语义关系。",
+        "relation_supported": true,
+        "direction_supported": true,
+        "contradiction": {
+          "same_subject": false,
+          "same_attribute": false,
+          "same_time": false,
+          "same_conditions": false,
+          "incompatible": false
+        },
+        "evidence": [
+          {
+            "endpoint": "source",
+            "member_id": "public-synthetic-queue-concept-重试预算",
+            "source_id": "s2",
+            "quote": "`重试预算` 依赖[阻塞队列](queue.md#阻塞队列--blocking-queue)的容量与等待行为。"
+          },
+          {
+            "endpoint": "target",
+            "member_id": "public-synthetic-queue-entity-阻塞队列",
+            "source_id": "s1",
+            "quote": "这个虚构队列容量为 8。满时生产者等待，空时消费者等待；这解释了 `阻塞队列` 的基本含义。"
+          }
+        ]
+      },
+      "verifier_disposition": "supported",
+      "evidence": [
+        {
+          "endpoint": "source",
+          "member_id": "public-synthetic-queue-concept-重试预算",
+          "source_id": "s2",
+          "quote": "`重试预算` 依赖[阻塞队列](queue.md#阻塞队列--blocking-queue)的容量与等待行为。",
+          "start_byte": 316,
+          "end_byte": 417,
+          "start_line": 10,
+          "end_line": 10
+        },
+        {
+          "endpoint": "target",
+          "member_id": "public-synthetic-queue-entity-阻塞队列",
+          "source_id": "s1",
+          "quote": "这个虚构队列容量为 8。满时生产者等待，空时消费者等待；这解释了 `阻塞队列` 的基本含义。",
+          "start_byte": 97,
+          "end_byte": 223,
+          "start_line": 5,
+          "end_line": 5
+        }
+      ]
+    },
+    {
+      "owner_domain": "并发队列与背压控制",
+      "owner_subdomain": "运行环境约束",
+      "relation": {
+        "source": "free-fixed-fake",
+        "target": "retry-budget",
+        "kind": "contradicts",
+        "description": "假运行环境中不存在重试预算，与含预算场景相矛盾。",
+        "confidence": 0.8
+      },
+      "source": {
+        "domain": "并发队列与背压控制",
+        "subdomain": "运行环境约束",
+        "alias": "free-fixed-fake",
+        "name": "免费固定假运行环境",
+        "members": [
+          "public-synthetic-queue-entity-免费-fixed-fake"
+        ]
+      },
+      "target": {
+        "domain": "并发队列与背压控制",
+        "subdomain": "生产者重试与预算",
+        "alias": "retry-budget",
+        "name": "重试预算",
+        "members": [
+          "public-synthetic-queue-concept-重试预算"
+        ]
+      },
+      "sources": [
+        {
+          "id": "s1",
+          "skill": "public-synthetic-queue",
+          "path": "references/queue.md",
+          "sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135"
+        },
+        {
+          "id": "s2",
+          "skill": "public-synthetic-queue",
+          "path": "references/timeout.md",
+          "sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587"
+        }
+      ],
+      "evidence_bytes": 2318,
+      "disposition": "rejected_semantic",
+      "reason": "候选声称“免费固定假运行环境”与“重试预算”相矛盾，但原文仅说明免费 fixed fake 中不存在重试预算、查询应为零结果；同一文档又把重试预算作为虚构示例中的概念定义，并明确这些合成输入不由 fixed fake runner 消费。二者分属“运行环境是否实现/包含该概念”和“合成文档中的概念定义”两个不同主体与条件，可以同时成立，不构成同一主体、同一属性、同一时间及同一条件下的互不相容断言。因此 contradicts 关系不成立。",
+      "verifier": {
+        "disposition": "rejected",
+        "reason": "候选声称“免费固定假运行环境”与“重试预算”相矛盾，但原文仅说明免费 fixed fake 中不存在重试预算、查询应为零结果；同一文档又把重试预算作为虚构示例中的概念定义，并明确这些合成输入不由 fixed fake runner 消费。二者分属“运行环境是否实现/包含该概念”和“合成文档中的概念定义”两个不同主体与条件，可以同时成立，不构成同一主体、同一属性、同一时间及同一条件下的互不相容断言。因此 contradicts 关系不成立。",
+        "relation_supported": false,
+        "direction_supported": false,
+        "contradiction": {
+          "same_subject": false,
+          "same_attribute": false,
+          "same_time": false,
+          "same_conditions": false,
+          "incompatible": false
+        },
+        "evidence": [
+          {
+            "endpoint": "source",
+            "member_id": "public-synthetic-queue-entity-免费-fixed-fake",
+            "source_id": "s2",
+            "quote": "免费 fixed fake 中不存在 `重试预算`，查询它应明确得到零结果。"
+          },
+          {
+            "endpoint": "target",
+            "member_id": "public-synthetic-queue-concept-重试预算",
+            "source_id": "s2",
+            "quote": "在这个虚构例子中，生产者最多等待 50 毫秒，最多重试 2 次；预算用尽后返回可见错误。"
+          },
+          {
+            "endpoint": "target",
+            "member_id": "public-synthetic-queue-concept-重试预算",
+            "source_id": "s1",
+            "quote": "当生产者不能无限等待时，调用方使用[重试预算](timeout.md#重试预算--retry-budget)。"
+          }
+        ]
+      },
+      "verifier_disposition": "rejected"
+    }
+  ]
+}

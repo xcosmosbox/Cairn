@@ -1,0 +1,19 @@
+/workspace/scratch/c1bb49a45412/cairn-cross-negative/bin/cross-verifier-replay: go1.22.12
+	path	github.com/xcosmosbox/cairn/build/test/e2e/cross-verifier-replay
+	mod	github.com/xcosmosbox/cairn	(devel)	
+	dep	github.com/google/uuid	v1.6.0	h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+	dep	gopkg.in/yaml.v3	v3.0.1	h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	CGO_ENABLED=1
+	build	CGO_CFLAGS=
+	build	CGO_CPPFLAGS=
+	build	CGO_CXXFLAGS=
+	build	CGO_LDFLAGS=
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
+	build	vcs=git
+	build	vcs.revision=b3c94909da60491282b933e36cf6b67eb1fd4fa1
+	build	vcs.time=2026-10-24T15:21:47Z
+	build	vcs.modified=false

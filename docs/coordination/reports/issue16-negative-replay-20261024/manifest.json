@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "hash": "SHA256",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 8689,
+      "sha256": "5b54c1bf730f4ac9d1bd360679f8927bac6793d8bfd50941fcd9ee8bd12f4e38"
+    },
+    {
+      "path": "attempt-01/calls.jsonl",
+      "bytes": 2808,
+      "sha256": "742f5a2c9800ab06f9fd8ac74c31b262e08df376744a6750431da35e3619f62f"
+    },
+    {
+      "path": "attempt-01/command.json",
+      "bytes": 525,
+      "sha256": "577a33ea21a26cdc1d143e090b28b1b64e8fd2c67256d2afab156197e0a0fe9a"
+    },
+    {
+      "path": "attempt-01/cross-report.json",
+      "bytes": 8056,
+      "sha256": "5848f075d53b9d015aa93316637cf9cbf91d88fd731f38ed34424799eb5371c5"
+    },
+    {
+      "path": "attempt-01/filtered-projection.json",
+      "bytes": 4849,
+      "sha256": "75d87fcf2be53b2170add9c6addf020a2b4235178bb7e60f21448d2c977e4219"
+    },
+    {
+      "path": "attempt-01/freeze.json",
+      "bytes": 2398,
+      "sha256": "1af86c8bfa20d06085c84891e3937f85c6800a77ac3b7bba45693ca0d26ec722"
+    },
+    {
+      "path": "attempt-01/projection.json",
+      "bytes": 5145,
+      "sha256": "bc11e8662b69ba6c54478d5e34747919ee2380aae8c16bd2ffa30c1d15a9c44e"
+    },
+    {
+      "path": "attempt-01/provider.log",
+      "bytes": 1481,
+      "sha256": "cfc5f3c35998d702695e63a0000338abe6d8a41ba6459ca3523b25a62db08b86"
+    },
+    {
+      "path": "attempt-01/result.json",
+      "bytes": 1954,
+      "sha256": "22c4dd86cb0c12732affb755351a992401b4fc5ad334e5ee87d4180764483a64"
+    },
+    {
+      "path": "audit.json",
+      "bytes": 3346,
+      "sha256": "e7bc2427fc92d5fc7a2a5c9a29b6a6880d1b8b88dfb1afa404c6eedfcf01b873"
+    },
+    {
+      "path": "verification/binary-buildinfo.txt",
+      "bytes": 702,
+      "sha256": "8f1d31d266d5853b90c2e532e87f911b3a15c1c4eda2df9213223bd1067e1b43"
+    },
+    {
+      "path": "verification/commands.json",
+      "bytes": 1283,
+      "sha256": "27eb22db3bb8ee56baa03d4fe24973f8e0bfa0ee116ccbd7e947df19de25d6e2"
+    },
+    {
+      "path": "verification/full-race.log",
+      "bytes": 3422,
+      "sha256": "fef2014855a5c568d6b03a1bb7cb18db95a027efe97183772f676f607cd60278"
+    },
+    {
+      "path": "verification/verify.log",
+      "bytes": 434,
+      "sha256": "26e94f1d499ae33f40cfdafe520248c89bff32c1e8e84b2d1b6ffb474d1424a4"
+    }
+  ],
+  "credential_scan": {
+    "exact_runtime_key_absent": true,
+    "credential_patterns_absent": true
+  }
+}

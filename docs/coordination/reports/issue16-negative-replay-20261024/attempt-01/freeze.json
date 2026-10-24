@@ -1,0 +1,62 @@
+{
+  "base_source": "75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8",
+  "derived_scopes": [
+    {
+      "domain": "并发队列与背压控制",
+      "domain_slug": "并发队列与背压控制",
+      "subdomain": "阻塞队列模型",
+      "subdomain_slug": "阻塞队列模型"
+    },
+    {
+      "domain": "并发队列与背压控制",
+      "domain_slug": "并发队列与背压控制",
+      "subdomain": "生产者重试与预算",
+      "subdomain_slug": "生产者重试与预算"
+    },
+    {
+      "domain": "并发队列与背压控制",
+      "domain_slug": "并发队列与背压控制",
+      "subdomain": "运行环境约束",
+      "subdomain_slug": "运行环境约束"
+    }
+  ],
+  "driver_source_commit": "b3c94909da60491282b933e36cf6b67eb1fd4fa1\n",
+  "endpoint": "https://api.deepseek.com/chat/completions",
+  "evidence_bytes": 65536,
+  "executable_sha256": "e5590aba62c9f4744057c5f5ea2a61231cf40f6af143a6cf5ccc788688bc4775",
+  "http_max_retries": 1,
+  "http_timeout_seconds": 180,
+  "input_hashes": {
+    "04": "6be352ae656864c962930c2e547571de797b9e7254389f7dba324cec74aa2c1c",
+    "05": "2dddeeb9ef1070bc3b75f1a7fbc0801a67a9fbbbfcd258dfa0abf83627eaee54",
+    "queue": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135",
+    "timeout": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587"
+  },
+  "logical_call_cap": 2,
+  "max_tokens": 16384,
+  "new_annotation_or_build": false,
+  "overall_timeout_seconds": 300,
+  "production_verifier_sha256": "0dad47ace8c9fd8192c99ac271f9ecacbbc40752c06b3735c81be1dfd1fe8914",
+  "projection_sha256": "bc11e8662b69ba6c54478d5e34747919ee2380aae8c16bd2ffa30c1d15a9c44e",
+  "provider_response_IDs_failed_usage": "unknown_standard_client",
+  "requested_model": "deepseek-flash",
+  "selected_exact_rows": [
+    {
+      "source": "retry-budget",
+      "target": "blocking-queue",
+      "kind": "depends_on",
+      "description": "重试预算依赖阻塞队列的容量与等待行为。",
+      "confidence": 0.9
+    },
+    {
+      "source": "free-fixed-fake",
+      "target": "retry-budget",
+      "kind": "contradicts",
+      "description": "假运行环境中不存在重试预算，与含预算场景相矛盾。",
+      "confidence": 0.8
+    }
+  ],
+  "unchanged_non_relation_inventory_sha256": "c2c1c1615e9994afaab591f70da869f45674abd28ec9983f034cae9d4ed703c8",
+  "whole_run_retries": 0,
+  "wire_attempt_cap": 4
+}
