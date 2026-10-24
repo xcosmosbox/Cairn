@@ -30,6 +30,11 @@ and #13 are requirements when relying on those historical controls, not automati
 prerequisites for every new public experiment. Their limits cannot be silently
 transferred to a different dataset or accepted as passed.
 
+Public demo commands, CI and committed sanitized reports are the public reproduction
+path. Historical private inputs/full response archives remain restricted; their
+existence or inaccessible hashes do not establish public reproducibility. Mark
+unavailable evidence unknown, and publish no private content or credential locations.
+
 ## Versions, old libraries and recovery
 
 | Boundary | Current behavior / compatibility evidence | Proposed release and rollback requirement |
