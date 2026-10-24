@@ -60,13 +60,17 @@ unanswerable labels. Download, identity audit and execution are later dependent 
 
 ## MultiHop split and retrieval freeze
 
-1. Index the full 609-article body corpus once. Questions/gold/evidence never enter the
-   retriever or graph construction. `doc_id=sha256(exact URL)`; pin body hashes separately.
+1. Index the full609-article corpus once, with identical title/source/published_at plus
+   chunk-body templates in both retrieval arms. Questions/gold/evidence never enter the
+   retriever or graph construction. `doc_id=sha256(exact URL UTF-8)`; pin body hashes
+   separately. Body offsets/fact coverage exclude metadata.
 2. Normalize a query with NFKC, casefold, whitespace collapse and strip; qid is SHA256
    of its UTF-8 bytes. Non-null group is `docs:` plus sorted unique evidence URLs joined
    by newline; null group is `null:` plus normalized query.
 3. SHA256 of `cairn-mhr-v1\0` plus group: first 8 hex digits modulo 5 equal to zero
-   means DEV, otherwise HOLDOUT. Keep groups together; use no alternate seed.
+   means DEV, otherwise HOLDOUT. The prefix's `\\0` denotes one U+0000 NUL byte,
+   not a backslash followed by0; group/query/URL hashes use UTF-8. Keep groups together;
+   use no alternate seed.
 4. Within each type/grouped pool sort by qid, select DEV32 and HOLDOUT64 per type:
    128 DEV, 256 HOLDOUT. Smoke uses the first two DEV per type (8 total). Fail if quotas
    are insufficient. Split manifest contains only qid/type/group_hash.
@@ -92,7 +96,11 @@ seeing weak results.
 Report pre-truncation Doc Recall@5/@10 and AllGoldDocs@5/@10. Budget-visible FactRecall
 and AllGoldFacts require each complete labeled body span to be covered by the union of
 visible intervals from that same document; title/path text is not evidence, repeats count
-once. Stratify by type and 2/3/4 evidence documents. Null cases do not enter positive-recall
+once. Stratify by type, evidence_fact_count and unique_support_doc_count separately.
+DocRecall deduplicates supporting documents; FactRecall deduplicates gold fact/spans.
+The researcher found168 questions with multiple facts on one URL: fact-count strata
+2/3/4 contain1079/778/398 questions, while unique-doc strata contain1169/774/312.
+Null cases do not enter positive-recall
 denominators: report their retrieval counts/empty rate separately. Also record errors,
 empty results, truncation, p50/p95 latency and index bytes. No solver means no answer
 accuracy, correct abstention or grounded-pass claim.
