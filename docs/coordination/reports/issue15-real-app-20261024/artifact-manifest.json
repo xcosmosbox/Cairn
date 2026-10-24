@@ -29,8 +29,8 @@
     },
     {
       "path": "docs/coordination/reports/issue15-real-app-20261024/README.md",
-      "bytes": 10015,
-      "sha256": "a6a7c1170057b9fbf83f4fc57eef94ee82fb78125e407542279980df3fee2c81"
+      "bytes": 10758,
+      "sha256": "f55879d3e144a1e59befb411289ca3457f3ba0ce304ab9f10e958ed355ae74c8"
     },
     {
       "path": "docs/coordination/reports/issue15-real-app-20261024/attempt-01/01-native-auth-live.log",
@@ -86,6 +86,26 @@
       "path": "docs/coordination/reports/issue15-real-app-20261024/registered-permissions.json",
       "bytes": 1753,
       "sha256": "795a8494a03811e577d4c09a85f205a02ac87c1c0d75705a85bc698619481742"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/source-commits/2464c5079570759578f2832fbf3c70a609450e89.txt",
+      "bytes": 259,
+      "sha256": "6785dfd360412c6c33f90dfb7f93d4677091cca90124f9e95708862fadb3140b"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/source-commits/5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2.txt",
+      "bytes": 256,
+      "sha256": "783ca75e4b8a0c9e58da6e2393ce573cae8ab578419d20e85cc06ab49af89960"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/source-commits/c1c3c90d6626b974b9cb9a5c527ae2dbea890775.txt",
+      "bytes": 262,
+      "sha256": "f3ee17791b4772a293624f9b86d451d461fddfcb056a742c4e086ab6cd6481c2"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/transport-mapping.json",
+      "bytes": 1345,
+      "sha256": "919cb60c5e1ec761f97db4ea47684a8eb0a0403d90810ed780592886fe402f36"
     },
     {
       "path": "docs/coordination/reports/issue15-real-app-20261024/validation.json",

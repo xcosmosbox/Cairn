@@ -1,0 +1,6 @@
+tree 6902867dfd1dad19be7b3c36aeaa353c88574cd5
+parent c1c3c90d6626b974b9cb9a5c527ae2dbea890775
+author Codex <codex@openai.com> 1792843627 +0900
+committer Codex <codex@openai.com> 1792843627 +0900
+
+docs(githubapp): record real sandbox auth and Forge acceptance

@@ -24,6 +24,7 @@ Maintainer acceptance and independent-session review remain separate from these 
 | Product baseline | `10f2f4d44b01b9e8657136af8094353a24eec4e2` |
 | Initial tested harness | `5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2` |
 | Final live/ordinary tested harness | `c1c3c90d6626b974b9cb9a5c527ae2dbea890775` |
+| Remotely recoverable identical tested tree | [`c565b3714fad013447b42db17c0ead468cab32d4`](https://github.com/xcosmosbox/Cairn/commit/c565b3714fad013447b42db17c0ead468cab32d4), tree `bb565ae8c5ed4f2768d24fb9f4d0ae9d4d2bdb25` |
 | App | `5454525`, `xcosmosbox-cairn-test` |
 | Installation/account | `174795212` / `xcosmosbox` |
 | Runtime repository | `xcosmosbox/cairn-app-sandbox`, private, ID `1432125826` |
@@ -47,6 +48,13 @@ The Go executable was the verified #10 toolchain at
 The existing `.local/gopath` module cache and `.cache/go-build` cache beside that
 toolchain were reused, with `GOTOOLCHAIN=local`. No secret values, authorization
 headers, runtime key location or private artifact reference are saved here.
+
+Native Git push failed because its HTTPS transport had no username credential.
+The selected GitHub connector then uploaded exact blobs and verified identical Git
+trees for every local commit. Its commit tool cannot preserve original author/date
+fields, so remote commit IDs differ. [Transport mapping and raw commit records](transport-mapping.json)
+allow recovery of the original tested commit IDs from those remotely stored trees;
+this is a transport/identity distinction, not a different tested source snapshot.
 
 ## Actual commands and outcomes
 
