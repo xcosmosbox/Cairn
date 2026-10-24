@@ -1,0 +1,12 @@
+[
+  {
+    "Name": "public-synthetic-queue",
+    "Path": ".",
+    "MarkerFile": "SKILL.md",
+    "ReferenceFiles": [
+      "references/queue.md",
+      "references/timeout.md"
+    ],
+    "DomainHint": "合成队列示例 / Synthetic queue example"
+  }
+]

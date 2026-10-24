@@ -1,0 +1,21 @@
+{
+  "command": [
+    "python3",
+    "examples/public-demo/real-model/run.py",
+    "audit",
+    "--out",
+    "/workspace/scratch/c1bb49a45412/cairn-live16/.local/real-model/live16-free-namespaced-final-audit"
+  ],
+  "started_at": "2026-10-24T13:57:19.578148+00:00",
+  "finished_at": "2026-10-24T13:57:19.717487+00:00",
+  "exit_code": 1,
+  "stdout": "",
+  "stderr": "Real demo failed: Required dependency/fact checks failed; structural evidence retained\n",
+  "purpose": "corrected free analysis only; expected failure from missing required direct dependency",
+  "model_requests": 0,
+  "helper_sha256": "b0746827745fbb152804c9f2b41af0e61b60e4aee4c2c20c76bd562718c67ac1",
+  "input_database_sha256": "7c94b225d40f0eb054525fb4ab061599a93707171545003622aec7bf2331a3d2",
+  "copy_database_sha256": "7c94b225d40f0eb054525fb4ab061599a93707171545003622aec7bf2331a3d2",
+  "historical_audit_json_sha256": "f50f8b1eadd84d11f24311f6915ad9b2b2bdfd9b2d80f65d4d00785cab5ae1c9",
+  "raw_outputs": "audit-v2-evidence/; old CLI/MCP files not modified by namespaced audit"
+}

@@ -7,11 +7,17 @@ are the existing [Skill](../SKILL.md), [queue](../references/queue.md) and
 annotated; the Skill file supplies discovery metadata. [input-freeze.json](input-freeze.json)
 pins all three original byte identities at `18e7e7b`.
 
-Current status: **free preparation only; no successful real-model request,
-extraction, publication or quality measurement**. The previous automatic approval
-review rejected credential egress. Do not run live commands until the applicable
-current authorization clears that review. A CLI opt-in is an execution safeguard,
-not evidence of authorization. See [verification.md](verification.md).
+Current evidence: the renewed authorized official-endpoint canary succeeded. The
+first real attempt skipped one document after a genuine semantic-gate failure;
+the separately authorized second attempt consumed both documents. Its generated
+descriptions retain capacity 8, wait 50ms and retry 2, but its required direct
+`重试预算 → 阻塞队列` dependency was removed by the existing subdomain-local relation
+contract. **The complete smoke remains a semantic failure.** See
+[verification.md](verification.md) and the retained
+[run report](../../../docs/coordination/reports/issue16-realmodel-20261024-live16/README.md).
+No publication or benchmark/holdout evaluation ran. The earlier credential-egress
+rejection remains historical evidence; no further approval was requested after
+the user's renewed authorization.
 
 ## Free preparation
 
@@ -30,9 +36,9 @@ directory, copies only the frozen three files into `source/`, keeps an untouched
 helper hash. Existing run directories are refused. The explicit VCS option avoids
 the known worktree VCS stamping failure; it does not modify product source.
 
-## Reviewable live commands — not executed in this preparation
+## Opt-in live commands
 
-After credential use has been authorized, supply the private runtime file path
+With applicable credential-use authorization, supply the private runtime file path
 only as a process argument; the helper loads the value without printing it:
 
 ```bash
@@ -66,23 +72,31 @@ separately scoped client change; this helper does not silently add it.
 
 ## Acceptance and provenance
 
-`audit` requires both nonempty reference documents in the actual
-`04_extract_input.json`, both paths in the built `node_sources` ledger, member
-links back to original annotation IDs, valid rewritten line bounds, sidecars,
-SQLite integrity, real CLI status, real MCP searches/resolves for a node from
-each reference, unknown-UUID handling, and unchanged DB bytes after queries.
-It records the returned nodes/edges and expected-name presence for manual semantic
-review. Structural success does not certify the intended `重试预算 → 阻塞队列`
-dependency or retention of the capacity 8 / wait 50ms / retry 2 facts. The reviewer
-must inspect those outputs and retain missing/wrong relations or facts as failures.
+`audit` requires both nonempty reference documents in actual
+`04_extract_input.json`, exactly the final candidate's document/member/UUID source
+ownership in `node_sources`, matching generated sidecar hashes, SQLite integrity,
+real CLI status, real MCP searches/resolves for a node from each reference,
+unknown-UUID handling, and unchanged DB bytes after queries. It writes a new
+`audit-v2.json` and new `audit-v2-evidence/` CLI/MCP receipts, preserving historical
+`audit.json` and raw CLI/MCP files unchanged. It separately checks
+the required direct dependency and numeric facts. A missing edge remains a failing
+exit even when document consumption and MCP metadata pass. Reviewers must still
+inspect final graph faithfulness; the fixed checks do not certify every relation.
 
-Original inputs have independent frozen SHA256 receipts. Annotation `source_span`
-is a model-generated, best-effort location on those originals, not a verified fact
-citation. The 04 dump retains that original annotation and member identity.
-After structured writeback, `node_sources` and MCP locations address rewritten
-Markdown; sidecar `doc_hash` hashes the rewritten document. They must never be
-reported as original-body spans or proof that a fact was preserved. The helper
-retains both trees and the member-to-UUID ledger to permit a separate audit.
+Original inputs have independent frozen SHA256 receipts. The type permits an
+optional original annotation `source_span` hint; the current annotation wire/parser
+does not populate it. `node_sources`, MCP line metadata and sidecar spans copy
+those optional pre-writeback hints, without recomputing generated locations.
+NULL therefore means exact position unknown, and a supplied hint is still
+unverified. Document/member lineage remains required. Sidecar `doc_hash` hashes
+the rewritten document, which does not validate any original hint.
+
+The corrected audit independently measures generated block ranges using matching
+`kg:uuid` markers, recording generated document hashes. These local diagnostics
+are neither stored MCP citations nor original-body positions. Shared mirrors can
+contain less text than their primary. Neither original hints, block ranges nor
+document membership prove that a source fact was preserved or visible to a solver.
+Both trees and the member-to-UUID ledger remain available for separate review.
 
 This feature smoke is separate from the public corpus-only 12-document benchmark
 admission, the complete 609-document build, and all DEV/HOLDOUT answer comparisons.

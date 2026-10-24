@@ -1,0 +1,32 @@
+[
+  {
+    "skill": "public-synthetic-queue",
+    "file_path": "references/queue.md",
+    "items": [
+      {
+        "id": "public-synthetic-queue-entity-阻塞队列",
+        "tag": "entity",
+        "name": "阻塞队列",
+        "content": "容量为 8 的有界队列，满时生产者等待，空时消费者等待。",
+        "detail": "阻塞队列是一种有界队列，本虚构文档中其容量为 8。队列满时生产者需要等待，队列为空时消费者需要等待；有界队列在满或空时都会发生阻塞。这解释了阻塞队列的基本含义。",
+        "confidence": 0.95
+      },
+      {
+        "id": "public-synthetic-queue-concept-阻塞行为",
+        "tag": "concept",
+        "name": "阻塞行为",
+        "content": "阻塞队列在满或空时使生产者或消费者等待的规则。",
+        "detail": "阻塞行为指有界队列在达到容量上限（满）时让生产者等待，在无元素（空）时让消费者等待；即 Bounded queue blocks when full or empty。该行为是阻塞队列的基本语义。",
+        "confidence": 0.9
+      },
+      {
+        "id": "public-synthetic-queue-concept-重试预算",
+        "tag": "concept",
+        "name": "重试预算",
+        "content": "生产者在不能无限等待时由调用方使用的重试预算，依赖队列的阻塞行为。",
+        "detail": "当生产者不能无限等待时，调用方使用重试预算（retry budget）。跨文档意图表明：重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念。该说明属于合成输入中的语义，不是已观测的图谱输出。",
+        "confidence": 0.85
+      }
+    ]
+  }
+]

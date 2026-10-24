@@ -1,0 +1,62 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: references/timeout.md
+doc_hash: sha256:a47584bbaa3ed0b6fecfe9b994ad77054f1c36b6e7954c1822d08a8287622ee9
+generated_at: "2026-10-24T13:46:16Z"
+nodes:
+  - uuid: 5a9ab1d8-f65d-504b-a743-33138f36c8b6
+    file_slug: producer
+    tag: entity
+    name: 生产者
+    domain: 并发队列与背压控制
+    subdomain: 生产者重试与预算
+    domain_slug: 并发队列与背压控制
+    subdomain_slug: 生产者重试与预算
+    shared: false
+    members:
+      - public-synthetic-queue-entity-生产者
+    summary_hash: sha256:ae8f8dffb4e7722c6b5311496ea993921148f040fea19b775fd9621852379e41
+    description_hash: sha256:a00bdfe62b9fd418fdbc0dbb13ea7fc325dea66ec0424a8f39704830cbae4b17
+    provenance: llm_inferred
+  - uuid: c3123633-9fad-5391-8d39-ba4d7b393783
+    file_slug: retry-budget
+    tag: concept
+    name: 重试预算
+    domain: 并发队列与背压控制
+    subdomain: 生产者重试与预算
+    domain_slug: 并发队列与背压控制
+    subdomain_slug: 生产者重试与预算
+    shared: true
+    members:
+      - public-synthetic-queue-concept-重试预算
+    summary_hash: sha256:b105663ae13ccde61d9acd0bdb6df83ec4bc46ada4fdf859932fc1e555d322cc
+    description_hash: sha256:6d8e97c15b51f80caf752875902896a28716f6605b7efc4c8dfe220e22057bba
+    provenance: llm_inferred
+  - uuid: 38d52b47-62d0-5c36-970d-0a11fce666da
+    file_slug: retry-budget-blocking-queue-deps
+    tag: concept
+    name: 重试预算与阻塞队列的依赖关系
+    domain: 并发队列与背压控制
+    subdomain: 生产者重试与预算
+    domain_slug: 并发队列与背压控制
+    subdomain_slug: 生产者重试与预算
+    shared: false
+    members:
+      - public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系
+    summary_hash: sha256:1cfe36fbea4d0b621ef8b10f8db3a94cb1690d114899f7d92676d3cd9327d863
+    description_hash: sha256:172c91a5a90d825fc2ac688cb82ab9e6d6f1c3f90ca12e07213470334d6c33d1
+    provenance: llm_inferred
+  - uuid: 6890d8d0-de21-5dc7-a629-64c351fa706f
+    file_slug: fake-runtime-environment
+    tag: entity
+    name: 免费固定假运行环境
+    domain: 并发队列与背压控制
+    subdomain: 运行环境约束
+    domain_slug: 并发队列与背压控制
+    subdomain_slug: 运行环境约束
+    shared: false
+    members:
+      - public-synthetic-queue-entity-免费-fixed-fake
+    summary_hash: sha256:3b922d0db7bb8e04a4f8c05c9a0d0e2b535102027aeeb3dc3a352c8e912b0e10
+    description_hash: sha256:3d9adffc227a50c808f67f725e441567d4dcb2b898816ac6efebf236f25563bd
+    provenance: llm_inferred

@@ -1,0 +1,17 @@
+Prepared frozen two-reference inputs; no credential read or model request.
+Prepared frozen two-reference inputs; no credential read or model request.
+Prepared frozen two-reference inputs; no credential read or model request.
+test_canary_receipt_rejects_model_mismatch_without_logging_secret (test_run.RealDemoTests.test_canary_receipt_rejects_model_mismatch_without_logging_secret) ... ok
+test_generated_ranges_require_unique_matching_uuid_markers (test_run.RealDemoTests.test_generated_ranges_require_unique_matching_uuid_markers) ... ok
+test_live_mode_refuses_before_reading_key_without_opt_in (test_run.RealDemoTests.test_live_mode_refuses_before_reading_key_without_opt_in) ... ok
+test_optional_spans_do_not_relax_complete_member_uuid_ownership (test_run.RealDemoTests.test_optional_spans_do_not_relax_complete_member_uuid_ownership) ... ok
+test_original_annotation_hint_may_be_unknown_and_is_not_rewritten_location (test_run.RealDemoTests.test_original_annotation_hint_may_be_unknown_and_is_not_rewritten_location) ... ok
+test_prepare_does_not_include_extra_readme_or_verification_files (test_run.RealDemoTests.test_prepare_does_not_include_extra_readme_or_verification_files) ... ok
+test_prepare_freezes_exact_inputs_and_refuses_mutation_or_reuse (test_run.RealDemoTests.test_prepare_freezes_exact_inputs_and_refuses_mutation_or_reuse) ... ok
+test_textual_fact_retention_does_not_replace_required_direct_dependency (test_run.RealDemoTests.test_textual_fact_retention_does_not_replace_required_direct_dependency) ... ok
+test_v2_rpc_evidence_is_separate_from_original_receipts (test_run.RealDemoTests.test_v2_rpc_evidence_is_separate_from_original_receipts) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.016s
+
+OK

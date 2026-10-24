@@ -1,0 +1,15 @@
+{
+  "command": [
+    "python3",
+    "examples/public-demo/real-model/run.py",
+    "audit",
+    "--out",
+    ".local/real-model/live16-attempt-02"
+  ],
+  "result": "failed",
+  "error": "Missing rewritten source span",
+  "audit_stage": "line span requirement",
+  "exit_code": 1,
+  "exit_observation": "direct child tool exit1",
+  "new_requests": 0
+}

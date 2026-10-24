@@ -1,0 +1,48 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: references/queue.md
+doc_hash: sha256:92c7e7ad556c29f028299f7348ccd9c2e31e4121a8bb6d628cc8a4c48cc17a59
+generated_at: "2026-10-24T13:42:18Z"
+nodes:
+  - uuid: bb69eb4c-5110-5e11-9b55-12ece9f73dd8
+    file_slug: blocking-queue
+    tag: entity
+    name: 阻塞队列
+    domain: 并发阻塞队列与背压管理
+    subdomain: 阻塞队列核心语义
+    domain_slug: 并发阻塞队列与背压管理
+    subdomain_slug: 阻塞队列核心语义
+    shared: false
+    members:
+      - public-synthetic-queue-entity-阻塞队列
+    summary_hash: sha256:d4f4c7be48d532e7191a7933e7b6224e963a000f95b80c83d765c09e5d395f32
+    description_hash: sha256:f422ce0ce555ad14488faed659cda7d182944a6ab36641fc615a2afffbc9ce35
+    provenance: llm_inferred
+  - uuid: bbcab434-24ad-5c47-8e2a-494af4e77272
+    file_slug: blocking-behavior
+    tag: concept
+    name: 阻塞行为
+    domain: 并发阻塞队列与背压管理
+    subdomain: 阻塞队列核心语义
+    domain_slug: 并发阻塞队列与背压管理
+    subdomain_slug: 阻塞队列核心语义
+    shared: false
+    members:
+      - public-synthetic-queue-concept-阻塞行为
+    summary_hash: sha256:dabec26b1fd05e2cd9842b21fd7d777843269e13e24bab04ace76cceefb74e8f
+    description_hash: sha256:a5cc7094be2f892db50272e40e89ef4745defd4ab0d4f9b55057656ff4585135
+    provenance: llm_inferred
+  - uuid: c3123633-9fad-5391-8d39-ba4d7b393783
+    file_slug: retry-budget
+    tag: concept
+    name: 重试预算
+    domain: 并发阻塞队列与背压管理
+    subdomain: 背压与重试策略
+    domain_slug: 并发阻塞队列与背压管理
+    subdomain_slug: 背压与重试策略
+    shared: false
+    members:
+      - public-synthetic-queue-concept-重试预算
+    summary_hash: sha256:c6849cb79dfcceb85d22a7244abf0944eaa5dd3678c00dc543b871a64ffc753d
+    description_hash: sha256:21d49b7e2ee14ba6e0980c40876bff15447e984325fb49958f927888c5706827
+    provenance: llm_inferred

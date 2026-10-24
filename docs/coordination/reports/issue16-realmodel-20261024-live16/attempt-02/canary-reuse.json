@@ -1,0 +1,8 @@
+{
+  "status": "reused_prior_connectivity_receipt_no_new_request",
+  "receipt_sha256": "38dd7e2eaf15ac5a369b99afd66a2d2006a57431f8fec44a97a3c4221841bb8c",
+  "original_attempt": "live16-attempt-01",
+  "original_response_id": "cb977f4b-20bd-4411-98b6-58ad42e913d7",
+  "reason": "same exact official endpoint/model/key runtime and unchanged helper; root authorized one new default-correction smoke only",
+  "time_utc": "2026-10-24T13:43:55.124097+00:00"
+}

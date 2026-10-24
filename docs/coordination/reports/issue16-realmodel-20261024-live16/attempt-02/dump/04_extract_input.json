@@ -1,0 +1,70 @@
+[
+  {
+    "skill": "public-synthetic-queue",
+    "file_path": "references/queue.md",
+    "items": [
+      {
+        "id": "public-synthetic-queue-entity-阻塞队列",
+        "tag": "entity",
+        "name": "阻塞队列",
+        "content": "一个容量为 8 的虚构队列，当队列满时生产者等待、队列空时消费者等待。",
+        "detail": "阻塞队列（Blocking queue）是本文档描述的虚构队列实例，其容量为 8。它具有有界队列的基本特性：当队列已满时，生产者线程需要等待；当队列为空时，消费者线程需要等待。该文档为合成输入，不参与固定 fake runner 的消费，因此该队列是说明性示例而非实际运行组件。",
+        "confidence": 0.92
+      },
+      {
+        "id": "public-synthetic-queue-concept-阻塞队列的阻塞语义",
+        "tag": "concept",
+        "name": "阻塞队列的阻塞语义",
+        "content": "有界队列在满或空时阻塞生产者和消费者的行为规则。",
+        "detail": "阻塞语义指有界阻塞队列在边界状态下的处理规则：队列满时生产者不能继续入队而必须等待，队列空时消费者不能取元素而必须等待；正是这种在满或空时阻塞的行为解释了“阻塞队列”的基本含义，也是其与普通有界队列的核心区别。",
+        "confidence": 0.9
+      },
+      {
+        "id": "public-synthetic-queue-concept-重试预算",
+        "tag": "concept",
+        "name": "重试预算",
+        "content": "当生产者不能无限等待时，调用方使用的预算机制，其语义依赖队列的阻塞行为。",
+        "detail": "重试预算（retry budget）是调用方在生产者无法无限等待的场景下所采用的机制。跨文档意图表明，重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念；即重试预算的语义需要放在队列满时生产者等待这一阻塞特性的上下文中理解。该说明属合成输入中的语义描述，并非已观测的图谱输出。",
+        "confidence": 0.85
+      }
+    ]
+  },
+  {
+    "skill": "public-synthetic-queue",
+    "file_path": "references/timeout.md",
+    "items": [
+      {
+        "id": "public-synthetic-queue-concept-重试预算",
+        "tag": "concept",
+        "name": "重试预算",
+        "content": "生产者等待与重试的额度约束：最多等待 50 毫秒、最多重试 2 次，预算用尽后返回可见错误。",
+        "detail": "重试预算是本虚构示例中描述生产者等待与重试行为的额度约束。生产者最多等待 50 毫秒，最多重试 2 次；当重试预算用尽后，系统返回可见错误。文档强调这些数字仅供输入结构演示，不是调优建议。重试预算依赖阻塞队列的容量与等待行为。在免费 fixed fake 中不存在重试预算，查询它应明确得到零结果。",
+        "confidence": 0.95
+      },
+      {
+        "id": "public-synthetic-queue-entity-生产者",
+        "tag": "entity",
+        "name": "生产者",
+        "content": "执行等待与重试操作的生产者角色，受重试预算约束。",
+        "detail": "生产者是文档中描述的、受重试预算约束的执行角色：它最多等待 50 毫秒，最多重试 2 次；预算用尽后不再重试并返回可见错误。其等待与重试行为依赖阻塞队列的容量与等待行为。",
+        "confidence": 0.85
+      },
+      {
+        "id": "public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系",
+        "tag": "concept",
+        "name": "重试预算与阻塞队列的依赖关系",
+        "content": "重试预算依赖阻塞队列的容量与等待行为的跨文档关系。",
+        "detail": "该关系说明重试预算并非独立生效，而是依赖阻塞队列的容量与等待行为。文档提到若未来用真实 LLM 构建这些材料，可以检验是否保留这条跨文档关系；本次没有运行该抽取。",
+        "confidence": 0.9
+      },
+      {
+        "id": "public-synthetic-queue-entity-免费-fixed-fake",
+        "tag": "entity",
+        "name": "免费 fixed fake",
+        "content": "文档中的免费固定假运行环境，其中不存在重试预算。",
+        "detail": "免费 fixed fake 是文档描述的固定假运行环境；在该环境中不存在重试预算，查询它应明确得到零结果。文档还说明本材料为合成输入，不会被固定假运行器消费。",
+        "confidence": 0.8
+      }
+    ]
+  }
+]

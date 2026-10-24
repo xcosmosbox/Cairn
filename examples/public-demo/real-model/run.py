@@ -182,11 +182,12 @@ def smoke(args):
     print("Existing builder completed; run audit for consumption/provenance/MCP checks.")
 
 
-def rpc_checks(out, targets):
-    config = out / "mcp.yaml"
+def rpc_checks(out, targets, evidence=None):
+    evidence = evidence or out
+    config = evidence / "mcp.yaml"
     config.write_text("mcp:\n  knowledge_bases:\n    - name: real-demo\n      path: " + json.dumps(str(out / "knowledge.db")) + "\n")
     receipts = []
-    with (out / "mcp-stderr.log").open("w") as errors:
+    with (evidence / "mcp-stderr.log").open("w") as errors:
         proc = subprocess.Popen([str(ROOT / "bin/cairn-mcp"), "--config", str(config)], cwd=ROOT,
                                 text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
         timer = threading.Timer(45, proc.kill)
@@ -234,15 +235,68 @@ def rpc_checks(out, targets):
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
-            write(out / "mcp-rpc.json", receipts)
+            write(evidence / "mcp-rpc.json", receipts)
+
+
+def generated_block_range(path, node_uuid):
+    """Measure a generated UUID block; this is never an original-source citation."""
+    lines = path.read_text().splitlines()
+    starts = [i for i, line in enumerate(lines) if re.fullmatch(
+        r"<!-- kg:uuid=" + re.escape(node_uuid) + r"(?:\s[^>]*)? -->", line)]
+    ends = [i for i, line in enumerate(lines) if line == "<!-- /kg:uuid=" + node_uuid + " -->"]
+    require(len(starts) == len(ends) == 1 and starts[0] < ends[0],
+            "Missing, duplicate or malformed generated UUID block")
+    return {"node_uuid": node_uuid, "start_line": starts[0] + 1, "end_line": ends[0] + 1,
+            "generated_document_sha256": digest(path),
+            "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span"}
+
+
+def original_span_hint(source, item):
+    # Production copies optional ORIGINAL annotation hints before writeback. It
+    # neither promises those hints nor recomputes them against generated text.
+    hint = item.get("source_span") or {}
+    expected = (hint.get("start_line") or None, hint.get("end_line") or None)
+    actual = (source.get("start_line"), source.get("end_line"))
+    require(actual == expected, "Stored original annotation span hint differs from member")
+    return {"status": "unverified_original_hint" if any(actual) else "unknown_not_supplied",
+            "start_line": actual[0], "end_line": actual[1], "original_quote_verified": False}
+
+
+def required_semantics(nodes, edges):
+    queue = next((n for n in nodes if n["name"] == "阻塞队列"), {})
+    budget = next((n for n in nodes if n["name"] == "重试预算"), {})
+    queue_text = (queue.get("summary") or "") + "\n" + (queue.get("description") or "")
+    budget_text = (budget.get("summary") or "") + "\n" + (budget.get("description") or "")
+    checks = {"queue_capacity_8": bool(re.search(r"容量为\s*8", queue_text)),
+              "budget_wait_50ms": bool(re.search(r"等待\s*50\s*毫秒", budget_text)),
+              "budget_retries_2": bool(re.search(r"重试\s*2\s*次", budget_text)),
+              "direct_budget_depends_on_queue_edge": any(
+                  e["source_id"] == budget.get("id") and e["target_id"] == queue.get("id")
+                  and e["kind"] == "depends_on" for e in edges)}
+    return {"status": "pass_required_checks" if all(checks.values()) else "fail_required_checks",
+            "checks": checks, "scope": "fixed example checks only; final graph faithfulness still needs review"}
+
+
+def check_source_ownership(sources, items, candidate):
+    members = {n["id"]: set(n["members"]) for d in candidate["Domains"]
+               for sd in d["subdomains"] for kind in ("entities", "concepts") for n in (sd.get(kind) or [])}
+    expected = {(node, member, path) for node, ids in members.items()
+                for path, member in items if member in ids}
+    actual = {(s["node_uuid"], s["member_id"], s["file_path"]) for s in sources}
+    require(actual == expected and len(sources) == len(expected),
+            "Source ledger differs from final candidate member ownership")
 
 
 def audit(out):
     require(load(out / "ingest.json")["status"] == "completed_needs_audit", "Builder completion required")
-    require(not (out / "audit.json").exists(), "Audit receipt exists; preserve previous attempt")
+    # Keep the historical, stricter audit.json immutable. The correction is a
+    # new free analysis of identical paid artifacts, not a successful paid rerun.
+    receipt_path = out / "audit-v2.json"
+    require(not receipt_path.exists(), "Audit v2 receipt exists; preserve previous attempt")
     verify_inputs(out / "original")
-    report = {"status": "failed", "started_at_utc": now(), "original_span_semantics":
-              "04 source_span is an unverified model annotation on frozen originals; node_sources/MCP spans refer to rewritten documents",
+    report = {"status": "failed", "audit_version": 2, "helper_sha256": digest(__file__),
+              "started_at_utc": now(), "original_span_semantics":
+              "04/node_sources/MCP line spans are optional unverified ORIGINAL annotation hints; NULL is unknown; generated UUID ranges are separate diagnostics",
               "cross_document_semantics": "manual_review_required", "sandbox_publication": "not_run"}
     db_path = out / "knowledge.db"
     before = digest(db_path)
@@ -261,33 +315,51 @@ def audit(out):
         finally:
             db.close()
         items = {(d["file_path"], i["id"]): i for d in docs for i in d["items"]}
+        candidate = load(out / "dump/05h_materialization_candidate.json")
+        check_source_ownership(sources, items, candidate)
+        generated_ranges, original_hints = [], []
         for source in sources:
             require((source["file_path"], source["member_id"]) in items, "Ledger lacks original annotation member")
-            require(source["start_line"] and source["end_line"] >= source["start_line"], "Missing rewritten source span")
-            lines = (out / "source" / source["file_path"]).read_text().splitlines()
-            require(source["end_line"] <= len(lines), "Rewritten span exceeds document")
-            require((out / "source" / (source["file_path"] + ".kg.yaml")).is_file(), "Missing source sidecar")
+            item = items[(source["file_path"], source["member_id"])]
+            original_hints.append(dict(source, original_span_hint=original_span_hint(source, item)))
+            path = out / "source" / source["file_path"]
+            generated_ranges.append(dict(generated_block_range(path, source["node_uuid"]),
+                                         file_path=source["file_path"], member_id=source["member_id"]))
+            sidecar = path.with_name(path.name + ".kg.yaml")
+            require(sidecar.is_file(), "Missing source sidecar")
+            hashes = re.findall(r"^doc_hash: sha256:([0-9a-f]{64})$", sidecar.read_text(), re.MULTILINE)
+            require(hashes == [digest(path)], "Sidecar generated document hash mismatch")
         targets = []
         for path in sorted(REFS):
             source = next(s for s in sources if s["file_path"] == path)
             node = next(n for n in nodes if n["id"] == source["node_uuid"])
             targets.append(dict(node, file_path=path))
         command = [str(ROOT / "bin/cairn"), "--db-path", str(db_path), "status"]
+        evidence = out / "audit-v2-evidence"
+        require(not evidence.exists(), "Audit v2 raw evidence exists; preserve previous attempt")
+        evidence.mkdir()
         status = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30)
-        write(out / "cli-status.json", {"command": command, "exit_code": status.returncode,
+        write(evidence / "cli-status.json", {"command": command, "exit_code": status.returncode,
                                         "stdout": status.stdout, "stderr": status.stderr})
         require(status.returncode == 0, "CLI status failed")
-        rpc_checks(out, targets)
+        rpc_checks(out, targets, evidence)
         after = digest(db_path)
         require(before == after, "Queries modified database bytes")
-        report.update(status="pass_structural_consumption_and_mcp", nodes=nodes, edges=edges,
+        semantics = required_semantics(nodes, edges)
+        report.update(status="pass_required_checks_needs_review" if semantics["status"] == "pass_required_checks"
+                      else "fail_required_semantics", structural_status="pass_document_member_consumption_and_mcp",
+                      required_semantics=semantics, original_annotation_hints=original_hints,
+                      raw_evidence_directory="audit-v2-evidence",
+                      query_binary_sha256={name: digest(ROOT / "bin" / name) for name in ("cairn", "cairn-mcp")},
+                      generated_block_ranges=generated_ranges, nodes=nodes, edges=edges,
                       source_ledger=sources, original_annotations=docs, db_sha256_before_and_after=after,
                       expected_names={name: any(name in n["name"] for n in nodes) for name in ("阻塞队列", "重试预算")},
                       shared_nodes=[n["id"] for n in nodes if len({s["file_path"] for s in sources if s["node_uuid"] == n["id"]}) > 1])
+        require(semantics["status"] == "pass_required_checks", "Required dependency/fact checks failed; structural evidence retained")
     finally:
         report["finished_at_utc"] = now()
-        write(out / "audit.json", report)
-    print("Structural consumption/provenance/MCP checks passed; semantic relation/fact review remains separate.")
+        write(receipt_path, report)
+    print("Required example checks passed; original citations and final graph faithfulness still need review.")
 
 
 def main():

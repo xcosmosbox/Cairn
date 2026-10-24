@@ -1,0 +1,23 @@
+{
+  "status": "pass_logical_sql_restore",
+  "sqlite_version": "3.53.1",
+  "tables_compared": [
+    "conflict_reports",
+    "cross_references",
+    "edges",
+    "file_states",
+    "kb_version",
+    "kg_manifest",
+    "node_sources",
+    "nodes",
+    "uuid_lineage",
+    "nodes_fts"
+  ],
+  "quick_check": "ok",
+  "fts_integrity_check": "pass",
+  "nodes": 11,
+  "edges": 14,
+  "node_sources": 7,
+  "sql_sha256": "cf9ee70864fbd2bf594b6a7bb8832b85e55050d40c1721f4604ff5ffd2e472e8",
+  "notes": "Logical export regenerates FTS5 indexes from exact visible FTS rows, avoiding unsupported writable_schema shadow-table dumps. Restored binary identity is not the measured original DB."
+}

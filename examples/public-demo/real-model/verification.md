@@ -1,3 +1,16 @@
+# Historical preparation and subsequent real execution
+
+The sections below preserve the earlier preparation/rejection record. They are
+historical, not the current authorization or execution state. The newly retained
+[real execution report](../../../docs/coordination/reports/issue16-realmodel-20261024-live16/README.md)
+records the actual passing canary, negative first attempt and two-document second
+attempt. Both original `audit.json` failures remain unchanged. A separate corrected
+free `audit-v2.json` accepts optional original position hints as unknown, verifies
+document/member ownership and generated-block diagnostics, and still **fails the
+required direct dependency**. No graph-benefit, exact-original-citation or stable
+claim follows from consumption. Current helper checks and this correction are
+covered by focused offline tests; original preparation receipts remain unchanged.
+
 # Preparation evidence and outstanding execution
 
 Session `cairn-realmodel-20261024-prep`, baseline

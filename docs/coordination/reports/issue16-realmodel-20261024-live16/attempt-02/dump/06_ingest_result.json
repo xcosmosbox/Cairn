@@ -1,0 +1,14 @@
+{
+  "SkillNodes": 1,
+  "DomainNodes": 1,
+  "SubdomainNodes": 3,
+  "EntityNodes": 3,
+  "ConceptNodes": 3,
+  "ProvidesEdges": 1,
+  "ComposesEdges": 9,
+  "SemanticEdges": 4,
+  "NodesInserted": 11,
+  "EdgesInserted": 14,
+  "EdgesSkipped": 0,
+  "NodeSourcesInserted": 7
+}

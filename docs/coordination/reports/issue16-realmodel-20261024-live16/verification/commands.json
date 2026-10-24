@@ -1,0 +1,69 @@
+[
+  {
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "examples/public-demo/real-model",
+      "-p",
+      "test_*.py",
+      "-v"
+    ],
+    "started_at": "2026-10-24T13:58:53.913733+00:00",
+    "finished_at": "2026-10-24T13:58:54.035309+00:00",
+    "exit_code": 0,
+    "log": "helper-tests.log"
+  },
+  {
+    "command": [
+      "python3",
+      "-m",
+      "py_compile",
+      "examples/public-demo/real-model/run.py",
+      "examples/public-demo/real-model/test_run.py"
+    ],
+    "started_at": "2026-10-24T13:56:49.032624+00:00",
+    "finished_at": "2026-10-24T13:56:49.068725+00:00",
+    "exit_code": 0,
+    "log": "python-compile.log"
+  },
+  {
+    "command": [
+      "make",
+      "verify"
+    ],
+    "environment": {
+      "PATH_prepend": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go/bin",
+      "GOPATH": "/workspace/scratch/c1bb49a45412/cairn-toolchain/gopath",
+      "GOCACHE": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go-build",
+      "GOTOOLCHAIN": "local",
+      "GOFLAGS": "-buildvcs=false"
+    },
+    "tool_session": 19103,
+    "exit_code": 0,
+    "start_end_timestamps": "not captured by outer shell; log is actual command output",
+    "log": "make-verify.log"
+  },
+  {
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "./..."
+    ],
+    "environment": {
+      "PATH_prepend": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go/bin",
+      "GOPATH": "/workspace/scratch/c1bb49a45412/cairn-toolchain/gopath",
+      "GOCACHE": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go-build",
+      "GOTOOLCHAIN": "local",
+      "GOFLAGS": "-buildvcs=false"
+    },
+    "tool_session": 35330,
+    "exit_code": 0,
+    "start_end_timestamps": "not captured by outer shell; log is actual command output",
+    "log": "go-race.log"
+  }
+]
