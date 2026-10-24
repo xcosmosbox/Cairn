@@ -50,11 +50,11 @@ type assetTransport func(*http.Request) (*http.Response, error)
 func (f assetTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // Go 默认会向子域转发 Authorization；模拟真实重定向链并检查每次实际发送的头。
-// Exercise same-host, cross-host/subdomain and return hops without global-client mutation.
+// Exercise same-host, cross-host/subdomain/downgrade and return hops without global-client mutation.
 func TestAssetRedirectCredentialsAndBound(t *testing.T) {
 	t.Parallel()
-	for _, host := range []string{"cdn.example", "child.api.example"} {
-		t.Run(host, func(t *testing.T) {
+	for _, target := range []string{"https://cdn.example/asset", "https://child.api.example/asset", "http://api.example/plain"} {
+		t.Run(target, func(t *testing.T) {
 			client := assetDownloadClient()
 			calls := 0
 			client.Transport = assetTransport(func(r *http.Request) (*http.Response, error) {
@@ -66,7 +66,7 @@ func TestAssetRedirectCredentialsAndBound(t *testing.T) {
 				if r.Header.Get("Authorization") != want {
 					t.Errorf("hop%d host%s Authorization=%q", calls, r.URL.Host, r.Header.Get("Authorization"))
 				}
-				locations := []string{"https://api.example/same", "https://" + host + "/asset", "https://api.example/back"}
+				locations := []string{"https://api.example/same", target, "https://api.example/back"}
 				response := &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("asset")), Request: r}
 				if calls <= len(locations) {
 					response.StatusCode = 302
@@ -77,6 +77,12 @@ func TestAssetRedirectCredentialsAndBound(t *testing.T) {
 			req, _ := http.NewRequest("GET", "https://api.example/start", nil)
 			req.Header.Set("Authorization", "token synthetic")
 			response, err := client.Do(req)
+			if strings.HasPrefix(target, "http:") {
+				if err == nil || !strings.Contains(err.Error(), "refusing HTTPS to HTTP") || calls != 2 {
+					t.Fatalf("authenticated downgrade must fail before HTTP transport: calls=%d err=%v", calls, err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
