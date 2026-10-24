@@ -1,0 +1,54 @@
+{
+  "admitted_transport_attempts": 2,
+  "calls": [
+    {
+      "logical_call": 1,
+      "relation": {
+        "source": "free-fixed-fake",
+        "target": "retry-budget",
+        "kind": "contradicts",
+        "description": "假运行环境中不存在重试预算，与含预算场景相矛盾。",
+        "confidence": 0.8
+      },
+      "system_sha256": "19a71ae931e2cdf03dc072de2038227d198667fcd4f1ebb33eec73697fd44390",
+      "user_sha256": "bdbdefef006bad4ddc1b976b9bd6a8860a128deabc75c20dacaa24edb1d83301",
+      "started_at": "2026-10-24T15:24:00.060868996Z",
+      "finished_at": "2026-10-24T15:24:18.233171249Z",
+      "response_received": true,
+      "complete_error": false,
+      "reported_input_tokens": 1230,
+      "reported_output_tokens": 1567,
+      "finish_reason": "stop"
+    },
+    {
+      "logical_call": 2,
+      "relation": {
+        "source": "retry-budget",
+        "target": "blocking-queue",
+        "kind": "depends_on",
+        "description": "重试预算依赖阻塞队列的容量与等待行为。",
+        "confidence": 0.9
+      },
+      "system_sha256": "19a71ae931e2cdf03dc072de2038227d198667fcd4f1ebb33eec73697fd44390",
+      "user_sha256": "2330d8a4d2987a9397ce2d1355d0a60769de3034760eb79ba6f2205285e3b98c",
+      "started_at": "2026-10-24T15:24:00.061645951Z",
+      "finished_at": "2026-10-24T15:24:18.921137966Z",
+      "response_received": true,
+      "complete_error": false,
+      "reported_input_tokens": 1215,
+      "reported_output_tokens": 1888,
+      "finish_reason": "stop"
+    }
+  ],
+  "context_error": false,
+  "failed_usage_responseIDs": "unknown_standard_client",
+  "finished_at": "2026-10-24T15:24:18.925740352Z",
+  "ledger_or_admission_error": false,
+  "logical_calls": 2,
+  "max_wire_attempts": 4,
+  "no_reannotation_full_build": true,
+  "positive_accepted_negative_explicit_rejected": true,
+  "seconds": 18.865251981,
+  "started_at": "2026-10-24T15:24:00.060488892Z",
+  "status": "pass"
+}

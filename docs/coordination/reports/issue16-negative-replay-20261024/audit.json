@@ -1,0 +1,93 @@
+{
+  "status": "pass",
+  "two_original_candidates": true,
+  "all_non_relation_inventory_unchanged": true,
+  "filtered_relations": [
+    {
+      "source": "retry-budget",
+      "target": "blocking-queue",
+      "kind": "depends_on",
+      "description": "重试预算依赖阻塞队列的容量与等待行为。",
+      "confidence": 0.9
+    }
+  ],
+  "quote_checks": [
+    {
+      "kind": "depends_on",
+      "endpoint": "source",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "source_path": "references/timeout.md",
+      "source_sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587",
+      "quote_sha256": "df705ed3334977749eddc2117d10c32d8e50917b4b464457955038aa0477c0c1",
+      "start_byte": 316,
+      "end_byte": 417,
+      "start_line": 10,
+      "end_line": 10,
+      "offset_origin": "production_verified_accepted_quote"
+    },
+    {
+      "kind": "depends_on",
+      "endpoint": "target",
+      "member_id": "public-synthetic-queue-entity-阻塞队列",
+      "source_path": "references/queue.md",
+      "source_sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135",
+      "quote_sha256": "9cab4f7d0a1530501ad6dfad472409d4dc9172d8f826c3c0fa327c71fb9ebe79",
+      "start_byte": 97,
+      "end_byte": 223,
+      "start_line": 5,
+      "end_line": 5,
+      "offset_origin": "production_verified_accepted_quote"
+    },
+    {
+      "kind": "contradicts",
+      "endpoint": "source",
+      "member_id": "public-synthetic-queue-entity-免费-fixed-fake",
+      "source_path": "references/timeout.md",
+      "source_sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587",
+      "quote_sha256": "edfe29d5ecd82b0660d53dfed5957d51d0e39732543e810a555ff7b39658d451",
+      "start_byte": 541,
+      "end_byte": 625,
+      "start_line": 12,
+      "end_line": 12,
+      "offset_origin": "independently_derived_rejected_quote"
+    },
+    {
+      "kind": "contradicts",
+      "endpoint": "target",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "source_path": "references/timeout.md",
+      "source_sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587",
+      "quote_sha256": "55656f4d4ddebf7deb78faf4524d5bdecae285dc9c4ada2431ec7a0a0425c4c4",
+      "start_byte": 135,
+      "end_byte": 253,
+      "start_line": 7,
+      "end_line": 7,
+      "offset_origin": "independently_derived_rejected_quote"
+    },
+    {
+      "kind": "contradicts",
+      "endpoint": "target",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "source_path": "references/queue.md",
+      "source_sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135",
+      "quote_sha256": "98cf3b5c478493ce5fd4b1e451bb602e8165b5f05d3476dc78ed4a7a3655fa80",
+      "start_byte": 266,
+      "end_byte": 373,
+      "start_line": 8,
+      "end_line": 8,
+      "offset_origin": "independently_derived_rejected_quote"
+    }
+  ],
+  "native_accepted_quote_offsets": 2,
+  "independently_derived_rejected_quote_offsets": 3,
+  "successful_input_tokens": 2445,
+  "successful_output_tokens": 3455,
+  "logical_calls": 2,
+  "transport_attempts": 2,
+  "http_statuses": [
+    200,
+    200
+  ],
+  "provider_returned_model_and_response_IDs": "unknown_standard_client",
+  "failed_request_usage": "unknown_if_any; no non-200 observed"
+}

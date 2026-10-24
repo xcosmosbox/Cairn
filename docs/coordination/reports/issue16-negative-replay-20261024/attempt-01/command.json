@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/workspace/scratch/c1bb49a45412/cairn-cross-negative/bin/cross-verifier-replay",
+    "--mode",
+    "run",
+    "--out",
+    "/workspace/scratch/c1bb49a45412/cairn-cross-negative/.local/negative-replay/attempt-01-final",
+    "--freeze-sha256",
+    "1af86c8bfa20d06085c84891e3937f85c6800a77ac3b7bba45693ca0d26ec722",
+    "--allow-paid"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 18.89269495010376,
+  "stdout": "Frozen verifier replay completed; inspect retained evidence before acceptance.\n",
+  "stderr": ""
+}
