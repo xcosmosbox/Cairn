@@ -55,6 +55,16 @@ scope. Quality evaluation and performance/resource measurement are separate task
 
 ## Durable state and authorized continuation
 
+The maintainer's current explicit instruction permanently authorizes ordinary DeepSeek
+API use and Cairn experiments by default at the official `https://api.deepseek.com`
+endpoint with `deepseek-flash`; do not repeatedly ask for user spending or experiment
+permission within that scope. Model/endpoint/profile/task freezes, independent review
+and acceptance remain technical execution controls, not renewed user authorization.
+This records no secret value or private credential path and grants no permission to
+disclose credentials/private data, bypass a platform rejection, waive correctness or
+publish a release without its required evidence and decision. See the [authorization
+record](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656).
+
 The repository's current Issues, PRs, commits and evidence are the sole dynamic project
 state. Chat context can convey a maintainer decision, but record that decision and the
 task's CLAIM/ACK before shared writes. A started session is not proof of continued
