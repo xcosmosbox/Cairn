@@ -199,6 +199,25 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(transport.call_count, 3)
         self.assertEqual([row["status"] for row in read_jsonl(Path(args.out))], ["error", "ok", "ok"])
 
+    def test_judge_resume_cannot_hide_real_403_by_editing_only_usage_status(self):
+        # The initial repair trusted only usage.http_status: changing that 403 to
+        # 500 hid grade.http_status=403 and incorrectly admitted the next case.
+        args = self.judge_args(count=2, concurrency=1)
+        with mock.patch("grade.urlopen", side_effect=HTTPError("https://offline.invalid", 403, "auth", {}, io.BytesIO())), \
+             self.assertRaisesRegex(RuntimeError, "authorization"):
+            grade.judge(args)
+        events = read_jsonl(Path(args.usage))
+        self.assertEqual(events[-1]["http_status"], 403)
+        self.assertEqual(read_jsonl(Path(args.out))[0]["http_status"], 403)
+        events[-1]["http_status"] = 500
+        Path(args.usage).write_text("".join(json.dumps(row) + "\n" for row in events))
+        before = Path(args.usage).read_bytes()
+        with mock.patch("grade.urlopen", side_effect=AssertionError("contradictory auth must never send")) as transport, \
+             self.assertRaises(LedgerIntegrityError):
+            grade.judge(args)
+        self.assertEqual(transport.call_count, 0)
+        self.assertEqual(Path(args.usage).read_bytes(), before)
+
     def test_judge_replaced_result_ledger_before_admission_sends_nothing(self):
         args = self.judge_args()
         original_verify = JSONLedger.verify
@@ -308,7 +327,9 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(read_jsonl(Path(args.usage))[0], request)
 
     def test_judge_resume_rejects_partial_or_misattributed_or_missing_grade(self):
-        for damage in ("partial", "wrong identity", "wrong config", "missing grade", "duplicate response", "orphan response"):
+        for damage in ("partial", "wrong identity", "wrong config", "missing grade", "duplicate response", "orphan response",
+                       "usage mismatch", "unknown mismatch", "accounting mismatch", "estimate mismatch", "hash mismatch",
+                       "invalid usage type", "unknown reservation mismatch"):
             with self.subTest(damage=damage), tempfile.TemporaryDirectory(dir=self.root) as directory:
                 previous = self.root
                 self.root = Path(directory)
@@ -329,6 +350,25 @@ class RunnerBoundaryTests(unittest.TestCase):
                     Path(args.out).write_text("")
                 elif damage == "orphan response":
                     Path(args.usage).write_text(json.dumps(events[-1]) + "\n")
+                elif damage in ("usage mismatch", "unknown mismatch", "hash mismatch"):
+                    rows = read_jsonl(Path(args.out))
+                    if damage == "usage mismatch":
+                        rows[0]["usage"]["total_tokens"] += 1
+                    elif damage == "unknown mismatch":
+                        rows[0]["usage_unknown"] = True
+                    else:
+                        rows[0]["response_sha256"] = "changed"
+                    Path(args.out).write_text(json.dumps(rows[0]) + "\n")
+                elif damage in ("accounting mismatch", "estimate mismatch", "invalid usage type", "unknown reservation mismatch"):
+                    if damage == "accounting mismatch":
+                        events[-1]["accounted_tokens"] += 1
+                    elif damage == "estimate mismatch":
+                        events[-1]["usage_is_estimate"] = True
+                    elif damage == "invalid usage type":
+                        events[-1]["usage"] = []
+                    else:
+                        events[-1].update(usage={}, usage_unknown=True, usage_is_estimate=True, accounted_tokens=0)
+                    Path(args.usage).write_text("".join(json.dumps(row) + "\n" for row in events))
                 else:
                     with Path(args.usage).open("a") as stream:
                         stream.write(json.dumps(events[-1]) + "\n")

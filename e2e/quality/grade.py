@@ -340,20 +340,32 @@ def validate_judge_recovery(grades, events, cases, blind_sha, config_sha):
             requests[rid] = row
             case_attempts[row["blind_id"]] += 1
         elif kind == "response":
-            if rid not in requests or rid in responses or any(row.get(k) != requests[rid].get(k) for k in fields):
+            if (rid not in requests or rid in responses
+                    or any(json.dumps(row.get(k), sort_keys=True) != json.dumps(requests[rid].get(k), sort_keys=True)
+                           for k in fields)):
                 raise LedgerIntegrityError("judge response has no matching earlier request")
             if (type(row.get("accounted_tokens")) is not int or row["accounted_tokens"] < 0
                     or row.get("status") not in ("ok", "error")):
                 raise LedgerIntegrityError("invalid judge response accounting")
+            usage = row.get("usage")
+            if not isinstance(usage, dict):
+                raise LedgerIntegrityError("invalid judge response usage")
+            actual = usage.get("total_tokens")
+            metered = type(actual) is int and actual >= 0
+            expected_tokens = actual if metered else requests[rid]["reserved_tokens"]
+            if (row["accounted_tokens"] != expected_tokens
+                    or type(row.get("usage_unknown")) is not bool or row["usage_unknown"] == metered
+                    or type(row.get("usage_is_estimate")) is not bool or row["usage_is_estimate"] == metered
+                    or (row.get("http_status") is not None and type(row["http_status"]) is not int)):
+                raise LedgerIntegrityError("judge usage/unknown/reservation accounting disagrees")
             responses[rid] = row
         else:
             raise LedgerIntegrityError("invalid judge ledger event")
     for row in grades:
         rid = row["request_id"]
         if (rid not in responses or rid in results
-                or any(row.get(k) != responses[rid].get(k) for k in fields)
-                or row.get("status") != responses[rid].get("status")
-                or row.get("response_sha256") != responses[rid].get("response_sha256")):
+                or any(json.dumps(row.get(k), sort_keys=True) != json.dumps(responses[rid].get(k), sort_keys=True)
+                       for k in (*fields, "status", "response_sha256", "http_status", "usage", "usage_unknown"))):
             raise LedgerIntegrityError("judge result has no matching response or is duplicated")
         results[rid] = row
     if set(responses) != set(results):
