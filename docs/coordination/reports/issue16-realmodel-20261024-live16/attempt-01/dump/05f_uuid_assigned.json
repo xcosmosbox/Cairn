@@ -1,0 +1,93 @@
+{
+  "Domains": [
+    {
+      "name": "并发阻塞队列与背压管理",
+      "summary": "围绕有界阻塞队列的阻塞语义、生产者等待策略与重试预算进行建模，覆盖并发协作与背压控制。",
+      "description": "",
+      "reusability_rationale": "有界阻塞队列、阻塞等待规则与重试预算是跨语言、跨框架通用的并发编程原语，可复用于生产者-消费者、异步任务管道、限流背压与失败重试等场景，因此值得作为独立领域沉淀。",
+      "source_skills": [
+        "public-synthetic-queue"
+      ],
+      "subdomains": [
+        {
+          "name": "阻塞队列核心语义",
+          "summary": "定义有界阻塞队列及其在满/空条件下的阻塞等待规则。",
+          "description": "",
+          "entities": [
+            {
+              "id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+              "label": "Entity",
+              "name": "阻塞队列",
+              "summary": "一种容量有限、在队列满时阻塞生产者、在队列空时阻塞消费者的并发队列。",
+              "description": "阻塞队列是一种有界并发队列，本虚构文档中其容量为 8。队列达到容量上限（满）时，生产者需要等待；队列无元素（空）时，消费者需要等待。也就是说，有界队列在满或空时都会发生阻塞，这解释了阻塞队列的基本含义。",
+              "confidence": 0.96,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-阻塞队列"
+              ]
+            }
+          ],
+          "concepts": [
+            {
+              "id": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+              "label": "Concept",
+              "name": "阻塞行为",
+              "summary": "队列在容量满或为空时使生产者或消费者等待的规则语义。",
+              "description": "阻塞行为指有界队列在达到容量上限（满）时让生产者等待、在无元素（空）时让消费者等待的规则语义，即 Bounded queue blocks when full or empty。该行为是阻塞队列的基本语义。",
+              "confidence": 0.95,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-阻塞行为"
+              ]
+            }
+          ],
+          "relations": [
+            {
+              "source": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+              "target": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+              "kind": "depends_on",
+              "description": "阻塞队列的可用性与线程协作方式依赖其阻塞行为规则。",
+              "confidence": 0.95
+            },
+            {
+              "source": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+              "target": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+              "kind": "references",
+              "description": "阻塞队列的定义直接引用阻塞行为：容量满时生产者等待、队列空时消费者等待，该行为构成阻塞队列的基本语义。",
+              "confidence": 0.88
+            }
+          ]
+        },
+        {
+          "name": "背压与重试策略",
+          "summary": "当生产者在阻塞队列上不能无限等待时，由调用方采用的重试预算与背压控制。",
+          "description": "",
+          "entities": [],
+          "concepts": [
+            {
+              "id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+              "label": "Concept",
+              "name": "重试预算",
+              "summary": "生产者在无法无限等待时由调用方使用的有限重试额度，用于在阻塞行为之上进行背压控制。",
+              "description": "当生产者不能在阻塞队列上无限等待时，调用方使用重试预算（retry budget）。跨文档意图表明：重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念；它是在阻塞行为之上由调用方采用的有限重试额度，用于进行背压控制。该说明属于合成输入中的语义，不是已观测的图谱输出。",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-重试预算"
+              ]
+            }
+          ],
+          "relations": []
+        }
+      ]
+    }
+  ],
+  "UnresolvedFiles": null,
+  "Rounds": 1
+}

@@ -1,0 +1,119 @@
+[
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "real-two-doc-smoke",
+          "version": "1"
+        }
+      },
+      "id": 1
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "tools": {}
+        },
+        "protocolVersion": "2024-11-05",
+        "serverInfo": {
+          "name": "cairn",
+          "version": "2.0.0"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "domain_search",
+        "arguments": {
+          "kg": "real-demo",
+          "keyword": "重试预算"
+        }
+      },
+      "id": 2
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "搜索关键词: 重试预算（知识库: real-demo）\n\n## 1. 重试预算 (1.00)\n- ID: c3123633-9fad-5391-8d39-ba4d7b393783\n- 类型/Type: Concept\n- 域/Domain: 并发阻塞队列与背压管理/背压与重试策略\n- 摘要: 生产者在无法无限等待时由调用方使用的有限重试额度，用于在阻塞行为之上进行背压控制。\n- 置信度/Confidence: 0.90\n\n"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "resolve_node",
+        "arguments": {
+          "kg": "real-demo",
+          "uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+          "include_sources": true
+        }
+      },
+      "id": 3
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "✓ UUID c3123633-9fad-5391-8d39-ba4d7b393783 存活 / alive。\n- 名称/Name: 重试预算\n- 类型/Type: Concept\n- 域/Domain: 并发阻塞队列与背压管理/背压与重试策略\n- 摘要/Summary: 生产者在无法无限等待时由调用方使用的有限重试额度，用于在阻塞行为之上进行背压控制。\n"
+          },
+          {
+            "type": "text",
+            "text": "{\"requested_uuid\":\"c3123633-9fad-5391-8d39-ba4d7b393783\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"c3123633-9fad-5391-8d39-ba4d7b393783\",\"status\":\"available\",\"source_refs\":[\"public-synthetic-queue\"],\"locations\":[{\"member_id\":\"public-synthetic-queue-concept-重试预算\",\"skill\":\"public-synthetic-queue\",\"file_path\":\"references/queue.md\",\"span_status\":\"unknown\"}]}}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "resolve_node",
+        "arguments": {
+          "kg": "real-demo",
+          "uuid": "public-demo-unknown-v1",
+          "include_sources": true
+        }
+      },
+      "id": 4
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "✗ UUID public-demo-unknown-v1 在知识库 real-demo 中不存在，且无血缘记录（可能从未存在或已被物理清除）。\nUUID public-demo-unknown-v1 does not exist in KB real-demo and has no lineage record.\n"
+          },
+          {
+            "type": "text",
+            "text": "{\"requested_uuid\":\"public-demo-unknown-v1\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"status\":\"unknown\",\"reason\":\"node_not_found\"}}"
+          }
+        ]
+      }
+    }
+  }
+]

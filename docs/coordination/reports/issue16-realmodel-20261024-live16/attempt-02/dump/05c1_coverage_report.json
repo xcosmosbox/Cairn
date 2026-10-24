@@ -1,0 +1,19 @@
+{
+  "ExtractAttempts": 1,
+  "InputUnits": 6,
+  "DuplicateNodesMerged": 0,
+  "InvalidMembersRemoved": 0,
+  "InvalidMemberIDs": null,
+  "EmptyNodesFound": 0,
+  "EmptyNodesFilled": 0,
+  "FirstPassCovered": 6,
+  "FirstPassRate": 1,
+  "Assigned": 0,
+  "Created": 0,
+  "Explained": 0,
+  "ExplainedNotes": null,
+  "FinalCovered": 6,
+  "FinalRate": 1,
+  "TrulyMissing": null,
+  "Outcome": "pass_p99"
+}

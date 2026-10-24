@@ -1,0 +1,10 @@
+Cairn MCP Server v2.0.0 (multi-DB)
+MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 1 个知识库 / 1 KBs loaded
+2026/10/24 22:48:05 [search-pipeline] query rewritten: "重试预算" → "重试预算"; syntax=text profile=literal MATCH="\"重试预算\""
+2026/10/24 22:48:05 [search-pipeline] FTS5 returned 3 hits
+2026/10/24 22:48:05 [search-pipeline] BFS traversal visited 10 nodes, 9 edges
+2026/10/24 22:48:05 [search-pipeline] scoring produced 10 ranked results
+2026/10/24 22:48:05 [search-pipeline] query rewritten: "重试预算" → "重试预算"; syntax=text profile=literal MATCH="\"重试预算\""
+2026/10/24 22:48:05 [search-pipeline] FTS5 returned 3 hits
+2026/10/24 22:48:05 [search-pipeline] BFS traversal visited 10 nodes, 9 edges
+2026/10/24 22:48:05 [search-pipeline] scoring produced 10 ranked results

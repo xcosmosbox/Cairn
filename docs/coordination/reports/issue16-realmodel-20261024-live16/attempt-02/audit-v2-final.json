@@ -1,0 +1,517 @@
+{
+  "status": "fail_required_semantics",
+  "audit_version": 2,
+  "helper_sha256": "b0746827745fbb152804c9f2b41af0e61b60e4aee4c2c20c76bd562718c67ac1",
+  "started_at_utc": "2026-10-24T13:57:19.632978+00:00",
+  "original_span_semantics": "04/node_sources/MCP line spans are optional unverified ORIGINAL annotation hints; NULL is unknown; generated UUID ranges are separate diagnostics",
+  "cross_document_semantics": "manual_review_required",
+  "sandbox_publication": "not_run",
+  "structural_status": "pass_document_member_consumption_and_mcp",
+  "required_semantics": {
+    "status": "fail_required_checks",
+    "checks": {
+      "queue_capacity_8": true,
+      "budget_wait_50ms": true,
+      "budget_retries_2": true,
+      "direct_budget_depends_on_queue_edge": false
+    },
+    "scope": "fixed example checks only; final graph faithfulness still needs review"
+  },
+  "original_annotation_hints": [
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    },
+    {
+      "node_uuid": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+      "member_id": "public-synthetic-queue-concept-阻塞队列的阻塞语义",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    },
+    {
+      "node_uuid": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "member_id": "public-synthetic-queue-entity-阻塞队列",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    },
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    },
+    {
+      "node_uuid": "38d52b47-62d0-5c36-970d-0a11fce666da",
+      "member_id": "public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    },
+    {
+      "node_uuid": "6890d8d0-de21-5dc7-a629-64c351fa706f",
+      "member_id": "public-synthetic-queue-entity-免费-fixed-fake",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    },
+    {
+      "node_uuid": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "member_id": "public-synthetic-queue-entity-生产者",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null,
+      "original_span_hint": {
+        "status": "unknown_not_supplied",
+        "start_line": null,
+        "end_line": null,
+        "original_quote_verified": false
+      }
+    }
+  ],
+  "raw_evidence_directory": "audit-v2-evidence",
+  "query_binary_sha256": {
+    "cairn": "4be497748bdd7459827ef45349409e8de0bd50635b27403fabcba7110488bcda",
+    "cairn-mcp": "c684e1e4c0c83b54b0ad6658c1464680ac9874ffddac0dfbd7a3ea53d25aa9d3"
+  },
+  "generated_block_ranges": [
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "start_line": 3,
+      "end_line": 6,
+      "generated_document_sha256": "fa130269782edc132cc903258456833eb12040a655e76bebdc72f3e3cc6c16d2",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/queue.md",
+      "member_id": "public-synthetic-queue-concept-重试预算"
+    },
+    {
+      "node_uuid": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+      "start_line": 8,
+      "end_line": 17,
+      "generated_document_sha256": "fa130269782edc132cc903258456833eb12040a655e76bebdc72f3e3cc6c16d2",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/queue.md",
+      "member_id": "public-synthetic-queue-concept-阻塞队列的阻塞语义"
+    },
+    {
+      "node_uuid": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "start_line": 19,
+      "end_line": 28,
+      "generated_document_sha256": "fa130269782edc132cc903258456833eb12040a655e76bebdc72f3e3cc6c16d2",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/queue.md",
+      "member_id": "public-synthetic-queue-entity-阻塞队列"
+    },
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "start_line": 25,
+      "end_line": 28,
+      "generated_document_sha256": "a47584bbaa3ed0b6fecfe9b994ad77054f1c36b6e7954c1822d08a8287622ee9",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/timeout.md",
+      "member_id": "public-synthetic-queue-concept-重试预算"
+    },
+    {
+      "node_uuid": "38d52b47-62d0-5c36-970d-0a11fce666da",
+      "start_line": 30,
+      "end_line": 39,
+      "generated_document_sha256": "a47584bbaa3ed0b6fecfe9b994ad77054f1c36b6e7954c1822d08a8287622ee9",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/timeout.md",
+      "member_id": "public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系"
+    },
+    {
+      "node_uuid": "6890d8d0-de21-5dc7-a629-64c351fa706f",
+      "start_line": 3,
+      "end_line": 12,
+      "generated_document_sha256": "a47584bbaa3ed0b6fecfe9b994ad77054f1c36b6e7954c1822d08a8287622ee9",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/timeout.md",
+      "member_id": "public-synthetic-queue-entity-免费-fixed-fake"
+    },
+    {
+      "node_uuid": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "start_line": 14,
+      "end_line": 23,
+      "generated_document_sha256": "a47584bbaa3ed0b6fecfe9b994ad77054f1c36b6e7954c1822d08a8287622ee9",
+      "semantics": "generated_block_diagnostic_only_not_original_or_stored_source_span",
+      "file_path": "references/timeout.md",
+      "member_id": "public-synthetic-queue-entity-生产者"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "38d52b47-62d0-5c36-970d-0a11fce666da",
+      "label": "Concept",
+      "name": "重试预算与阻塞队列的依赖关系",
+      "summary": "重试预算依赖阻塞队列容量与等待行为的跨文档关系。",
+      "description": "重试预算与阻塞队列的依赖关系说明：重试预算并非独立生效，而是依赖阻塞队列的容量与等待行为。文档提到，若未来用真实 LLM 构建这些材料，可以检验是否保留这条跨文档关系；本次没有运行该抽取。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "label": "Entity",
+      "name": "生产者",
+      "summary": "执行等待与重试操作、受重试预算约束的生产者角色。",
+      "description": "生产者是文档中描述的、受重试预算约束的执行角色：它最多等待 50 毫秒，最多重试 2 次；当重试预算用尽后不再重试，并返回可见错误。生产者的等待与重试行为依赖阻塞队列的容量与等待行为。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "6890d8d0-de21-5dc7-a629-64c351fa706f",
+      "label": "Entity",
+      "name": "免费固定假运行环境",
+      "summary": "文档中的免费固定假运行环境，其中不存在重试预算。",
+      "description": "免费 fixed fake 是文档所描述的固定假运行环境。在该环境中不存在重试预算，因此查询重试预算时应明确得到零结果。文档还说明，本材料属于合成输入，不会被固定假运行器消费。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "label": "Entity",
+      "name": "阻塞队列",
+      "summary": "容量为 8 的虚构有界队列，满时生产者等待、空时消费者等待。",
+      "description": "阻塞队列（Blocking queue）是本文档描述的虚构队列实例，其容量为 8。它具有有界队列的基本特性：当队列已满时，生产者线程需要等待；当队列为空时，消费者线程需要等待。该文档为合成输入，不参与固定 fake runner 的消费，因此该队列是说明性示例而非实际运行组件。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "label": "Concept",
+      "name": "重试预算",
+      "summary": "生产者不能无限等待时调用的预算机制，其语义依赖队列的阻塞行为。",
+      "description": "重试预算（retry budget）是调用方在生产者无法无限等待的场景下所采用的机制。跨文档意图表明，重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念；其语义需要放在队列满时生产者等待这一阻塞特性的上下文中理解。该说明属于合成输入中的语义描述，并非已观测的图谱输出。在本虚构示例中，重试预算描述生产者等待与重试行为的额度约束：生产者最多等待 50 毫秒，最多重试 2 次；当重试预算用尽后，系统返回可见错误。文档强调这些数字仅供输入结构演示，不是调优建议。重试预算依赖阻塞队列的容量与等待行为。在免费 fixed fake 中不存在重试预算，查询它应明确得到零结果。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "domain::并发队列与背压控制",
+      "label": "Domain",
+      "name": "并发队列与背压控制",
+      "summary": "围绕有界阻塞队列、阻塞语义、生产者等待与重试预算，以及运行环境约束的跨 skill 复用知识。",
+      "description": "复用性理由 / Reusability: 阻塞队列、背压/重试预算、生产者等待模式是消息中间件、并发编程、限流降级和测试环境等场景的通用主题，可跨 skill 复用。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+      "label": "Concept",
+      "name": "阻塞语义",
+      "summary": "有界队列在满或空时阻塞生产者与消费者的行为规则。",
+      "description": "阻塞语义指有界阻塞队列在边界状态下的处理规则：队列满时生产者不能继续入队而必须等待，队列空时消费者不能取元素而必须等待；正是这种在满或空时阻塞的行为解释了“阻塞队列”的基本含义，也是其与普通有界队列的核心区别。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "skill::public-synthetic-queue",
+      "label": "Skill",
+      "name": "public-synthetic-queue",
+      "summary": "合成队列示例 / Synthetic queue example",
+      "description": null,
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "subdomain::并发队列与背压控制::生产者重试与预算",
+      "label": "Subdomain",
+      "name": "生产者重试与预算",
+      "summary": "生产者角色、重试预算，以及重试预算对阻塞队列的依赖关系。",
+      "description": null,
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "subdomain::并发队列与背压控制::运行环境约束",
+      "label": "Subdomain",
+      "name": "运行环境约束",
+      "summary": "测试或假运行环境对重试预算存在性的约束。",
+      "description": null,
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "subdomain::并发队列与背压控制::阻塞队列模型",
+      "label": "Subdomain",
+      "name": "阻塞队列模型",
+      "summary": "有界阻塞队列实体及其阻塞行为语义。",
+      "description": null,
+      "provenance": "llm_inferred"
+    }
+  ],
+  "edges": [
+    {
+      "source_id": "skill::public-synthetic-queue",
+      "target_id": "domain::并发队列与背压控制",
+      "kind": "provides",
+      "description": "skill public-synthetic-queue 贡献了领域 并发队列与背压控制",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "domain::并发队列与背压控制",
+      "target_id": "subdomain::并发队列与背压控制::阻塞队列模型",
+      "kind": "composes",
+      "description": "领域包含子域",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发队列与背压控制::阻塞队列模型",
+      "target_id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "kind": "composes",
+      "description": "子域包含实体",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发队列与背压控制::阻塞队列模型",
+      "target_id": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+      "kind": "composes",
+      "description": "子域包含概念",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "target_id": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+      "kind": "depends_on",
+      "description": "阻塞队列的等待行为由阻塞语义定义。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "domain::并发队列与背压控制",
+      "target_id": "subdomain::并发队列与背压控制::生产者重试与预算",
+      "kind": "composes",
+      "description": "领域包含子域",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发队列与背压控制::生产者重试与预算",
+      "target_id": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "kind": "composes",
+      "description": "子域包含实体",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发队列与背压控制::生产者重试与预算",
+      "target_id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "kind": "composes",
+      "description": "子域包含概念",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发队列与背压控制::生产者重试与预算",
+      "target_id": "38d52b47-62d0-5c36-970d-0a11fce666da",
+      "kind": "composes",
+      "description": "子域包含概念",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "target_id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "kind": "depends_on",
+      "description": "生产者等待与重试受重试预算约束。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "38d52b47-62d0-5c36-970d-0a11fce666da",
+      "target_id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "kind": "references",
+      "description": "该关系概念引用重试预算。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "target_id": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "kind": "references",
+      "description": "重试预算的描述指向生产者的等待与重试行为，并规定其最多等待 50 毫秒、最多重试 2 次。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "domain::并发队列与背压控制",
+      "target_id": "subdomain::并发队列与背压控制::运行环境约束",
+      "kind": "composes",
+      "description": "领域包含子域",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发队列与背压控制::运行环境约束",
+      "target_id": "6890d8d0-de21-5dc7-a629-64c351fa706f",
+      "kind": "composes",
+      "description": "子域包含实体",
+      "provenance": "llm_inferred"
+    }
+  ],
+  "source_ledger": [
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+      "member_id": "public-synthetic-queue-concept-阻塞队列的阻塞语义",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "member_id": "public-synthetic-queue-entity-阻塞队列",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "38d52b47-62d0-5c36-970d-0a11fce666da",
+      "member_id": "public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "6890d8d0-de21-5dc7-a629-64c351fa706f",
+      "member_id": "public-synthetic-queue-entity-免费-fixed-fake",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+      "member_id": "public-synthetic-queue-entity-生产者",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "start_line": null,
+      "end_line": null
+    }
+  ],
+  "original_annotations": [
+    {
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "items": [
+        {
+          "id": "public-synthetic-queue-entity-阻塞队列",
+          "tag": "entity",
+          "name": "阻塞队列",
+          "content": "一个容量为 8 的虚构队列，当队列满时生产者等待、队列空时消费者等待。",
+          "detail": "阻塞队列（Blocking queue）是本文档描述的虚构队列实例，其容量为 8。它具有有界队列的基本特性：当队列已满时，生产者线程需要等待；当队列为空时，消费者线程需要等待。该文档为合成输入，不参与固定 fake runner 的消费，因此该队列是说明性示例而非实际运行组件。",
+          "confidence": 0.92
+        },
+        {
+          "id": "public-synthetic-queue-concept-阻塞队列的阻塞语义",
+          "tag": "concept",
+          "name": "阻塞队列的阻塞语义",
+          "content": "有界队列在满或空时阻塞生产者和消费者的行为规则。",
+          "detail": "阻塞语义指有界阻塞队列在边界状态下的处理规则：队列满时生产者不能继续入队而必须等待，队列空时消费者不能取元素而必须等待；正是这种在满或空时阻塞的行为解释了“阻塞队列”的基本含义，也是其与普通有界队列的核心区别。",
+          "confidence": 0.9
+        },
+        {
+          "id": "public-synthetic-queue-concept-重试预算",
+          "tag": "concept",
+          "name": "重试预算",
+          "content": "当生产者不能无限等待时，调用方使用的预算机制，其语义依赖队列的阻塞行为。",
+          "detail": "重试预算（retry budget）是调用方在生产者无法无限等待的场景下所采用的机制。跨文档意图表明，重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念；即重试预算的语义需要放在队列满时生产者等待这一阻塞特性的上下文中理解。该说明属合成输入中的语义描述，并非已观测的图谱输出。",
+          "confidence": 0.85
+        }
+      ]
+    },
+    {
+      "skill": "public-synthetic-queue",
+      "file_path": "references/timeout.md",
+      "items": [
+        {
+          "id": "public-synthetic-queue-concept-重试预算",
+          "tag": "concept",
+          "name": "重试预算",
+          "content": "生产者等待与重试的额度约束：最多等待 50 毫秒、最多重试 2 次，预算用尽后返回可见错误。",
+          "detail": "重试预算是本虚构示例中描述生产者等待与重试行为的额度约束。生产者最多等待 50 毫秒，最多重试 2 次；当重试预算用尽后，系统返回可见错误。文档强调这些数字仅供输入结构演示，不是调优建议。重试预算依赖阻塞队列的容量与等待行为。在免费 fixed fake 中不存在重试预算，查询它应明确得到零结果。",
+          "confidence": 0.95
+        },
+        {
+          "id": "public-synthetic-queue-entity-生产者",
+          "tag": "entity",
+          "name": "生产者",
+          "content": "执行等待与重试操作的生产者角色，受重试预算约束。",
+          "detail": "生产者是文档中描述的、受重试预算约束的执行角色：它最多等待 50 毫秒，最多重试 2 次；预算用尽后不再重试并返回可见错误。其等待与重试行为依赖阻塞队列的容量与等待行为。",
+          "confidence": 0.85
+        },
+        {
+          "id": "public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系",
+          "tag": "concept",
+          "name": "重试预算与阻塞队列的依赖关系",
+          "content": "重试预算依赖阻塞队列的容量与等待行为的跨文档关系。",
+          "detail": "该关系说明重试预算并非独立生效，而是依赖阻塞队列的容量与等待行为。文档提到若未来用真实 LLM 构建这些材料，可以检验是否保留这条跨文档关系；本次没有运行该抽取。",
+          "confidence": 0.9
+        },
+        {
+          "id": "public-synthetic-queue-entity-免费-fixed-fake",
+          "tag": "entity",
+          "name": "免费 fixed fake",
+          "content": "文档中的免费固定假运行环境，其中不存在重试预算。",
+          "detail": "免费 fixed fake 是文档描述的固定假运行环境；在该环境中不存在重试预算，查询它应明确得到零结果。文档还说明本材料为合成输入，不会被固定假运行器消费。",
+          "confidence": 0.8
+        }
+      ]
+    }
+  ],
+  "db_sha256_before_and_after": "7c94b225d40f0eb054525fb4ab061599a93707171545003622aec7bf2331a3d2",
+  "expected_names": {
+    "阻塞队列": true,
+    "重试预算": true
+  },
+  "shared_nodes": [
+    "c3123633-9fad-5391-8d39-ba4d7b393783"
+  ],
+  "finished_at_utc": "2026-10-24T13:57:19.702861+00:00"
+}

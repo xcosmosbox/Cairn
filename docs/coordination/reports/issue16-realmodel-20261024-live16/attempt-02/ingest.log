@@ -1,0 +1,60 @@
+2026/10/24 22:43:55 ══════════ 阶段/Stage 1: 扫描 / discovery ══════════
+2026/10/24 22:43:55 [pipeline] 扫描完成: 1 个 skill, 2 篇 reference 文档
+2026/10/24 22:43:55 ══════════ 阶段/Stage 2: 标注 + 双门校验 / annotate + Gate A/B（并发） ══════════
+2026/10/24 22:44:01 [llm] API 返回非 200: status=503 body=upstream connect error or disconnect/reset before headers. reset reason: remote refused stream reset
+2026/10/24 22:44:01 [annotate] references/queue.md 第 1/3 次调用失败，原地重试: openai_compatible: status 503: upstream connect error or disconnect/reset before headers. reset reason: remote refused stream reset
+2026/10/24 22:44:06 [llm-extract] model=deepseek-flash tokens(prompt=830 completion=633) content_len=1622 reasoning_len=1225
+2026/10/24 22:44:08 [llm-extract] model=deepseek-flash tokens(prompt=859 completion=1230) content_len=1810 reasoning_len=3523
+2026/10/24 22:44:11 [llm-extract] model=deepseek-flash tokens(prompt=873 completion=767) content_len=177 reasoning_len=3478
+2026/10/24 22:44:24 [llm-extract] model=deepseek-flash tokens(prompt=987 completion=2531) content_len=202 reasoning_len=11112
+2026/10/24 22:44:24 [pipeline] 标注阶段完成: 2/2 篇通过双门, 0 篇跳过
+2026/10/24 22:44:24 ══════════ 阶段/Stage 3: 领域提取 + 覆盖保障 / extract with coverage ══════════
+2026/10/24 22:44:39 [llm-extract] model=deepseek-flash tokens(prompt=1354 completion=3152) content_len=3461 reasoning_len=9875
+2026/10/24 22:44:39 [extract-annot] ✓ 第 1 轮提取成功：1 个 domain
+2026/10/24 22:44:39 [extract-coverage] 第 1/2 轮提取：覆盖 6/6 (100.00%)，合并重复节点 0，剔除非法 member 0
+2026/10/24 22:44:39 [extract-coverage] ✓ 覆盖率 100.00% ≥ P99(99%)，直接放行
+2026/10/24 22:44:39 [pipeline] 提取+覆盖: 1 轮提取, 1 个 domain; 覆盖 6/6 (100.00%), 结果=pass_p99; 空节点补 0/0, 合并重复 0, 剔非法 member 0
+2026/10/24 22:44:39 ══════════ 阶段/Stage 3.5: 悬空边修正 / repair dangling relations ══════════
+2026/10/24 22:44:39 [extract-repair] ▶ 扫描到 4 条悬空 relation，已清洗；开始 LLM 修正（最多 2 轮）
+2026/10/24 22:45:03 [llm-extract] model=deepseek-flash tokens(prompt=1231 completion=4232) content_len=1876 reasoning_len=16290
+2026/10/24 22:45:03 [extract-repair] 第 1/2 轮拒绝 4 条非法 patch，重试
+2026/10/24 22:46:03 [llm-extract] model=deepseek-flash tokens(prompt=1351 completion=11114) content_len=826 reasoning_len=45831
+2026/10/24 22:46:03 [extract-repair] 第 2/2 轮拒绝 4 条非法 patch，重试
+2026/10/24 22:46:03 [extract-repair] ⚠ 修正 2 轮耗尽，降级：用清洗后 05 继续 ingest（残留悬空 0 条已丢弃）
+2026/10/24 22:46:03 [pipeline] 悬空边修正: 发现 4, 清洗 4, 应用 patch 0, 残留丢弃 0, 降级=true
+2026/10/24 22:46:03 ══════════ 阶段/Stage 3.6: description 融合 / fuse descriptions（按节点并发） ══════════
+2026/10/24 22:46:05 [llm-extract] model=deepseek-flash tokens(prompt=607 completion=169) content_len=788 reasoning_len=0
+2026/10/24 22:46:05 [llm-extract] model=deepseek-flash tokens(prompt=454 completion=153) content_len=305 reasoning_len=418
+2026/10/24 22:46:07 [llm-extract] model=deepseek-flash tokens(prompt=842 completion=628) content_len=1493 reasoning_len=1461
+2026/10/24 22:46:07 [extract-describe] description 融合完成：subdomain 3/3 成功，节点 6 个（有素材 6），重写 6 个
+2026/10/24 22:46:07 [pipeline] description 融合: subdomain 3/3 成功, 节点重写 6/6（有素材 6）
+2026/10/24 22:46:07 ══════════ 阶段/Stage 3.7: relation 识别 / identify relations（按 subdomain 并发） ══════════
+2026/10/24 22:46:09 [llm-extract] model=deepseek-flash tokens(prompt=563 completion=299) content_len=262 reasoning_len=1239
+2026/10/24 22:46:15 [llm-extract] model=deepseek-flash tokens(prompt=753 completion=1478) content_len=685 reasoning_len=5898
+2026/10/24 22:46:15 [extract-relate] relation 识别完成：subdomain 2/2 成功，新增关系 4，过滤越界/自环 0
+2026/10/24 22:46:15 [pipeline] relation 识别: subdomain 2/2 成功, 新增关系 4, 过滤越界/自环 0
+2026/10/24 22:46:15 [file-slug] 为 6 个节点生成 file_slug（LLM 并发 8 路）
+2026/10/24 22:46:16 [llm-extract] model=deepseek-flash tokens(prompt=182 completion=24) content_len=30 reasoning_len=70
+2026/10/24 22:46:16 [llm-extract] model=deepseek-flash tokens(prompt=182 completion=10) content_len=26 reasoning_len=0
+2026/10/24 22:46:16 [llm-extract] model=deepseek-flash tokens(prompt=185 completion=73) content_len=36 reasoning_len=270
+2026/10/24 22:46:16 [llm-extract] model=deepseek-flash tokens(prompt=181 completion=8) content_len=20 reasoning_len=0
+2026/10/24 22:46:16 [llm-extract] model=deepseek-flash tokens(prompt=183 completion=35) content_len=24 reasoning_len=97
+2026/10/24 22:46:16 [llm-extract] model=deepseek-flash tokens(prompt=189 completion=89) content_len=44 reasoning_len=200
+2026/10/24 22:46:16 [file-slug] LLM 成功 6/6，其余回退 slugify
+2026/10/24 22:46:16 [file-slug] 生成完成: 6 个 slug
+2026/10/24 22:46:16 [pipeline] 候选筛选: 节点保留 6/6，置信度过滤 0（entity=0 concept=0）；关系保留 4/4，端点过滤 0
+2026/10/24 22:46:16 ══════════ 阶段/Stage 4: 全量重建入库 / ingest（物化双层图） ══════════
+2026/10/24 22:46:16 [pipeline] 入库完成: 11 节点, 14 边 (跳过 0), node_sources 7 行
+2026/10/24 22:46:16 ══════════ 阶段/Stage 4.5: 结构化回写 / write-back（md + sidecar + _shared） ══════════
+2026/10/24 22:46:16 [pipeline] 回写统计: 文档 2, 节点块 5, shared 1, 镜像块 2, primary 1, sidecar 3
+2026/10/24 22:46:16 ══════════ 阶段/Stage ✓: 流水线完成 / pipeline done ══════════
+2026/10/24 22:46:16 [pipeline] 完成: skills=1 docs=2 rewritten=2 skipped=0 domains=1 nodes=11 edges=14 (悬空修正: 发现4/残留0)
+══════════ 运行摘要 / Run Summary ══════════
+[cairn-ingest] 完成 → /workspace/scratch/c1bb49a45412/cairn-live16/.local/real-model/live16-attempt-02/knowledge.db
+  skills 扫描: 1
+  文档总数: 2  通过双门: 2  降级跳过: 0
+  节点入库: skill=1 domain=1 subdomain=3 entity=3 concept=3 (共 11)
+  边入库: provides=1 composes=9 semantic=4 (共 14, 跳过 0)
+  中间产物已 dump 到: /workspace/scratch/c1bb49a45412/cairn-live16/.local/real-model/live16-attempt-02/dump
+  悬空边修正: 发现 4, 应用 patch 0, 残留丢弃 0, 降级=true
+══════════════════════════════════════════

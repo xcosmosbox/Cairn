@@ -1,0 +1,19 @@
+{
+  "DanglingFound": 4,
+  "Cleaned": 4,
+  "PatchesApplied": 0,
+  "PatchErrors": [
+    "patch#0 fix: invalid relation or undeclared endpoint \"producer\"→\"blocking-queue\"",
+    "patch#1 fix: invalid relation or undeclared endpoint \"retry-budget\"→\"blocking-queue\"",
+    "patch#2 fix: invalid relation or undeclared endpoint \"retry-budget-queue-dependency\"→\"blocking-queue\"",
+    "patch#3 fix: invalid relation or undeclared endpoint \"free-fixed-fake\"→\"retry-budget\"",
+    "patch#0 restore: undeclared endpoint \"producer\"→\"blocking-queue\"",
+    "patch#1 restore: undeclared endpoint \"retry-budget\"→\"blocking-queue\"",
+    "patch#2 restore: undeclared endpoint \"retry-budget-queue-dependency\"→\"blocking-queue\"",
+    "patch#3 restore: undeclared endpoint \"free-fixed-fake\"→\"retry-budget\""
+  ],
+  "Rounds": 2,
+  "StillDangling": 0,
+  "Degraded": true,
+  "MissingFrom04": 0
+}

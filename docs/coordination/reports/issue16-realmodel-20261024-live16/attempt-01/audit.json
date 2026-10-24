@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "started_at_utc": "2026-10-24T13:42:23.006085+00:00",
+  "original_span_semantics": "04 source_span is an unverified model annotation on frozen originals; node_sources/MCP spans refer to rewritten documents",
+  "cross_document_semantics": "manual_review_required",
+  "sandbox_publication": "not_run",
+  "finished_at_utc": "2026-10-24T13:42:23.006402+00:00"
+}

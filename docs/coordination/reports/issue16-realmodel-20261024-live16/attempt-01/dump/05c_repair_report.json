@@ -1,0 +1,15 @@
+{
+  "DanglingFound": 2,
+  "Cleaned": 2,
+  "PatchesApplied": 0,
+  "PatchErrors": [
+    "patch#0 fix: invalid relation or undeclared endpoint \"retry-budget\"→\"blocking-behavior\"",
+    "patch#1 fix: invalid relation or undeclared endpoint \"retry-budget\"→\"blocking-queue\"",
+    "patch#0 fix: invalid relation or undeclared endpoint \"retry-budget\"→\"blocking-behavior\"",
+    "patch#1 fix: invalid relation or undeclared endpoint \"retry-budget\"→\"blocking-queue\""
+  ],
+  "Rounds": 2,
+  "StillDangling": 0,
+  "Degraded": true,
+  "MissingFrom04": 0
+}

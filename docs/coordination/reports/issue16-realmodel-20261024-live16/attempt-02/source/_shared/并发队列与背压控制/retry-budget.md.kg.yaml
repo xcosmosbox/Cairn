@@ -1,0 +1,20 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: _shared/并发队列与背压控制/retry-budget.md
+doc_hash: sha256:6711a4442c853b21d0386771f66130c77f12ea81cfd635520232c3cde0bf4b5e
+generated_at: "2026-10-24T13:46:16Z"
+nodes:
+  - uuid: c3123633-9fad-5391-8d39-ba4d7b393783
+    file_slug: retry-budget
+    tag: concept
+    name: 重试预算
+    domain: 并发队列与背压控制
+    subdomain: 生产者重试与预算
+    domain_slug: 并发队列与背压控制
+    subdomain_slug: 生产者重试与预算
+    shared: true
+    members:
+      - public-synthetic-queue-concept-重试预算
+    summary_hash: sha256:b105663ae13ccde61d9acd0bdb6df83ec4bc46ada4fdf859932fc1e555d322cc
+    description_hash: sha256:6d8e97c15b51f80caf752875902896a28716f6605b7efc4c8dfe220e22057bba
+    provenance: llm_inferred

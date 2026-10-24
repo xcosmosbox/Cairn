@@ -1,0 +1,15 @@
+{
+  "command": [
+    "python3",
+    "examples/public-demo/real-model/run.py",
+    "audit",
+    "--out",
+    ".local/real-model/live16-attempt-01"
+  ],
+  "result": "failed",
+  "error": "Both nonempty reference documents must reach actual extraction",
+  "audit_stage": "two nonempty references",
+  "exit_code": 1,
+  "exit_observation": "helper error path prints failure and exits1; outer compound inspection shell exited0 after subsequent commands",
+  "new_requests": 0
+}

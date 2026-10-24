@@ -1,0 +1,24 @@
+{
+  "time_utc": "2026-10-24T13:41:06.639669+00:00",
+  "current_source_sha": "c6a2b16f21434147947f4ed30d65a06321571546",
+  "historical_builder_source_sha": "18e7e7bfc989fc0216625b0851e105690edd3950",
+  "source_diff_command": [
+    "git",
+    "diff",
+    "18e7e7bfc989fc0216625b0851e105690edd3950",
+    "c6a2b16f21434147947f4ed30d65a06321571546",
+    "--",
+    "build",
+    "core",
+    "service",
+    "go.mod",
+    "go.sum"
+  ],
+  "source_diff": "",
+  "binary_reuse": "Copied exact binaries whose SHA256 equals accepted PR38 environment.json; no new compilation and local Go currently absent",
+  "binaries": {
+    "cairn-ingest": "68f9b1cb1fc8f5b58a6c6fbe8c1ef896517417b523e80899f125c81c60ceb71b",
+    "cairn": "08d54c776e5dad0b09b506f7ca036ff7eb8ec2ffee13c926f06aee6e8108f172",
+    "cairn-mcp": "b7396b5a95af3e648c6d78613387b19e89eb31729b4949e9c263dc3e9355259a"
+  }
+}

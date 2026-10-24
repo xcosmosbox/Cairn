@@ -1,0 +1,58 @@
+2026/10/24 22:41:11 ══════════ 阶段/Stage 1: 扫描 / discovery ══════════
+2026/10/24 22:41:11 [pipeline] 扫描完成: 1 个 skill, 2 篇 reference 文档
+2026/10/24 22:41:11 ══════════ 阶段/Stage 2: 标注 + 双门校验 / annotate + Gate A/B（并发） ══════════
+2026/10/24 22:41:25 [llm-extract] model=deepseek-flash tokens(prompt=830 completion=1152) content_len=1221 reasoning_len=3905
+2026/10/24 22:41:26 [llm-extract] model=deepseek-flash tokens(prompt=859 completion=1231) content_len=3374 reasoning_len=1783
+2026/10/24 22:41:27 [llm-extract] model=deepseek-flash tokens(prompt=797 completion=172) content_len=246 reasoning_len=502
+2026/10/24 22:41:40 [llm-extract] model=deepseek-flash tokens(prompt=1423 completion=2677) content_len=380 reasoning_len=11537
+2026/10/24 22:41:40 [pipeline] references/timeout.md 第 1/1 轮 Gate B 未通过，回退重标注: semantic gate: references/timeout.md 标注与原文语义不幂等: 标注大体覆盖原文，但“阻塞队列”单元的 detail 将原文“重试预算依赖阻塞队列的容量与等待行为”曲解为“重试预算的容量与等待行为由阻塞队列提供”，主体错位；同时“生产者”detail 增加了原文未明确提到的“下游操作”和“调用方”，不满足忠实性。: 校验未通过，需回退到标注阶段重新标注
+2026/10/24 22:41:40 [pipeline] references/timeout.md 回退 1 次仍未通过，降级跳过（Gate B 未通过: semantic gate: references/timeout.md 标注与原文语义不幂等: 标注大体覆盖原文，但“阻塞队列”单元的 detail 将原文“重试预算依赖阻塞队列的容量与等待行为”曲解为“重试预算的容量与等待行为由阻塞队列提供”，主体错位；同时“生产者”detail 增加了原文未明确提到的“下游操作”和“调用方”，不满足忠实性。: 校验未通过，需回退到标注阶段重新标注）
+2026/10/24 22:41:40 [pipeline] 1/2 篇文档失败或降级跳过:
+2026/10/24 22:41:40 [pipeline]   ✗ references/timeout.md (public-synthetic-queue): Gate B 未通过: semantic gate: references/timeout.md 标注与原文语义不幂等: 标注大体覆盖原文，但“阻塞队列”单元的 detail 将原文“重试预算依赖阻塞队列的容量与等待行为”曲解为“重试预算的容量与等待行为由阻塞队列提供”，主体错位；同时“生产者”detail 增加了原文未明确提到的“下游操作”和“调用方”，不满足忠实性。: 校验未通过，需回退到标注阶段重新标注
+2026/10/24 22:41:40 [pipeline] 标注阶段完成: 1/2 篇通过双门, 1 篇跳过
+2026/10/24 22:41:40 ══════════ 阶段/Stage 3: 领域提取 + 覆盖保障 / extract with coverage ══════════
+2026/10/24 22:41:48 [llm-extract] model=deepseek-flash tokens(prompt=1219 completion=1386) content_len=2165 reasoning_len=3769
+2026/10/24 22:41:48 [extract-annot] ✓ 第 1 轮提取成功：1 个 domain
+2026/10/24 22:41:48 [extract-coverage] 第 1/2 轮提取：覆盖 3/3 (100.00%)，合并重复节点 0，剔除非法 member 0
+2026/10/24 22:41:48 [extract-coverage] ✓ 覆盖率 100.00% ≥ P99(99%)，直接放行
+2026/10/24 22:41:48 [pipeline] 提取+覆盖: 1 轮提取, 1 个 domain; 覆盖 3/3 (100.00%), 结果=pass_p99; 空节点补 0/0, 合并重复 0, 剔非法 member 0
+2026/10/24 22:41:48 ══════════ 阶段/Stage 3.5: 悬空边修正 / repair dangling relations ══════════
+2026/10/24 22:41:48 [extract-repair] ▶ 扫描到 2 条悬空 relation，已清洗；开始 LLM 修正（最多 2 轮）
+2026/10/24 22:41:52 [llm-extract] model=deepseek-flash tokens(prompt=1049 completion=715) content_len=553 reasoning_len=2518
+2026/10/24 22:41:52 [extract-repair] 第 1/2 轮拒绝 2 条非法 patch，重试
+2026/10/24 22:42:12 [llm-extract] model=deepseek-flash tokens(prompt=1114 completion=3330) content_len=553 reasoning_len=14511
+2026/10/24 22:42:12 [extract-repair] 第 2/2 轮拒绝 2 条非法 patch，重试
+2026/10/24 22:42:12 [extract-repair] ⚠ 修正 2 轮耗尽，降级：用清洗后 05 继续 ingest（残留悬空 0 条已丢弃）
+2026/10/24 22:42:12 [pipeline] 悬空边修正: 发现 2, 清洗 2, 应用 patch 0, 残留丢弃 0, 降级=true
+2026/10/24 22:42:12 ══════════ 阶段/Stage 3.6: description 融合 / fuse descriptions（按节点并发） ══════════
+2026/10/24 22:42:14 [llm-extract] model=deepseek-flash tokens(prompt=485 completion=204) content_len=443 reasoning_len=578
+2026/10/24 22:42:15 [llm-extract] model=deepseek-flash tokens(prompt=568 completion=297) content_len=641 reasoning_len=761
+2026/10/24 22:42:15 [extract-describe] description 融合完成：subdomain 2/2 成功，节点 3 个（有素材 3），重写 3 个
+2026/10/24 22:42:15 [pipeline] description 融合: subdomain 2/2 成功, 节点重写 3/3（有素材 3）
+2026/10/24 22:42:15 ══════════ 阶段/Stage 3.7: relation 识别 / identify relations（按 subdomain 并发） ══════════
+2026/10/24 22:42:17 [llm-extract] model=deepseek-flash tokens(prompt=544 completion=285) content_len=280 reasoning_len=1039
+2026/10/24 22:42:17 [extract-relate] relation 识别完成：subdomain 1/1 成功，新增关系 1，过滤越界/自环 0
+2026/10/24 22:42:17 [pipeline] relation 识别: subdomain 1/1 成功, 新增关系 1, 过滤越界/自环 0
+2026/10/24 22:42:17 [file-slug] 为 3 个节点生成 file_slug（LLM 并发 8 路）
+2026/10/24 22:42:18 [llm-extract] model=deepseek-flash tokens(prompt=183 completion=53) content_len=29 reasoning_len=201
+2026/10/24 22:42:18 [llm-extract] model=deepseek-flash tokens(prompt=183 completion=22) content_len=26 reasoning_len=56
+2026/10/24 22:42:18 [llm-extract] model=deepseek-flash tokens(prompt=184 completion=79) content_len=24 reasoning_len=266
+2026/10/24 22:42:18 [file-slug] LLM 成功 3/3，其余回退 slugify
+2026/10/24 22:42:18 [file-slug] 生成完成: 3 个 slug
+2026/10/24 22:42:18 [pipeline] 候选筛选: 节点保留 3/3，置信度过滤 0（entity=0 concept=0）；关系保留 2/2，端点过滤 0
+2026/10/24 22:42:18 ══════════ 阶段/Stage 4: 全量重建入库 / ingest（物化双层图） ══════════
+2026/10/24 22:42:18 [pipeline] 入库完成: 7 节点, 8 边 (跳过 0), node_sources 3 行
+2026/10/24 22:42:18 ══════════ 阶段/Stage 4.5: 结构化回写 / write-back（md + sidecar + _shared） ══════════
+2026/10/24 22:42:18 [pipeline] 回写统计: 文档 1, 节点块 3, shared 0, 镜像块 0, primary 0, sidecar 1
+2026/10/24 22:42:18 ══════════ 阶段/Stage ✓: 流水线完成 / pipeline done ══════════
+2026/10/24 22:42:18 [pipeline] 完成: skills=1 docs=2 rewritten=1 skipped=1 domains=1 nodes=7 edges=8 (悬空修正: 发现2/残留0)
+══════════ 运行摘要 / Run Summary ══════════
+[cairn-ingest] 完成 → /workspace/scratch/c1bb49a45412/cairn-live16/.local/real-model/live16-attempt-01/knowledge.db
+  skills 扫描: 1
+  文档总数: 2  通过双门: 1  降级跳过: 1
+  节点入库: skill=1 domain=1 subdomain=2 entity=1 concept=2 (共 7)
+  边入库: provides=1 composes=5 semantic=2 (共 8, 跳过 0)
+  中间产物已 dump 到: /workspace/scratch/c1bb49a45412/cairn-live16/.local/real-model/live16-attempt-01/dump
+  悬空边修正: 发现 2, 应用 patch 0, 残留丢弃 0, 降级=true
+2026/10/24 22:42:18 [cairn-ingest] 降级跳过 references/timeout.md (public-synthetic-queue): Gate B 未通过: semantic gate: references/timeout.md 标注与原文语义不幂等: 标注大体覆盖原文，但“阻塞队列”单元的 detail 将原文“重试预算依赖阻塞队列的容量与等待行为”曲解为“重试预算的容量与等待行为由阻塞队列提供”，主体错位；同时“生产者”detail 增加了原文未明确提到的“下游操作”和“调用方”，不满足忠实性。: 校验未通过，需回退到标注阶段重新标注
+══════════════════════════════════════════

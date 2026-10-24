@@ -1,0 +1,155 @@
+{
+  "status": "partial_graph_diagnostic_only_two_document_gate_failed",
+  "db_quick_check": "ok",
+  "db_before": "80e2ebe639914334d078180eca91c6662211573047c13a2aa80b3e133557130e",
+  "db_after": "80e2ebe639914334d078180eca91c6662211573047c13a2aa80b3e133557130e",
+  "queries_read_only": true,
+  "nodes": [
+    {
+      "id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "label": "Entity",
+      "name": "阻塞队列",
+      "summary": "一种容量有限、在队列满时阻塞生产者、在队列空时阻塞消费者的并发队列。",
+      "description": "阻塞队列是一种有界并发队列，本虚构文档中其容量为 8。队列达到容量上限（满）时，生产者需要等待；队列无元素（空）时，消费者需要等待。也就是说，有界队列在满或空时都会发生阻塞，这解释了阻塞队列的基本含义。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+      "label": "Concept",
+      "name": "阻塞行为",
+      "summary": "队列在容量满或为空时使生产者或消费者等待的规则语义。",
+      "description": "阻塞行为指有界队列在达到容量上限（满）时让生产者等待、在无元素（空）时让消费者等待的规则语义，即 Bounded queue blocks when full or empty。该行为是阻塞队列的基本语义。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "label": "Concept",
+      "name": "重试预算",
+      "summary": "生产者在无法无限等待时由调用方使用的有限重试额度，用于在阻塞行为之上进行背压控制。",
+      "description": "当生产者不能在阻塞队列上无限等待时，调用方使用重试预算（retry budget）。跨文档意图表明：重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念；它是在阻塞行为之上由调用方采用的有限重试额度，用于进行背压控制。该说明属于合成输入中的语义，不是已观测的图谱输出。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "domain::并发阻塞队列与背压管理",
+      "label": "Domain",
+      "name": "并发阻塞队列与背压管理",
+      "summary": "围绕有界阻塞队列的阻塞语义、生产者等待策略与重试预算进行建模，覆盖并发协作与背压控制。",
+      "description": "复用性理由 / Reusability: 有界阻塞队列、阻塞等待规则与重试预算是跨语言、跨框架通用的并发编程原语，可复用于生产者-消费者、异步任务管道、限流背压与失败重试等场景，因此值得作为独立领域沉淀。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "skill::public-synthetic-queue",
+      "label": "Skill",
+      "name": "public-synthetic-queue",
+      "summary": "合成队列示例 / Synthetic queue example",
+      "description": null,
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "subdomain::并发阻塞队列与背压管理::背压与重试策略",
+      "label": "Subdomain",
+      "name": "背压与重试策略",
+      "summary": "当生产者在阻塞队列上不能无限等待时，由调用方采用的重试预算与背压控制。",
+      "description": null,
+      "provenance": "llm_inferred"
+    },
+    {
+      "id": "subdomain::并发阻塞队列与背压管理::阻塞队列核心语义",
+      "label": "Subdomain",
+      "name": "阻塞队列核心语义",
+      "summary": "定义有界阻塞队列及其在满/空条件下的阻塞等待规则。",
+      "description": null,
+      "provenance": "llm_inferred"
+    }
+  ],
+  "edges": [
+    {
+      "source_id": "skill::public-synthetic-queue",
+      "target_id": "domain::并发阻塞队列与背压管理",
+      "kind": "provides",
+      "description": "skill public-synthetic-queue 贡献了领域 并发阻塞队列与背压管理",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "domain::并发阻塞队列与背压管理",
+      "target_id": "subdomain::并发阻塞队列与背压管理::阻塞队列核心语义",
+      "kind": "composes",
+      "description": "领域包含子域",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发阻塞队列与背压管理::阻塞队列核心语义",
+      "target_id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "kind": "composes",
+      "description": "子域包含实体",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发阻塞队列与背压管理::阻塞队列核心语义",
+      "target_id": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+      "kind": "composes",
+      "description": "子域包含概念",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "target_id": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+      "kind": "depends_on",
+      "description": "阻塞队列的可用性与线程协作方式依赖其阻塞行为规则。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "target_id": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+      "kind": "references",
+      "description": "阻塞队列的定义直接引用阻塞行为：容量满时生产者等待、队列空时消费者等待，该行为构成阻塞队列的基本语义。",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "domain::并发阻塞队列与背压管理",
+      "target_id": "subdomain::并发阻塞队列与背压管理::背压与重试策略",
+      "kind": "composes",
+      "description": "领域包含子域",
+      "provenance": "llm_inferred"
+    },
+    {
+      "source_id": "subdomain::并发阻塞队列与背压管理::背压与重试策略",
+      "target_id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "kind": "composes",
+      "description": "子域包含概念",
+      "provenance": "llm_inferred"
+    }
+  ],
+  "source_ledger": [
+    {
+      "node_uuid": "c3123633-9fad-5391-8d39-ba4d7b393783",
+      "member_id": "public-synthetic-queue-concept-重试预算",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "bbcab434-24ad-5c47-8e2a-494af4e77272",
+      "member_id": "public-synthetic-queue-concept-阻塞行为",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null
+    },
+    {
+      "node_uuid": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+      "member_id": "public-synthetic-queue-entity-阻塞队列",
+      "skill": "public-synthetic-queue",
+      "file_path": "references/queue.md",
+      "start_line": null,
+      "end_line": null
+    }
+  ],
+  "accepted_document_count": 1,
+  "expected_document_count": 2,
+  "cli_exit_code": 0,
+  "cli_stdout": "━━━ 知识库状态 / Knowledge Base Status ━━━\n  KB 版本:    2026-10-24T13:42:18.743759595Z\n  节点总数:   7\n  边总数:     8\n\n  节点按类型:\n    Concept                  2\n    Subdomain                2\n    Domain                   1\n    Entity                   1\n    Skill                    1\n\n  边按类型:\n    composes                 5\n    depends_on               1\n    provides                 1\n    references               1\n\n  节点按域（Top）:\n    并发阻塞队列与背压管理              6\n    public-synthetic-queue   1\n",
+  "cli_stderr": "",
+  "mcp_scope": "one accepted queue document target and unknown UUID; not a passing two-document audit"
+}

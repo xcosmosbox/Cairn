@@ -1,0 +1,166 @@
+{
+  "Domains": [
+    {
+      "name": "并发队列与背压控制",
+      "summary": "围绕有界阻塞队列、阻塞语义、生产者等待与重试预算，以及运行环境约束的跨 skill 复用知识。",
+      "description": "",
+      "reusability_rationale": "阻塞队列、背压/重试预算、生产者等待模式是消息中间件、并发编程、限流降级和测试环境等场景的通用主题，可跨 skill 复用。",
+      "source_skills": [
+        "public-synthetic-queue"
+      ],
+      "subdomains": [
+        {
+          "name": "阻塞队列模型",
+          "summary": "有界阻塞队列实体及其阻塞行为语义。",
+          "description": "",
+          "entities": [
+            {
+              "id": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+              "label": "Entity",
+              "name": "阻塞队列",
+              "summary": "容量为 8 的虚构有界队列，满时生产者等待、空时消费者等待。",
+              "description": "阻塞队列（Blocking queue）是本文档描述的虚构队列实例，其容量为 8。它具有有界队列的基本特性：当队列已满时，生产者线程需要等待；当队列为空时，消费者线程需要等待。该文档为合成输入，不参与固定 fake runner 的消费，因此该队列是说明性示例而非实际运行组件。",
+              "confidence": 0.95,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-阻塞队列"
+              ],
+              "file_slug": "blocking-queue"
+            }
+          ],
+          "concepts": [
+            {
+              "id": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+              "label": "Concept",
+              "name": "阻塞语义",
+              "summary": "有界队列在满或空时阻塞生产者与消费者的行为规则。",
+              "description": "阻塞语义指有界阻塞队列在边界状态下的处理规则：队列满时生产者不能继续入队而必须等待，队列空时消费者不能取元素而必须等待；正是这种在满或空时阻塞的行为解释了“阻塞队列”的基本含义，也是其与普通有界队列的核心区别。",
+              "confidence": 0.95,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-阻塞队列的阻塞语义"
+              ],
+              "file_slug": "blocking-semantics"
+            }
+          ],
+          "relations": [
+            {
+              "source": "bb69eb4c-5110-5e11-9b55-12ece9f73dd8",
+              "target": "fcdf07c7-0e9b-542c-93ba-b951817908c3",
+              "kind": "depends_on",
+              "description": "阻塞队列的等待行为由阻塞语义定义。",
+              "confidence": 0.9
+            }
+          ]
+        },
+        {
+          "name": "生产者重试与预算",
+          "summary": "生产者角色、重试预算，以及重试预算对阻塞队列的依赖关系。",
+          "description": "",
+          "entities": [
+            {
+              "id": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+              "label": "Entity",
+              "name": "生产者",
+              "summary": "执行等待与重试操作、受重试预算约束的生产者角色。",
+              "description": "生产者是文档中描述的、受重试预算约束的执行角色：它最多等待 50 毫秒，最多重试 2 次；当重试预算用尽后不再重试，并返回可见错误。生产者的等待与重试行为依赖阻塞队列的容量与等待行为。",
+              "confidence": 0.95,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-生产者"
+              ],
+              "file_slug": "producer"
+            }
+          ],
+          "concepts": [
+            {
+              "id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+              "label": "Concept",
+              "name": "重试预算",
+              "summary": "生产者不能无限等待时调用的预算机制，其语义依赖队列的阻塞行为。",
+              "description": "重试预算（retry budget）是调用方在生产者无法无限等待的场景下所采用的机制。跨文档意图表明，重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念；其语义需要放在队列满时生产者等待这一阻塞特性的上下文中理解。该说明属于合成输入中的语义描述，并非已观测的图谱输出。在本虚构示例中，重试预算描述生产者等待与重试行为的额度约束：生产者最多等待 50 毫秒，最多重试 2 次；当重试预算用尽后，系统返回可见错误。文档强调这些数字仅供输入结构演示，不是调优建议。重试预算依赖阻塞队列的容量与等待行为。在免费 fixed fake 中不存在重试预算，查询它应明确得到零结果。",
+              "confidence": 0.95,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-重试预算"
+              ],
+              "file_slug": "retry-budget"
+            },
+            {
+              "id": "38d52b47-62d0-5c36-970d-0a11fce666da",
+              "label": "Concept",
+              "name": "重试预算与阻塞队列的依赖关系",
+              "summary": "重试预算依赖阻塞队列容量与等待行为的跨文档关系。",
+              "description": "重试预算与阻塞队列的依赖关系说明：重试预算并非独立生效，而是依赖阻塞队列的容量与等待行为。文档提到，若未来用真实 LLM 构建这些材料，可以检验是否保留这条跨文档关系；本次没有运行该抽取。",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-重试预算与阻塞队列的依赖关系"
+              ],
+              "file_slug": "retry-budget-blocking-queue-deps"
+            }
+          ],
+          "relations": [
+            {
+              "source": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+              "target": "c3123633-9fad-5391-8d39-ba4d7b393783",
+              "kind": "depends_on",
+              "description": "生产者等待与重试受重试预算约束。",
+              "confidence": 0.9
+            },
+            {
+              "source": "38d52b47-62d0-5c36-970d-0a11fce666da",
+              "target": "c3123633-9fad-5391-8d39-ba4d7b393783",
+              "kind": "references",
+              "description": "该关系概念引用重试预算。",
+              "confidence": 0.9
+            },
+            {
+              "source": "c3123633-9fad-5391-8d39-ba4d7b393783",
+              "target": "5a9ab1d8-f65d-504b-a743-33138f36c8b6",
+              "kind": "references",
+              "description": "重试预算的描述指向生产者的等待与重试行为，并规定其最多等待 50 毫秒、最多重试 2 次。",
+              "confidence": 0.85
+            }
+          ]
+        },
+        {
+          "name": "运行环境约束",
+          "summary": "测试或假运行环境对重试预算存在性的约束。",
+          "description": "",
+          "entities": [
+            {
+              "id": "6890d8d0-de21-5dc7-a629-64c351fa706f",
+              "label": "Entity",
+              "name": "免费固定假运行环境",
+              "summary": "文档中的免费固定假运行环境，其中不存在重试预算。",
+              "description": "免费 fixed fake 是文档所描述的固定假运行环境。在该环境中不存在重试预算，因此查询重试预算时应明确得到零结果。文档还说明，本材料属于合成输入，不会被固定假运行器消费。",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-免费-fixed-fake"
+              ],
+              "file_slug": "fake-runtime-environment"
+            }
+          ],
+          "concepts": [],
+          "relations": []
+        }
+      ]
+    }
+  ],
+  "UnresolvedFiles": null,
+  "Rounds": 1
+}

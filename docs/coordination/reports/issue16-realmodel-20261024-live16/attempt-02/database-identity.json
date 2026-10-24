@@ -1,0 +1,8 @@
+{
+  "original_sqlite_bytes": 163840,
+  "original_sqlite_sha256": "7c94b225d40f0eb054525fb4ab061599a93707171545003622aec7bf2331a3d2",
+  "binary_archive": "not_committed_repository_excludes_database_binaries",
+  "public_export": "knowledge.sql",
+  "local_only_original": "/workspace/scratch/c1bb49a45412/cairn-live16/.local/real-model/live16-attempt-02/knowledge.db",
+  "restore_note": "Import knowledge.sql into a fresh empty SQLite database supporting FTS5. Logical user/visible-FTS rows and integrity were verified; physical database bytes and an unused sqlite_sequence entry need not reproduce."
+}
