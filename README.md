@@ -159,6 +159,8 @@ cd graph-viewer && npm install && npm run dev
 
 ### 无凭证试跑整条流水线
 
+可复制的运行、来源查询与负例：[免费公开演示](examples/public-demo/README.md)（明确区分 fixed fake 与未执行的合成多文档输入）。
+
 `cairnd --fake` 为每次运行创建独立的本地 Source/Catalog bare 仓库和状态目录，
 写入固定的演示知识，模拟两次 PR 合并并生成可验证的 Bundle，最终到达 `Stable`。
 它不访问真实 GitHub，不调用 LLM，也不修改配置中的远端仓库；这验证控制器的流程，

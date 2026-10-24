@@ -1,0 +1,5 @@
+{"command": ["python3", "examples/public-demo/demo.py"], "cwd": "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean", "source_sha": "9995d9a867943bdfe398c1c8f1d8ba49c3a5f4ff", "initial_worktree": "clean; no bin or .local existed", "dependency_cache": "reused verified Go and module/build cache; no binaries copied", "started_at_utc": "2026-10-24T10:01:30.900283+00:00", "ended_at_utc": "2026-10-24T10:01:37.655371+00:00", "exit_code": 0}
+PASS: fixed fake → Stable Bundle → CLI → real MCP → stored source metadata
+PASS: missing DB exit 1, missing UUID unknown, sample-only query zero hits; Bundle unchanged
+NOT RUN: extraction or graph relationships from the synthetic multi-document input
+Receipt: /workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/public-demo-grzbv3q0/receipt.json

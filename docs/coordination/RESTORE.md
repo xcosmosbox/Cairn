@@ -45,6 +45,15 @@ with concrete local arguments in the report, not the angle-bracket placeholders 
 Fake mode verifies controller flow using fixed synthetic knowledge. It does not exercise
 real model extraction, production GitHub App permissions or production token refresh.
 
+## Public example and accepted recovery
+
+The [public demo](../../examples/public-demo/README.md) supplies reproducible fixed-fake
+commands, real CLI/MCP source-metadata checks and negative cases without model/App keys.
+Its linked synthetic multi-document inputs are explicitly **not consumed by fixed fake**.
+The [accepted successful #10 attempt](reports/issue10-restore-20261024-env/README.md)
+records official Go bootstrap/checksums and passing local free gates, Bundle and MCP evidence.
+The older blocked attempt below remains historical; it is not the latest acceptance state.
+
 ## Finish or diagnose
 
 Compare worktree/lockfile state before and after; do not edit tracked source/locks as part
