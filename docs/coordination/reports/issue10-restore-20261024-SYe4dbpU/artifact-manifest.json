@@ -1,0 +1,82 @@
+{
+  "session": "cairn-10-20261024T085233Z-SYe4dbpU",
+  "source_sha": "faf8ee705112f6c7272706d33cdd787b247353f0",
+  "location": "repository commit pinned in Issue #10 checkpoint and PR",
+  "files": [
+    {
+      "path": "logs/01-environment.log",
+      "bytes": 1250,
+      "sha256": "5e28258e5ea7d95619faaf4e903a9cb60d254b1ea436319febb4c1eb0ce2f5bc"
+    },
+    {
+      "path": "logs/02-make-verify.log",
+      "bytes": 272,
+      "sha256": "6cbab2c1a0a7d75d3c8fda49002566596ad2450f4bb92b2eda9727a3371652ba"
+    },
+    {
+      "path": "logs/03-go-race.log",
+      "bytes": 246,
+      "sha256": "8ba71844c9a15ae46c2b7e38b3afe85b5e5401e510d2ad39825648e8c85c1c27"
+    },
+    {
+      "path": "logs/04-python-quality.log",
+      "bytes": 434,
+      "sha256": "1f3340f10d40463c7c5b67627ba1a9b7e9cbc66524bfc55482af8bf03cea2059"
+    },
+    {
+      "path": "logs/05-smoke-script-regressions.log",
+      "bytes": 327,
+      "sha256": "3bb7848f84053d8901b65ff87f119c23f5304a891c30b78b83d7beef45925e41"
+    },
+    {
+      "path": "logs/06-npm-ci.log",
+      "bytes": 592,
+      "sha256": "0157e66b728bd2a073c0188b926781f1ceefa712cadcd7c154f5128427a10f47"
+    },
+    {
+      "path": "logs/07-viewer-subpath.log",
+      "bytes": 1286,
+      "sha256": "e45b0bf0521b72a8a29a510b72e082f909f26fee6ad97697af2f710ccb2be60f"
+    },
+    {
+      "path": "logs/08-fake-demo.log",
+      "bytes": 309,
+      "sha256": "6855be43688e5f3f4743159999c1dfc452a6adfdd49bbf93cb7831d1339f23cf"
+    },
+    {
+      "path": "logs/09-invariants.log",
+      "bytes": 535,
+      "sha256": "601a361a95f90731cea0cf7e920821e56355b810d3a9824c3bd01f3ed8737af3"
+    },
+    {
+      "path": "logs/10-shell-syntax.log",
+      "bytes": 209,
+      "sha256": "3ad1f933eb2ac5da1d5d786c55557c4823a38e44a86a755eeedbf1cab277ca84"
+    },
+    {
+      "path": "logs/11-export-self-test.log",
+      "bytes": 271,
+      "sha256": "81b038cdcbb2dc4140249e0d73f2776d244b57563eafab0cda2777f194ce2aa1"
+    },
+    {
+      "path": "logs/12-go-bootstrap-probe.log",
+      "bytes": 286,
+      "sha256": "cf3754bd5186277735fb262147c019f2a80ea305d1b9388e8e8852bafb544583"
+    },
+    {
+      "path": "logs/13-worktree-integrity.json",
+      "bytes": 1307,
+      "sha256": "054db3c088dc7ecc9fad8570efcd66820feada356b0ea8fb1791d5f085443e45"
+    },
+    {
+      "path": "logs/14-document-validation.log",
+      "bytes": 1767,
+      "sha256": "a0d0c884dd0dbb474fe8a165c523761aa9a5d9488a57abef2938a63e034198af"
+    },
+    {
+      "path": "logs/results.json",
+      "bytes": 3329,
+      "sha256": "3b0a43c7eaa717f6386bd7f43de8f9da5e1469dbdca8c83015f1d8e6f819bc53"
+    }
+  ]
+}

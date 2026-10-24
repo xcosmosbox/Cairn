@@ -1,0 +1,9 @@
+{"name": "06-npm-ci", "command": ["npm", "ci", "--fetch-retries=0", "--fetch-timeout=15000", "--no-audit", "--no-fund"], "cwd": "graph-viewer", "started_at": "2026-10-24T08:53:55.753775+00:00", "ended_at": "2026-10-24T08:54:06.686291+00:00", "exit_code": 0}
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+added 154 packages in 11s
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

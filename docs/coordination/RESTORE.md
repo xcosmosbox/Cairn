@@ -53,3 +53,14 @@ network access, credentials or activation paths to environment blockers. Attribu
 reproduced code defect to a new Issue with exact steps. Do not rewrite baselines to pass.
 Post the task checkpoint and link a committed report; never claim a command ran if it
 only appears in this guide. No authentication repair or model spending is implied here.
+
+## Recorded fresh-environment attempt
+
+The [2026-10-24 Issue #10 report](reports/issue10-restore-20261024-SYe4dbpU/README.md)
+records a clean checkout at `faf8ee705112f6c7272706d33cdd787b247353f0` with passing
+Python/Viewer checks and a missing Go toolchain. Full free runtime acceptance remains
+blocked; neither a fake Bundle nor an actual MCP knowledge query was produced there.
+The report includes command exits, public logs, source/lockfile integrity and recovery steps.
+Use the live #10 checkpoint for the latest state; this dated attempt is not proof that a
+future environment has restored. If Go is missing, record the exact activation/install
+path supplied by the environment owner and its version before rerunning dependent gates.

@@ -1,0 +1,142 @@
+[
+  {
+    "name": "01-environment",
+    "command": [
+      "bash",
+      "-c",
+      "cat /etc/os-release; uname -a; git --version; command -v go; go version; node --version; npm --version; python3 --version; cc --version | head -1; make --version | head -1; git rev-parse HEAD; git status --short; git ls-files \"*activat*\" \"*setup*\" \"*env*\""
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:53:54.159276+00:00",
+    "ended_at": "2026-10-24T08:53:54.296175+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "02-make-verify",
+    "command": [
+      "make",
+      "verify"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:53:54.296493+00:00",
+    "ended_at": "2026-10-24T08:53:54.298415+00:00",
+    "exit_code": 2
+  },
+  {
+    "name": "03-go-race",
+    "command": [
+      "bash",
+      "-c",
+      "go test -race -count=1 ./..."
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:53:54.298692+00:00",
+    "ended_at": "2026-10-24T08:53:54.300226+00:00",
+    "exit_code": 127
+  },
+  {
+    "name": "04-python-quality",
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "e2e/quality",
+      "-p",
+      "test_*.py"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:53:54.300443+00:00",
+    "ended_at": "2026-10-24T08:53:54.947675+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "05-smoke-script-regressions",
+    "command": [
+      "python3",
+      "scripts/dev/zz_smoke_mcp_test.py"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:53:54.948165+00:00",
+    "ended_at": "2026-10-24T08:53:55.753375+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "06-npm-ci",
+    "command": [
+      "npm",
+      "ci",
+      "--fetch-retries=0",
+      "--fetch-timeout=15000",
+      "--no-audit",
+      "--no-fund"
+    ],
+    "cwd": "graph-viewer",
+    "started_at": "2026-10-24T08:53:55.753775+00:00",
+    "ended_at": "2026-10-24T08:54:06.686291+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "07-viewer-subpath",
+    "command": [
+      "npm",
+      "run",
+      "test:subpath"
+    ],
+    "cwd": "graph-viewer",
+    "started_at": "2026-10-24T08:54:06.686943+00:00",
+    "ended_at": "2026-10-24T08:54:14.778124+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "08-fake-demo",
+    "command": [
+      "./bin/cairnd",
+      "run",
+      "--once",
+      "--fake",
+      "--config",
+      "configs/cairnd-fake.example.yaml"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:54:14.778537+00:00",
+    "ended_at": "2026-10-24T08:54:14.778950+00:00",
+    "exit_code": 127
+  },
+  {
+    "name": "09-invariants",
+    "command": [
+      "make",
+      "check-invariants"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:54:14.779185+00:00",
+    "ended_at": "2026-10-24T08:54:14.803281+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "10-shell-syntax",
+    "command": [
+      "bash",
+      "-n",
+      "scripts/dev/smoke-mcp.sh"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:54:14.803742+00:00",
+    "ended_at": "2026-10-24T08:54:14.805283+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "11-export-self-test",
+    "command": [
+      "python3",
+      "e2e/quality/export_receipts.py",
+      "--self-test"
+    ],
+    "cwd": ".",
+    "started_at": "2026-10-24T08:54:14.805596+00:00",
+    "ended_at": "2026-10-24T08:54:14.848488+00:00",
+    "exit_code": 0
+  }
+]

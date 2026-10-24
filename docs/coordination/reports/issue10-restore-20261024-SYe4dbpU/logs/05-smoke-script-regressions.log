@@ -1,0 +1,6 @@
+{"name": "05-smoke-script-regressions", "command": ["python3", "scripts/dev/zz_smoke_mcp_test.py"], "cwd": ".", "started_at": "2026-10-24T08:53:54.948165+00:00", "ended_at": "2026-10-24T08:53:55.753375+00:00", "exit_code": 0}
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.759s
+
+OK
