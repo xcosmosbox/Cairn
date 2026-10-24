@@ -20,6 +20,10 @@ Read [PROTOCOL.md](PROTOCOL.md), [RESTORE.md](RESTORE.md),
 [TEMPLATES.md](TEMPLATES.md) and [DECISIONS.md](DECISIONS.md).
 English identifiers stay stable; Chinese explanations are welcome. Reports may be bilingual.
 
+The maintainer's [execution policy](EXECUTION_POLICY.md) records the Alpha-to-stable
+goal, model defaults and reuse-first evaluation approach. It supplements this entry;
+live task assignment and acceptance still come from Issue/PR records.
+
 ## Initial parallel work
 
 - #10 environment restoration: documentation/report only; defects become separate Issues.
