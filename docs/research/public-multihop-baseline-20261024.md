@@ -14,11 +14,11 @@ No GraphRAG benefit or stable-release readiness is established by this document.
 | Retrieval quality | MultiHop-RAG complete fixed corpus; MuSiQue-Full v1.0 external protocol | Same-corpus new-question retrieval; external checks after execution |
 | Agent usefulness | Same Cairn task through MCP with fixed solver | Actual task/answer effects only after a controlled run |
 
-Use mature data and thin adapters rather than a new broad framework. MCPMark's isolated
+Use mature data and thin adapters rather than a new broad framework. [MCPMark](https://github.com/eval-sys/mcpmark/tree/cd45b7f57923b9b3985467f5139927575f83141c)'s isolated
 environment/state/trace approach may inform layer 3; its leaderboard is not GraphRAG
-evidence. HotpotQA dev distractor is a useful later diagnostic, but its ten supplied
+evidence. [HotpotQA](https://hotpotqa.github.io/) dev distractor is a useful later diagnostic, but its ten supplied
 paragraphs encode candidate priors; unioning them is a pooled-corpus adaptation, not
-fullwiki. LongBench DuReader is a later Chinese diagnostic, without sentence-level support
+fullwiki. [LongBench v1](https://github.com/THUDM/LongBench/tree/2e00731f8d0bff23dc4325161044d0ed8af94c1e/LongBench) DuReader is a later Chinese diagnostic, without sentence-level support
 labels for direct fact recall; upstream data licensing needs separate checks.
 
 Historical motivation from PRs [#3](https://github.com/xcosmosbox/Cairn/pull/3),
