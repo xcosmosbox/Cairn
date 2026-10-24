@@ -1,0 +1,32 @@
+{
+  "artifacts": {
+    "baseline-diagnostic.json": "e26d395a6e844fa82d7acdc7d3b749de7cf69d8cc074964d9eacb1f1c8749394",
+    "dev-summary.json": "f2db39c504632357d1b307243d38e0c9a2c25af18bd1f53b1dc51990c943cc18",
+    "manifest.json": "c262870250977940b0c0825b3d1697550173cf6c48029c463457270fa8d38663",
+    "paired-qids.json": "75ef184004479af2998ed5838fe3ee41fe79a4691fceb5edb16db4e05a0bd5f2"
+  },
+  "baseline_merge_sha": "bf5d7ec0828b85695a0ad5e196f11f32f02462cb",
+  "control_matches_frozen_baseline": true,
+  "format": "cairn-mhr-sourcecap2-validation/v1",
+  "holdout": "frozen_not_evaluated",
+  "implementation_sha256": "1a422794b38b762d7dbf19f1c121a65c4e944d9586b570b1b2e8d4c1ab4fc05a",
+  "index_sha256_before_after": "9d38e152df5ff1dde536367a5d4654879ce95f9a00338ae6fbca78dde1ddc4d0",
+  "manifest_sha256": "c262870250977940b0c0825b3d1697550173cf6c48029c463457270fa8d38663",
+  "model_graph_calls": 0,
+  "preregistered_remote_commit": "537a447ddd1894431c9cd8895fb9e5e78a617a84",
+  "real_dev": {
+    "command": "python3 e2e/benchmarks/multihop_public/sourcecap2/experiment.py --data-root <verified-data> --index <baseline-index> --output <new-output> --paired-output <new-paired-output>",
+    "exit_code": 0,
+    "seconds": 6.099179003002064
+  },
+  "scope": "only new sourcecap2 files; no baseline/CI/production/runner changes",
+  "source_commit": "6101a18b1c4a906fe5df9e5a7679eabbba1be78d",
+  "strategy_decision": "maintainer rejected sourcecap2 as default/production; preserve negative result; no more same-DEV cap tuning",
+  "tests": {
+    "command": "python3 -m unittest discover -s e2e/benchmarks/multihop_public -p test_*.py -v",
+    "exit_code": 0,
+    "new_sourcecap_tests": 6,
+    "total": 16,
+    "unchanged_baseline_tests": 10
+  }
+}
