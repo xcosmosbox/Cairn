@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/workspace/scratch/c1bb49a45412/cairn-runtime33/core/evolve/record.go": "/workspace/scratch/c1bb49a45412/cairn-runtime33/docs/coordination/reports/issue33-lock-20261024-runtime/instrumented_record.go.txt"
+  }
+}
