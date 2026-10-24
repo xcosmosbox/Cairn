@@ -1,0 +1,18 @@
+{
+  "format": "cairn-mhr-v1",
+  "chunk_tokens": 256,
+  "stride_tokens": 224,
+  "top_k": 10,
+  "context_chars": 10000,
+  "dev_per_type": 32,
+  "holdout_per_type": 64,
+  "types": ["inference_query", "comparison_query", "temporal_query", "null_query"],
+  "split_salt": "cairn-mhr-v1",
+  "near_duplicate_jaccard": 0.85,
+  "index": "SQLite FTS5 unicode61 over canonical title/source/published_at metadata + newline + body chunk; whitespace quoted atoms OR; BM25 ASC, chunk_id ASC",
+  "raw": "casefold literal whitespace/quoted-phrase OR; matched-term count DESC, density DESC, chunk_id ASC",
+  "visible_metadata": ["title", "source", "published_at"],
+  "graph": "not_run_no_real_graph",
+  "holdout": "frozen_not_evaluated",
+  "musique_full": "independent external validation; protocol owned by docs/research; not downloaded or run in this implementation"
+}

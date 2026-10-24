@@ -1,0 +1,11 @@
+{
+  "chunks": 4976,
+  "corpus_sha256": "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f",
+  "documents": 609,
+  "format": "cairn-mhr-source-index/v1",
+  "index_bytes": 24936448,
+  "index_scope": "original title/source/published_at and body only; no questions, answers, gold facts or graph",
+  "index_sha256": "9d38e152df5ff1dde536367a5d4654879ce95f9a00338ae6fbca78dde1ddc4d0",
+  "protocol_sha256": "12b76e3fae841c3b5a507c1771ff0bf805266c58fdd335dec5e2bc8055ed7d70",
+  "source_inventory_sha256": "1b424a3521eb59e5f1b8aa82a9276d648f84d95272b1dda7e7ac7989d26c24f9"
+}

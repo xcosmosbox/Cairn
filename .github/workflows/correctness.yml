@@ -29,6 +29,7 @@ jobs:
       - name: Retrieval evaluation protocol and durable audit regressions
         run: |
           python3 -m unittest discover -s e2e/quality -p 'test_*.py'
+          python3 -m unittest discover -s e2e/benchmarks/multihop_public -p 'test_*.py'
           python3 e2e/quality/export_receipts.py --self-test
   viewer:
     runs-on: ubuntu-latest

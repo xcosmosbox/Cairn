@@ -1,0 +1,34 @@
+{
+  "ci_integration": "one focused unittest discovery command added; existing gates unchanged",
+  "dev": {
+    "exit_code": 0,
+    "seconds": 44.50768404700648
+  },
+  "freeze": {
+    "exit_code": 0,
+    "seconds": 0.507
+  },
+  "holdout": "frozen_not_evaluated",
+  "implementation_sha256": "4a8121d352bd2385badedcd24feea1d7fc3e29029b7ae109150ff7bdfc96966e",
+  "index_build": {
+    "exit_code": 0,
+    "seconds": 0.623
+  },
+  "not_run": [
+    "real_graph",
+    "paid_models",
+    "answer_solver",
+    "local_full_go_viewer_environment_gates"
+  ],
+  "source_commit": "0f147c88e82a4b35623c907cd2f12d6e3646f17a",
+  "source_verification": {
+    "command": "python3 e2e/benchmarks/multihop_public/benchmark.py download --data-root <existing-verified-data>",
+    "exit_code": 0,
+    "note": "reused researcher downloads; all three pinned files verified; no download network claim"
+  },
+  "tests": {
+    "command": "python3 -m unittest discover -s e2e/benchmarks/multihop_public -p test_*.py -v",
+    "exit_code": 0,
+    "tests": 10
+  }
+}

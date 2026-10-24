@@ -1,0 +1,11 @@
+{
+  "format": "cairn-multihop-public-sources/v1",
+  "dataset": "yixuantt/MultiHopRAG",
+  "revision": "71ac0d0bd1f951d2d6b70311f7d2ae404e1ffa82",
+  "license_metadata": "ODC-BY; underlying news copyright is separate; do not redistribute article text",
+  "files": {
+    "corpus.json": {"bytes": 6785567, "sha256": "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f", "records": 609},
+    "MultiHopRAG.json": {"bytes": 5171312, "sha256": "03cfb4926461f868684903aadc8024447bdda5bb3f6804741424cce338515bff", "records": 2556},
+    "README.md": {"bytes": 1312, "sha256": "f671db44cf1802f359451e466d82c68c5059d58451b8976ce8329b74d8b89001"}
+  }
+}
