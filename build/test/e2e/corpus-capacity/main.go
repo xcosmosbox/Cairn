@@ -33,6 +33,8 @@ func main() {
 }
 
 func run() error {
+	overlay := flag.String("runtime-overlay", filepath.Join(rootPath(), "e2e/benchmarks/multihop_public/capacity/runtime-cross-relations-v1.json"), "new immutable reviewed runtime overlay")
+	overlaySHA := flag.String("runtime-overlay-sha256", "", "exact reviewed runtime overlay SHA256 required for preflight/run")
 	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit or trace-audit; no whole-run retry")
 	corpus := flag.String("corpus", "", "exact frozen corpus.json; no QA input")
 	out := flag.String("out", "", "new prepare output, or prepared directory for preflight/run/audit")
@@ -82,6 +84,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	cfg, overlayRaw, err := loadRuntimeOverlay(*overlay, *overlaySHA, *selectionSHA, s)
+	if err != nil {
+		return err
+	}
+	if err := cfg.checkLimits(*maxTokens, *requestTimeout, *stageTimeout, *runTimeout); err != nil {
+		return err
+	}
+	freeze, err := freezeRuntime(*out, *overlaySHA, *selectionSHA, s, cfg)
+	if err != nil {
+		return err
+	}
 	if *maxTokens < 1 || *maxTokens > dkconfig.DeepSeekMaxOutputTokens || *requestTimeout <= 0 || *stageTimeout <= 0 || *runTimeout <= 0 {
 		return fmt.Errorf("positive finite limits required")
 	}
@@ -99,12 +112,6 @@ func run() error {
 	if _, err = counter.Count(ctx, probe); err != nil {
 		return fmt.Errorf("verified official tokenizer runtime required")
 	}
-	if *mode == "preflight" {
-		return writeNew(filepath.Join(*out, "preflight.json"), map[string]any{"status": "offline_tokenizer_and_original_identity_pass", "selection_sha256": *selectionSHA, "selected_documents": len(s.Documents), "model_calls": 0, "runtime_receipt_sha256": *runtimeSHA, "full609_admitted": false})
-	}
-	if !*allowPaid || os.Getenv("CAIRN_LLM_API_KEY") == "" {
-		return fmt.Errorf("separate execution admission and runtime key required")
-	}
 	version, commit := buildmeta.BuilderVersion()
 	binaryPath, err := os.Executable()
 	if err != nil {
@@ -114,10 +121,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if *mode == "preflight" {
+		return writeNew(filepath.Join(*out, "preflight.json"), map[string]any{"status": "offline_tokenizer_and_original_identity_pass", "selection_sha256": *selectionSHA, "selected_documents": len(s.Documents), "model_calls": 0, "runtime_receipt_sha256": *runtimeSHA, "full609_admitted": false, "runtime_overlay_sha256": *overlaySHA, "runtime_freeze": freeze, "executable_sha256": sha(binaryBytes), "capacity_driver_source_digest": driverSourceDigest(), "production_source_digest": buildmeta.SourceDigest("annotation/", "extract/", "pipeline/", "llm/", "discovery/", "ingest/", "writeback/")})
+	}
+	if !*allowPaid || os.Getenv("CAIRN_LLM_API_KEY") == "" {
+		return fmt.Errorf("separate execution admission and runtime key required")
+	}
+	// New run identities retain their exact reviewed overlay and pre-paid source bounds.
+	if err := writeBytesNew(filepath.Join(*out, "runtime-overlay.json"), overlayRaw); err != nil {
+		return err
+	}
+	if err := writeNew(filepath.Join(*out, "runtime-freeze.json"), freeze); err != nil {
+		return err
+	}
 	effective := map[string]any{"format": "cairn-capacity-run/v1", "started_at": now(), "selection_sha256": *selectionSHA, "protocol_sha256": s.ProtocolSHA, "builder_version": version, "builder_commit": commit,
 		"production_source_digest": buildmeta.SourceDigest("annotation/", "extract/", "pipeline/", "llm/", "discovery/", "ingest/", "writeback/"), "endpoint": dkconfig.DeepSeekEndpoint, "requested_model": dkconfig.DeepSeekFlashModel,
-		"executable_sha256": sha(binaryBytes),
-		"max_tokens":        *maxTokens, "http_max_retries": 3, "annotation_attempts": 3, "annotation_rounds": 3, "min_confidence": 0.7, "concurrency": 8,
+		"executable_sha256": sha(binaryBytes), "capacity_driver_source_digest": driverSourceDigest(), "runtime_overlay_sha256": *overlaySHA, "cross_relation_evidence_bytes": cfg.CrossEvidenceBytes, "minimum_actual_incidence_coverage": cfg.MinimumIncidence,
+		"max_tokens": *maxTokens, "http_max_retries": 3, "annotation_attempts": 3, "annotation_rounds": 3, "min_confidence": 0.7, "concurrency": 8,
 		"request_timeout_seconds": requestTimeout.Seconds(), "stage_timeout_seconds": stageTimeout.Seconds(), "run_timeout_seconds": runTimeout.Seconds(), "whole_run_retries": 0,
 		"token_runtime_sha256": *runtimeSHA, "token_python_sha256": *pythonSHA, "token_adapter_sha256": sha(adapterBytes), "thinking": "unchanged production request; see exact per-attempt metadata", "provider_backing_version": "documentation maps alias to V4.1-Flash-1017; actual served revision unknown unless returned",
 		"original_span_mapping": "selection offsets bind unchanged original bodies; optional original span hints remain unknown/unverified and do not locate rewritten Markdown", "holdout": "closed; no QA inputs"}
@@ -146,7 +166,7 @@ func run() error {
 		return err
 	}
 	bounded := &boundedClient{next: client, sem: make(chan struct{}, 8), ledger: ledger}
-	orch, err := pipeline.NewOrchestrator(pipeline.Options{RepositoryIdentity: "cairn-multihop-public-originals-v1", Client: bounded, MaxTokens: *maxTokens, MaxRetries: 3, MaxRollbacks: 3, MinConfidence: 0.7, DumpDir: filepath.Join(*out, "stages"), StageTimeout: *stageTimeout})
+	orch, err := pipeline.NewOrchestrator(capacityPipelineOptions(cfg, bounded, filepath.Join(*out, "stages")))
 	if err != nil {
 		return err
 	}

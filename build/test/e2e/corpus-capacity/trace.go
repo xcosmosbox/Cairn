@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,10 +77,11 @@ type tokenCounter interface {
 
 type callKey struct{}
 type callInfo struct {
-	ID       int64
-	Stage    string
-	Document string
-	Attempts atomic.Int64
+	ID        int64
+	Stage     string
+	Document  string
+	Documents []string
+	Attempts  atomic.Int64
 }
 
 type boundedClient struct {
@@ -112,8 +114,8 @@ func (c *boundedClient) Complete(ctx context.Context, req llm.CompleteRequest) (
 			break
 		}
 	}
-	info := &callInfo{ID: c.sequence.Add(1), Stage: stage(req.System), Document: documentIdentity(req.User)}
-	if err := c.ledger.append(map[string]any{"event": "logical_start", "call_id": info.ID, "stage": info.Stage, "document_id": info.Document, "time_utc": now()}); err != nil {
+	info := &callInfo{ID: c.sequence.Add(1), Stage: stage(req.System), Document: documentIdentity(req.User), Documents: documentIdentities(req.User)}
+	if err := c.ledger.append(map[string]any{"event": "logical_start", "call_id": info.ID, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now()}); err != nil {
 		return nil, fmt.Errorf("capacity: logical receipt failed")
 	}
 	response, err := c.next.Complete(context.WithValue(ctx, callKey{}, info), req)
@@ -129,7 +131,7 @@ func stage(system string) string {
 	for _, s := range []struct{ prefix, name string }{
 		{"你是知识结构化标注专家。", "annotation"}, {"你是知识标注的语义核验专家。", "semantic_gate"},
 		{"你是领域知识融合专家。", "extract"}, {"你是领域知识图谱的修正助手。", "repair"},
-		{"你是一个文件命名助手。", "file_slug"},
+		{"你是一个文件命名助手。", "file_slug"}, {"你是跨子域关系的原文验证专家。", "cross_relation_verify"},
 		{"你是知识融合重写专家。", "describe"}, {"你是领域知识关系识别专家。", "relate"},
 	} {
 		if strings.HasPrefix(system, s.prefix) {
@@ -151,6 +153,14 @@ func stage(system string) string {
 	return "unknown"
 }
 
+func knownStageName(name string) bool {
+	switch name {
+	case "annotation", "semantic_gate", "extract", "repair", "file_slug", "describe", "relate", "backfill", "coverage", "cross_relation_verify":
+		return true
+	}
+	return false
+}
+
 var documentRE = regexp.MustCompile(`references/([a-f0-9]{64})\.md`)
 
 func documentIdentity(user string) string {
@@ -159,6 +169,20 @@ func documentIdentity(user string) string {
 		return v[1]
 	}
 	return "not_exposed_by_prompt"
+}
+
+// Multi-source verifier calls must not be attributed only to the first matching path.
+func documentIdentities(user string) []string {
+	seen := map[string]bool{}
+	for _, match := range documentRE.FindAllStringSubmatch(user, -1) {
+		seen[match[1]] = true
+	}
+	result := make([]string, 0, len(seen))
+	for id := range seen {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
 }
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
@@ -198,7 +222,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("capacity: missing logical call identity")
 	}
 	attempt := info.Attempts.Add(1)
-	row := map[string]any{"event": "request", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "document_id": info.Document, "time_utc": now(), "admitted": false}
+	row := map[string]any{"event": "request", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now(), "admitted": false}
 	reject := func(class string) (*http.Response, error) {
 		row["rejection"] = class
 		_ = t.ledger.append(row)
