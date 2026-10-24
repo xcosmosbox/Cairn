@@ -1,0 +1,49 @@
+{
+  "runtime_receipt_sha256": "aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5",
+  "fixtures": [
+    {
+      "fixture": "simple",
+      "request_sha256": "f85990a6b6ad1cdaf9aed637c26cf7db78bd9a7c943ddb4204a4ae2411e7d951",
+      "request_bytes": 222,
+      "exit_code": 0,
+      "stderr_bytes": 0,
+      "receipt": {
+        "input_tokens": 60,
+        "reserved_output_tokens": 64,
+        "context_limit": 1000000,
+        "counter_id": "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41",
+        "runtime_receipt_sha256": "aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5"
+      }
+    },
+    {
+      "fixture": "special-spelling",
+      "request_sha256": "4c40fee10e57890315f20c3f59dc06675da439059cfd964b67bf90bafc9d8cff",
+      "request_bytes": 269,
+      "exit_code": 0,
+      "stderr_bytes": 0,
+      "receipt": {
+        "input_tokens": 75,
+        "reserved_output_tokens": 64,
+        "context_limit": 1000000,
+        "counter_id": "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41",
+        "runtime_receipt_sha256": "aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5"
+      }
+    },
+    {
+      "fixture": "overflow",
+      "request_sha256": "02003c3db51181bdcc20d06b7a3bb7c7e13ff788bcd4cc0b3f3f055b18edadfb",
+      "request_bytes": 1400202,
+      "exit_code": 1,
+      "stderr_bytes": 59
+    }
+  ],
+  "format": "cairn-capacity-offline-tokenizer-validation/v1",
+  "observed_at_utc": "2026-10-24T14:09:21.710787+00:00",
+  "model_calls": 0,
+  "qa_or_holdout_reads": 0,
+  "recipe_commit": "935817c66f5d6e64838f419692545f06787e485f",
+  "wheel_sha256": "259812bf382bc82668b672707c5922095cc4f5f60a6c514ff89640bb62a746f7",
+  "tokenizer_sha256": "81f64d1248a68ce3663e07ab3ee48b851e5df0e32d27cb98e4c9a268151e8d99",
+  "runtime_provenance": "Official PyPI deepseek-recipe0.2.0 binary wheel. Python binding files matched pinned source; native wheel was not rebuilt from that source commit.",
+  "command_shape": "<pinned-isolated-python> -I e2e/benchmarks/multihop_public/capacity/token_count.py --runtime-receipt <pinned-receipt> --runtime-receipt-sha256 aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5; synthetic exact request JSON on stdin"
+}

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-race",
+    "-count=1",
+    "-v",
+    "./core/storage",
+    "./core/kbbundle",
+    "./service/cmd/cairn",
+    "./service/cmd/cairn-mcp",
+    "./service/internal/service",
+    "-run",
+    "Test(RealSchema4ReadCompatibilityWithoutMigration|TrueSchema4StatusSentinelAndGetNodeAreReadonly|WhyReadsTrueSchema4WithoutMigration|LegacyV4StartupAndHotSwapRemainReadOnly|HotSwapKeepsCompleteRequestAlive|SymlinkDoesNotRetargetAcquiredConnections|InvalidSwapPreservesHealthyGeneration|InstallReusesImmutableGenerationWhileReaderPinsRollback)$"
+  ],
+  "exit_code": 0
+}

@@ -1,0 +1,8 @@
+{
+  "full609_admitted": false,
+  "model_calls": 0,
+  "runtime_receipt_sha256": "aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5",
+  "selected_documents": 12,
+  "selection_sha256": "e36722a07a47cdd2891295b4507520d4b4bd8c414a7bcd8bad290e59e81c23de",
+  "status": "offline_tokenizer_and_original_identity_pass"
+}

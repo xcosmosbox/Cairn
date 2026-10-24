@@ -1,0 +1,7 @@
+Cairn MCP Server v2.0.0 (multi-DB)
+知识库文件不存在，将自动拉取 / KB file not found, will auto-pull: recovery (/tmp/cairn-remote-recovery-tp9141jh/installed/current/knowledge.db)
+GitHub App 鉴权就绪（app_id=5454525, installation=174795212）
+MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 0 个知识库 / 0 KBs loaded（1 个 KB 启用 catalog 自动更新）
+[catalog-watch] recovery: 检测到新 stable（ → sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1），开始拉取...
+[catalog-watch] recovery: 拉取失败: kbbundle.PullRemote: 下载 bundle.tar.gz: HTTP 404
+[catalog-watch] recovery: 启动轮询（间隔 2s, catalog=xcosmosbox/cairn-app-sandbox）

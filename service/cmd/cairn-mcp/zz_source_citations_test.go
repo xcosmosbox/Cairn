@@ -43,10 +43,65 @@ func sourceFixture(t *testing.T, file, prefix string) string {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// 同一事务的逐条 INSERT 仍可能跨越 datetime('now') 的秒边界，令 b 更新、
+	// 合法胜出而破坏本 fixture 对 a 的并列排序预期；固定时刻只锁定测试前提。
+	// Pin the tie explicitly: per-statement clock defaults may differ even inside
+	// one transaction. Production still prefers the latest timestamp before UUID.
+	if _, err := db.Conn().ExecContext(ctx, `UPDATE uuid_lineage SET created_at = ?`, "2020-01-01 00:00:00"); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return file
+}
+
+// 较新的 split 后继必须携带自己的来源，而不是并列胜出者或兄弟的来源。
+// Explicitly newer b must resolve to b's metadata while reporting a as its sibling.
+func TestResolveNodeSplitSourcesFollowExplicitNewerSuccessor(t *testing.T) {
+	t.Parallel()
+	file := sourceFixture(t, filepath.Join(t.TempDir(), "newer.db"), "newer")
+	db, err := storage.NewDB(storage.DBOptions{Path: file, JournalMode: "DELETE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, updateErr := db.Conn().ExecContext(context.Background(),
+		`UPDATE uuid_lineage SET created_at = ? WHERE old_uuid = ? AND new_uuid = ?`,
+		"2020-01-01 00:00:01", "split", "b")
+	closeErr := db.Close()
+	if updateErr != nil || closeErr != nil {
+		t.Fatalf("fixture timestamps: update=%v close=%v", updateErr, closeErr)
+	}
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := lifecycleState(t, file)
+	result, errText := toolResolveNode(state, map[string]interface{}{"uuid": "split", "include_sources": true})
+	if errText != "" {
+		t.Fatal(errText)
+	}
+	info := decodeSourceInfo(t, result)
+	if info.NodeUUID != "b" || info.Status != "available" || len(info.Locations) != 1 ||
+		info.Locations[0].MemberID != "member-b" || info.Locations[0].FilePath != "newer/b.md" ||
+		info.Locations[0].Skill != "newer-skill" || info.Locations[0].SpanStatus != "unknown" {
+		t.Fatalf("newer successor source ownership: %+v", info)
+	}
+	if !strings.Contains(result.Content[0].Text, "b（queue-b）") || !strings.Contains(result.Content[0].Text, "a:queue-a") {
+		t.Fatalf("primary b and sibling a not reported: %s", result.Content[0].Text)
+	}
+	if strings.Contains(result.Content[1].Text, "member-a") || strings.Contains(result.Content[1].Text, "/a.md") ||
+		strings.Contains(result.Content[1].Text, "wrong-old") {
+		t.Fatalf("sibling or stale source attached to primary b: %s", result.Content[1].Text)
+	}
+	state.close()
+	after, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("newer split source resolution wrote DB")
+	}
 }
 
 func decodeSourceInfo(t *testing.T, result *toolResult) *service.NodeSources {

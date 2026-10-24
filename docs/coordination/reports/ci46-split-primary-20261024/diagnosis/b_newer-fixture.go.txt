@@ -1,0 +1,227 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/storage"
+	"github.com/xcosmosbox/cairn/service/internal/service"
+)
+
+func sourceFixture(t *testing.T, file, prefix string) string {
+	t.Helper()
+	db, err := storage.NewDB(storage.DBOptions{Path: file, JournalMode: "DELETE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, id := range []string{"a", "b", "empty"} {
+		if err := storage.NewNodeRepo(db).Insert(ctx, &dktypes.Node{ID: id, Name: "queue-" + id, Label: dktypes.LabelConcept, Provenance: dktypes.ProvenanceExtraction, Summary: "bounded queue", SourceRefs: prefix + "-skill"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := storage.NewNodeSourceRepo(db).InsertBatch(ctx, []storage.NodeSource{
+		{NodeUUID: "a", MemberID: "member-a", Skill: prefix + "-skill", FilePath: prefix + "/a.md", StartLine: 6, EndLine: 8},
+		{NodeUUID: "b", MemberID: "member-b", Skill: prefix + "-skill", FilePath: prefix + "/b.md"},
+		{NodeUUID: "old", MemberID: "stale", FilePath: "wrong-old-source.md"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.NewUUIDLineageRepo(db).InsertBatch(ctx, []storage.UUIDLineage{
+		{OldUUID: "old", NewUUID: "a", Reason: "merged"},
+		{OldUUID: "split", NewUUID: "a", Reason: "split"},
+		{OldUUID: "split", NewUUID: "b", Reason: "split"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Diagnostic fixture overlay only: explicit timestamps isolate resolver ordering.
+	if _, err := db.Conn().ExecContext(ctx, "UPDATE uuid_lineage SET created_at=CASE WHEN old_uuid='split' AND new_uuid='b' THEN '2020-01-01 00:00:01' ELSE '2020-01-01 00:00:00' END"); err != nil { t.Fatal(err) }
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func decodeSourceInfo(t *testing.T, result *toolResult) *service.NodeSources {
+	t.Helper()
+	if len(result.Content) != 2 {
+		t.Fatalf("source result should append one text block: %+v", result)
+	}
+	var envelope struct {
+		RequestedUUID string              `json:"requested_uuid"`
+		Scope         string              `json:"scope"`
+		Sources       service.NodeSources `json:"source_metadata"`
+	}
+	if err := json.Unmarshal([]byte(result.Content[1].Text), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Scope != "resolved_node_only" || envelope.RequestedUUID == "" {
+		t.Fatalf("missing ownership: %+v", envelope)
+	}
+	return &envelope.Sources
+}
+
+// 默认格式不可因来源扩展改变；旧 UUID 的来源必须属于同一 KG 已解析的存活节点。
+// Lock legacy output and prevent stale/split-sibling/cross-KG citation misattribution.
+func TestResolveNodeSourceContract(t *testing.T) {
+	t.Parallel()
+	tools := handleToolsList(&jsonRPCRequest{}).Result.(map[string]interface{})["tools"].([]toolDef)
+	found := false
+	for _, tool := range tools {
+		if tool.Name == "resolve_node" {
+			found = true
+			option := tool.InputSchema["properties"].(map[string]interface{})["include_sources"].(map[string]interface{})
+			if option["type"] != "boolean" || option["default"] != false {
+				t.Fatalf("source opt-in discovery: %+v", option)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("resolve_node tool missing")
+	}
+	file := sourceFixture(t, filepath.Join(t.TempDir(), "sources.db"), "first")
+	before, _ := os.ReadFile(file)
+	state := lifecycleState(t, file)
+	for _, id := range []string{"a", "old", "split", "missing"} {
+		plain, errText := toolResolveNode(state, map[string]interface{}{"uuid": id})
+		if errText != "" || len(plain.Content) != 1 {
+			t.Fatalf("legacy: %+v %s", plain, errText)
+		}
+		explicit, errText := toolResolveNode(state, map[string]interface{}{"uuid": id, "include_sources": false})
+		x, _ := json.Marshal(plain)
+		y, _ := json.Marshal(explicit)
+		if errText != "" || !bytes.Equal(x, y) {
+			t.Fatalf("false changed legacy result: %s %s %s", x, y, errText)
+		}
+		with, errText := toolResolveNode(state, map[string]interface{}{"uuid": id, "include_sources": true})
+		if errText != "" || with.Content[0].Text != plain.Content[0].Text {
+			t.Fatalf("opt-in changed legacy prefix: %+v %s", with, errText)
+		}
+		info := decodeSourceInfo(t, with)
+		if id == "missing" {
+			if info.Status != "unknown" || info.NodeUUID != "" {
+				t.Fatalf("missing node invented: %+v", info)
+			}
+			continue
+		}
+		if info.NodeUUID != "a" || len(info.Locations) != 1 || info.Locations[0].FilePath != "first/a.md" {
+			t.Fatalf("source ownership (%s): %+v", id, info)
+		}
+		if strings.Contains(with.Content[1].Text, "wrong-old") || strings.Contains(with.Content[1].Text, "first/b.md") {
+			t.Fatalf("stale or sibling sources leaked: %+v", with)
+		}
+		if id == "split" && !strings.Contains(with.Content[0].Text, "b:queue-b") {
+			t.Fatalf("split successor omitted: %+v", with)
+		}
+	}
+	want := "✓ UUID a 存活 / alive。\n- 名称/Name: queue-a\n- 类型/Type: Concept\n- 域/Domain: /\n- 摘要/Summary: bounded queue\n"
+	plain, _ := toolResolveNode(state, map[string]interface{}{"uuid": "a"})
+	if plain.Content[0].Text != want {
+		t.Fatalf("legacy output changed: %q", plain.Content[0].Text)
+	}
+	empty, _ := toolResolveNode(state, map[string]interface{}{"uuid": "empty", "include_sources": true})
+	if info := decodeSourceInfo(t, empty); info.Status != "unknown" || info.Reason != "no_source_locations" {
+		t.Fatalf("empty: %+v", info)
+	}
+	for _, bad := range []interface{}{"true", 1, nil} {
+		if _, errText := toolResolveNode(state, map[string]interface{}{"uuid": "a", "include_sources": bad}); errText == "" {
+			t.Fatal("non-boolean opt-in accepted")
+		}
+	}
+	other := sourceFixture(t, filepath.Join(t.TempDir(), "other.db"), "other")
+	db, svc, resolved, err := openValidatedKB(other, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.svcs["other"], state.storages["other"], state.meta["other"] = svc, db, kbMeta{Name: "other", Path: resolved}
+	result, errText := toolResolveNode(state, map[string]interface{}{"uuid": "a", "kg": "other", "include_sources": true})
+	if errText != "" || decodeSourceInfo(t, result).Locations[0].FilePath != "other/a.md" {
+		t.Fatalf("wrong KG: %+v %s", result, errText)
+	}
+	if _, errText := toolResolveNode(state, map[string]interface{}{"uuid": "a", "kg": "missing", "include_sources": true}); errText == "" {
+		t.Fatal("unknown KG bypassed routing")
+	}
+	state.close()
+	after, _ := os.ReadFile(file)
+	if !bytes.Equal(before, after) {
+		t.Fatal("MCP source resolution wrote DB")
+	}
+}
+
+// 通过真实入口与 stdio 会话验证 sources 不是仅内部 DTO，且默认无第二文本块。
+// Exercise the real entry point, handshake and opt-in wire response without a fixed binary.
+func TestResolveNodeSourcesRealStdio(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	file := sourceFixture(t, filepath.Join(dir, "knowledge.db"), "wire")
+	config := filepath.Join(dir, "mcp.yaml")
+	if err := os.WriteFile(config, []byte(fmt.Sprintf("mcp:\n  knowledge_bases:\n    - name: smoke\n      path: %s\n", file)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMCPTransportChild$")
+	cmd.Env = append(os.Environ(), "CAIRN_TRANSPORT_TEST=1", "CAIRN_TRANSPORT_CONFIG="+config, "CAIRN_TRANSPORT_ADDR=")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	encoder, decoder := json.NewEncoder(in), json.NewDecoder(out)
+	call := func(id int, method string, params interface{}) map[string]interface{} {
+		t.Helper()
+		if err := encoder.Encode(wireRequest(id, method, params)); err != nil {
+			t.Fatal(err)
+		}
+		var response map[string]interface{}
+		if err := decoder.Decode(&response); err != nil {
+			t.Fatalf("wire decode: %v %s", err, stderr.String())
+		}
+		return requireWireSuccess(t, response, id)
+	}
+	call(1, "initialize", map[string]interface{}{"protocolVersion": mcpProtocolVersion})
+	if err := encoder.Encode(map[string]interface{}{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
+		t.Fatal(err)
+	}
+	for i, include := range []bool{false, true} {
+		result := call(i+2, "tools/call", map[string]interface{}{"name": "resolve_node", "arguments": map[string]interface{}{"uuid": "old", "kg": "smoke", "include_sources": include}})
+		encoded, _ := json.Marshal(result)
+		var tool toolResult
+		if err := json.Unmarshal(encoded, &tool); err != nil {
+			t.Fatal(err)
+		}
+		if !include {
+			if len(tool.Content) != 1 {
+				t.Fatalf("default sources leaked: %+v", tool)
+			}
+			continue
+		}
+		info := decodeSourceInfo(t, &tool)
+		if info.NodeUUID != "a" || info.Status != "available" || len(info.Locations) != 1 || info.Locations[0].FilePath != "wire/a.md" || info.Locations[0].StartLine != 6 || info.Locations[0].EndLine != 8 {
+			t.Fatalf("wire source metadata: %+v", info)
+		}
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("child: %v %s", err, stderr.String())
+	}
+}
