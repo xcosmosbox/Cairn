@@ -150,6 +150,10 @@ class DurabilityAbort(ModelCallError):
     """A run-level persistence failure, never a provider/protocol retry."""
 
 
+class AuthorizationAbort(ModelCallError):
+    """鉴权失败停止整个运行的新准入；already admitted calls still drain."""
+
+
 class RunDurability:
     """Serialize request admission with result appends and latch any failure.
 
@@ -162,6 +166,12 @@ class RunDurability:
         self.result_ledger = result_ledger
         self.lock = threading.Lock()
         self.failure = None
+        self.authorization_failure = None
+
+    def stop_authorization(self, status):
+        with self.lock:
+            if self.authorization_failure is None:
+                self.authorization_failure = f"provider HTTP {status}"
 
     def _fail_locked(self, error):
         if self.failure is None:
@@ -173,6 +183,8 @@ class RunDurability:
 
     def admit(self, ledger: JSONLedger, budget: CallBudget, record: dict, attempts: list[dict]) -> dict:
         with self.lock:
+            if self.authorization_failure is not None:
+                raise AuthorizationAbort("run stopped after authorization failure: " + self.authorization_failure, attempts)
             if self.failure is not None:
                 raise DurabilityAbort("run stopped after ledger failure: " + self.failure, attempts)
             try:
@@ -259,9 +271,19 @@ class NativeDeepSeekClient(DeepSeekClient):
                 record["assistant_message"] = message
                 record["status"] = "ok"
             except urllib.error.HTTPError as exc:
-                raw = exc.read()
+                if exc.code in (401, 403):
+                    # 先封住跨 worker 准入，再读取/持久化响应；无需等待调度器。
+                    # Latch before response handling so another worker cannot retry meanwhile.
+                    self.durability.stop_authorization(exc.code)
+                try:
+                    raw = exc.read()
+                except (OSError, http.client.HTTPException):
+                    # HTTP 状态已经收到，错误体读取失败也必须留下响应事件。
+                    # An unreadable error body does not erase the observed HTTP status.
+                    raw = b""
                 record.update(http_status=exc.code, response_sha256=hashlib.sha256(raw).hexdigest(),
-                              response_bytes=len(raw), status="error", error=f"provider HTTP {exc.code}")
+                              response_bytes=len(raw), status="error", error=f"provider HTTP {exc.code}",
+                              usage=None, usage_unknown=True)
             except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException) as exc:
                 record["status"] = "error"
                 record["error"] = str(exc).replace(self._api_key, "[REDACTED]")[:1000]
@@ -278,6 +300,8 @@ class NativeDeepSeekClient(DeepSeekClient):
                 raise DurabilityAbort(str(exc), attempts) from exc
             if record["status"] == "ok":
                 return message, attempts
+            if record.get("http_status") in (401, 403):
+                raise AuthorizationAbort("run stopped after authorization failure: " + record["error"], attempts)
         raise ModelCallError(attempts[-1].get("error", "provider request failed"), attempts)
 
 
@@ -357,10 +381,10 @@ def evaluate_question(question_id: str, question: str, arm: str, engine: Retriev
                 force_submit = True
         else:
             raise ValueError("model-turn budget exhausted without a final answer")
-    except DurabilityAbort as exc:
+    except (DurabilityAbort, AuthorizationAbort) as exc:
         calls.extend(exc.attempts)
         result["error"] = str(exc)
-        result["failure_kind"] = "ledger_durability_abort"
+        result["failure_kind"] = "authorization_abort" if isinstance(exc, AuthorizationAbort) else "ledger_durability_abort"
         result["execution_state"] = "partial" if calls else "not_started"
         result["network_attempted"] = bool(calls)
         # No attempt is reserved for jobs blocked by the run latch. A failed
@@ -500,9 +524,12 @@ def main():
                "kg_sha256_before": kg_before, "kg_sha256_after": sha256_file(args.kg_db)}
     summary["kg_unchanged"] = summary["kg_sha256_before"] == summary["kg_sha256_after"]
     summary["ledger_integrity"] = "verified against all persisted result model_calls; zero reconstructed events"
+    summary["authorization_stop"] = client.durability.authorization_failure
     (args.output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     if not summary["kg_unchanged"]:
         raise RuntimeError("evaluation changed the knowledge database")
+    if client.durability.authorization_failure is not None:
+        raise AuthorizationAbort("run stopped after authorization failure: " + client.durability.authorization_failure, [])
 
 
 if __name__ == "__main__":

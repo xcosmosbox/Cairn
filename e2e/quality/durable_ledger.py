@@ -22,11 +22,27 @@ class LedgerIntegrityError(RuntimeError):
 
 
 class JSONLedger:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, resume: bool = False):
         self.path = Path(path)
         self.lock = threading.Lock()
         self.closed = False
         self.failure = None
+        self.initial_records = []
+        if resume and list(self.path.parent.glob(self.path.stem + "-ledger-failure-*.json")):
+            raise LedgerIntegrityError("ledger has unresolved failure receipts; explicit audit required")
+        if resume and self.path.exists():
+            # 恢复只接受完整原账本；残缺尾行和故障收据不能被续跑悄悄修复。
+            # Resume complete rows only; never reconstruct missing events or resend unknown calls.
+            descriptor = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(descriptor, "rb") as stream:
+                stat = os.fstat(stream.fileno())
+                data = stream.read()
+                self.identity = (stat.st_dev, stat.st_ino)
+                self.size = len(data)
+                self.initial_records = parse_jsonl(data, self.path.name)
+                self._check(os.fstat(stream.fileno()), self.size)
+                self._check(self.path.stat(follow_symlinks=False), self.size)
+            return
         with self.path.open("xb") as stream:
             stream.flush()
             os.fsync(stream.fileno())
@@ -114,14 +130,20 @@ REQUEST_FIELDS = ("question_id", "arm", "turn", "http_attempt", "attempt_for_tur
                   "tool_choice", "protocol", "retry_of_http_attempt")
 
 
-def read_jsonl(path: Path) -> list[dict]:
-    data = path.read_bytes()
+def parse_jsonl(data: bytes, name: str) -> list[dict]:
     if data and not data.endswith(b"\n"):
-        raise LedgerIntegrityError(f"incomplete trailing ledger row: {path.name}")
-    rows = [json.loads(line) for line in data.splitlines()]
+        raise LedgerIntegrityError(f"incomplete trailing ledger row: {name}")
+    try:
+        rows = [json.loads(line) for line in data.splitlines()]
+    except (ValueError, UnicodeError) as exc:
+        raise LedgerIntegrityError(f"invalid ledger JSON: {name}") from exc
     if any(not isinstance(row, dict) for row in rows):
-        raise LedgerIntegrityError(f"non-object ledger row: {path.name}")
+        raise LedgerIntegrityError(f"non-object ledger row: {name}")
     return rows
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    return parse_jsonl(path.read_bytes(), path.name)
 
 
 def verify_run_ledgers(output_dir: Path, expected_attempts: int, expected_jobs: list[dict]) -> dict:

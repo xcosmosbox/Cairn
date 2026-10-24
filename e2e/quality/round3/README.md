@@ -51,3 +51,8 @@ and exits before credential access: the frozen solver and judge still need a
 reviewed global stop on authorization failure, and the judge needs durable
 admission and complete collection of in-flight responses after a write failure.
 A valid preflight is not a provider run or an online quality result.
+
+The current runner repair and its conservative crash-recovery/freeze migration
+rules are described in [RUNNER_RECOVERY.md](RUNNER_RECOVERY.md). These source
+changes do not update a historical freeze or enable the paid pilot; the exact
+repaired revision still requires independent review before a new pilot decision.
