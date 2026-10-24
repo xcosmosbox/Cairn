@@ -1,0 +1,2 @@
+{"command": ["curl", "--fail", "--silent", "--show-error", "--head", "--connect-timeout", "5", "--max-time", "10", "https://dl.google.com/go/go1.22.12.linux-amd64.tar.gz"], "time_utc": "2026-10-24T08:54:48.163466+00:00", "exit_code": 28}
+curl: (28) Proxy CONNECT aborted due to timeout

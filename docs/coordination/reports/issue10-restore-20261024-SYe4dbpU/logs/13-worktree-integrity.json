@@ -1,0 +1,60 @@
+[
+  {
+    "command": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exit_code": 0,
+    "output": "faf8ee705112f6c7272706d33cdd787b247353f0\n"
+  },
+  {
+    "command": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--exit-code"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--exit-code",
+      "--",
+      "go.mod",
+      "go.sum",
+      "graph-viewer/package-lock.json"
+    ],
+    "exit_code": 0,
+    "output": ""
+  },
+  {
+    "path": "go.mod",
+    "baseline_sha256": "451467d12c42b93d729025da30c8db74accfe81a1611ba6ecf2cbea5f8fe9e88",
+    "current_sha256": "451467d12c42b93d729025da30c8db74accfe81a1611ba6ecf2cbea5f8fe9e88",
+    "equal": true
+  },
+  {
+    "path": "go.sum",
+    "baseline_sha256": "e1b72633daac07fb480359be7acdb4d91e6edbeefe4189ad5dcff7a0e776885b",
+    "current_sha256": "e1b72633daac07fb480359be7acdb4d91e6edbeefe4189ad5dcff7a0e776885b",
+    "equal": true
+  },
+  {
+    "path": "graph-viewer/package-lock.json",
+    "baseline_sha256": "14f9c88eaa74e7ffd454b3f0c713b5293579bc8e2d3266fe588dfc59a77de987",
+    "current_sha256": "14f9c88eaa74e7ffd454b3f0c713b5293579bc8e2d3266fe588dfc59a77de987",
+    "equal": true
+  }
+]

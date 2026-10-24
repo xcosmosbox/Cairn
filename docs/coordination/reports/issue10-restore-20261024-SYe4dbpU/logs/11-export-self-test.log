@@ -1,0 +1,2 @@
+{"name": "11-export-self-test", "command": ["python3", "e2e/quality/export_receipts.py", "--self-test"], "cwd": ".", "started_at": "2026-10-24T08:54:14.805596+00:00", "ended_at": "2026-10-24T08:54:14.848488+00:00", "exit_code": 0}
+synthetic receipt fixture checks passed

@@ -1,0 +1,4 @@
+{"name": "02-make-verify", "command": ["make", "verify"], "cwd": ".", "started_at": "2026-10-24T08:53:54.296493+00:00", "ended_at": "2026-10-24T08:53:54.298415+00:00", "exit_code": 2}
+go vet ./...
+make: go: No such file or directory
+make: *** [Makefile:80: vet] Error 127

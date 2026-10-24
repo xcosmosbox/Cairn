@@ -1,0 +1,2 @@
+{"name": "03-go-race", "command": ["bash", "-c", "go test -race -count=1 ./..."], "cwd": ".", "started_at": "2026-10-24T08:53:54.298692+00:00", "ended_at": "2026-10-24T08:53:54.300226+00:00", "exit_code": 127}
+bash: line 1: go: command not found
