@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "tracked_implementation_change": "service/cmd/cairn-mcp/zz_source_citations_test.go only",
+  "production_code_changed": false,
+  "paid_requests": 0,
+  "secret_value_exclusion": "pass",
+  "failed_CI_actual_timestamps": "unknown; deterministic mechanism matched, not recovered values",
+  "source_whitespace_check_exit": 0,
+  "original_red_run_retried": false
+}

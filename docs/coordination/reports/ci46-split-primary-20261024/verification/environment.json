@@ -1,0 +1,10 @@
+{
+  "toolchain": "go1.22.12 linux/amd64",
+  "PATH_prepend": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go/bin",
+  "GOPATH": "/workspace/scratch/c1bb49a45412/cairn-toolchain/gopath",
+  "GOCACHE": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go-build",
+  "GOTOOLCHAIN": "local",
+  "GOFLAGS": "-buildvcs=false",
+  "source_base": "2d87bbdf075960eade455fac2aa2f5148ee31530",
+  "scope": "test fixture and diagnosis only; no production change"
+}
