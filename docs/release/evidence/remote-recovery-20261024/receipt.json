@@ -1,0 +1,347 @@
+{
+  "result": "incomplete",
+  "scope": "private_sandbox_remote_catalog_native_app_mcp",
+  "source_sha": "5a43d86035c2c422da834f9b5b8783486e2e160d",
+  "commands": [
+    {
+      "argv": [
+        "go",
+        "version"
+      ],
+      "exit_code": 0,
+      "stdout": "go version go1.22.12 linux/amd64\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-remote-recovery-tp9141jh/mcp",
+        "./service/cmd/cairn-mcp"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-remote-recovery-tp9141jh/fixture",
+        "./scripts/release/fixture"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-remote-recovery-tp9141jh/remote-fixture",
+        "./scripts/release/remote_fixture"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-remote-recovery-tp9141jh/fixture",
+        "create",
+        "/tmp/cairn-remote-recovery-tp9141jh/fixtures"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-remote-recovery-tp9141jh/remote-fixture",
+        "pack",
+        "/tmp/cairn-remote-recovery-tp9141jh/fixtures/a",
+        "/tmp/cairn-remote-recovery-tp9141jh/a.tar.gz"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-remote-recovery-tp9141jh/remote-fixture",
+        "pack",
+        "/tmp/cairn-remote-recovery-tp9141jh/fixtures/b",
+        "/tmp/cairn-remote-recovery-tp9141jh/b.tar.gz"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-remote-recovery-tp9141jh/remote-fixture",
+        "pack",
+        "/tmp/cairn-remote-recovery-tp9141jh/fixtures/bad",
+        "/tmp/cairn-remote-recovery-tp9141jh/bad.tar.gz"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-remote-recovery-tp9141jh/remote-fixture",
+        "token",
+        "<runtime-key>",
+        "<private-token-output>"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"app_id\":5454525,\"expires_at\":\"2026-10-24T15:01:37Z\",\"installation_id\":174795212,\"permissions\":{\"contents\":\"write\",\"metadata\":\"read\"},\"repository_ids\":[1432125826],\"status\":201}\n",
+      "stderr": ""
+    }
+  ],
+  "http": [
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox",
+      "status": 200,
+      "request_id": "8EC2:7EED2:18EF17A:5131A97:6ADCBA41"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/git/ref/heads/main",
+      "status": 200,
+      "request_id": "8EC2:7EED2:18F180C:5139711:6ADCBA48"
+    },
+    {
+      "method": "POST",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/git/refs",
+      "status": 201,
+      "request_id": "8EC2:7EED2:18F3C0C:5140BEE:6ADCBA4F"
+    },
+    {
+      "method": "POST",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases",
+      "status": 201,
+      "request_id": "8EC2:7EED2:18F6521:5149038:6ADCBA57"
+    },
+    {
+      "method": "POST",
+      "host": "uploads.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765591/assets",
+      "status": 201,
+      "request_id": "8ED0:339472:234DFC:2CAA7D:6ADCBA67"
+    },
+    {
+      "method": "POST",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases",
+      "status": 201,
+      "request_id": "8EC2:7EED2:18FBB5E:515A3C6:6ADCBA5F"
+    },
+    {
+      "method": "POST",
+      "host": "uploads.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765709/assets",
+      "status": 201,
+      "request_id": "8ED0:339472:235248:2CB07C:6ADCBA67"
+    },
+    {
+      "method": "POST",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases",
+      "status": 201,
+      "request_id": "8EC2:7EED2:1900E27:516AD69:6ADCBA6F"
+    },
+    {
+      "method": "POST",
+      "host": "uploads.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/422765864/assets",
+      "status": 201,
+      "request_id": "8ED0:339472:2356BF:2CB684:6ADCBA77"
+    },
+    {
+      "method": "PUT",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/contents/knowledge-bases/recovery/stable.json",
+      "status": 201,
+      "request_id": "8EC2:7EED2:1905F36:517B1CC:6ADCBA7F"
+    }
+  ],
+  "rpc": [],
+  "remote_objects": [
+    {
+      "name": "a",
+      "tag": "recovery-20261024T140151-2-a",
+      "release_id": 422765591,
+      "html_url": "https://github.com/xcosmosbox/cairn-app-sandbox/releases/tag/recovery-20261024T140151-2-a",
+      "asset": {
+        "id": 672412561,
+        "name": "bundle.tar.gz",
+        "size": 4830,
+        "digest": "sha256:94eb7c2daba65dcf609a6aff620033c39fc704990500a3a19b4e3db7312d1cd9",
+        "created_at": "2026-10-24T14:02:15Z",
+        "updated_at": "2026-10-24T14:02:15Z",
+        "state": "uploaded"
+      }
+    },
+    {
+      "name": "b",
+      "tag": "recovery-20261024T140151-2-b",
+      "release_id": 422765709,
+      "html_url": "https://github.com/xcosmosbox/cairn-app-sandbox/releases/tag/recovery-20261024T140151-2-b",
+      "asset": {
+        "id": 672413017,
+        "name": "bundle.tar.gz",
+        "size": 4604,
+        "digest": "sha256:321168fc8553a4744ff17a45c33fd2513b3c4aac2b575fa7d12138bed897ee60",
+        "created_at": "2026-10-24T14:02:31Z",
+        "updated_at": "2026-10-24T14:02:31Z",
+        "state": "uploaded"
+      }
+    },
+    {
+      "name": "bad",
+      "tag": "recovery-20261024T140151-2-bad",
+      "release_id": 422765864,
+      "html_url": "https://github.com/xcosmosbox/cairn-app-sandbox/releases/tag/recovery-20261024T140151-2-bad",
+      "asset": {
+        "id": 672413625,
+        "name": "bundle.tar.gz",
+        "size": 4858,
+        "digest": "sha256:6a709f55536734a535490d5a0930200d056d277f6edbce633854ac0550834ce1",
+        "created_at": "2026-10-24T14:02:47Z",
+        "updated_at": "2026-10-24T14:02:47Z",
+        "state": "uploaded"
+      }
+    }
+  ],
+  "pointer_commits": [
+    {
+      "selected": "a",
+      "commit": "7bcf2826e45acb91b03a564a118e627ee9eef818",
+      "blob": "259d9f5d6a3460f11cd94ea567b2535c75969b09",
+      "catalog": {
+        "format": "dk-kb-bundle/v1",
+        "kg": "recovery",
+        "source_repo": "synthetic/local-recovery",
+        "source_ref": "fixture",
+        "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "builder_version": "synthetic-test",
+        "builder_commit": "cccccccccccccccccccccccccccccccccccccccc",
+        "schema_version": 4,
+        "prompt_set_version": "none",
+        "model": "none",
+        "config_digest": "sha256:3b7ae9da5c78071fdb39d3b8b9d14b0a15b8db043c79f22f241f1ffd9c4ac972",
+        "bundle_digest": "sha256:5b0607137762eb09d377d6aa1c24ccd6e51601675df34618c8ef99223b24e9f1",
+        "kb_version": "a",
+        "created_at": "2026-10-24T00:00:00Z",
+        "minimum_reader_version": "",
+        "channel": "stable",
+        "published_at": "2026-10-24T14:02:47Z",
+        "release_tag": "recovery-20261024T140151-2-a",
+        "asset_name": "bundle.tar.gz"
+      }
+    }
+  ],
+  "started_at_utc": "2026-10-24T14:01:28.035646+00:00",
+  "script_sha256": "af2ac5b0d300e3e0f375b14f0be20062ab89c9bfbb3decde4a50f68ef15af921",
+  "helper_sha256": "fab366483de16588942b22d0e6c66546badc48245e982c2ac15d5544e6e70d64",
+  "binaries": {
+    "mcp": "5425791f9810a83fe1472257876eff0139b72cb7bcfd6a2698498e2bc378727f",
+    "fixture": "e9f0683088e6ca8a2070de889e454a6e4fa2fcf752adaca5e4549b464efdd250",
+    "remote-fixture": "94981453b40482a5d156c2bdb75999df71a9af75fc4b1ccbafdf32cdff340faa"
+  },
+  "source_inventories": {
+    "a": {
+      "checksums.sha256": {
+        "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+        "bytes": 162,
+        "inode": 1442497,
+        "mtime_ns": 1792850490157454761
+      },
+      "kb-manifest.json": {
+        "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+        "bytes": 646,
+        "inode": 1442421,
+        "mtime_ns": 1792850490157454761
+      },
+      "knowledge.db": {
+        "sha256": "36b05319823d62cd7624550cf1fdfbe87c57f024db71f2894e971b8d314bf0e0",
+        "bytes": 135168,
+        "inode": 1442481,
+        "mtime_ns": 1792850490150932912
+      }
+    },
+    "b": {
+      "checksums.sha256": {
+        "sha256": "7557bf02a08284ebb9a576590b2ab04fe800da2ba0a39ecfdc39ffe9a3559d7d",
+        "bytes": 162,
+        "inode": 1443442,
+        "mtime_ns": 1792850490219382011
+      },
+      "kb-manifest.json": {
+        "sha256": "c58678f8e3a1c0d167eeac6ed91baee835cd802066aeba16c9d12248b8d99cc8",
+        "bytes": 646,
+        "inode": 1442515,
+        "mtime_ns": 1792850490219382011
+      },
+      "knowledge.db": {
+        "sha256": "7eb0f961e7955379a3942931f279e22f81eb9c91f2a96dfa2afe209b9bc78472",
+        "bytes": 135168,
+        "inode": 1442529,
+        "mtime_ns": 1792850490212081116
+      }
+    },
+    "bad": {
+      "checksums.sha256": {
+        "sha256": "f7353e6b59d95a1087282f1eb607412426548db182b7f6031d8485fdba56dcd9",
+        "bytes": 162,
+        "inode": 1443474,
+        "mtime_ns": 1792850490157454761
+      },
+      "kb-manifest.json": {
+        "sha256": "883074cbe0c1057f1f1969e821108b55b0ac20d428b9fa5c276384fc43548df9",
+        "bytes": 646,
+        "inode": 1443505,
+        "mtime_ns": 1792850490157454761
+      },
+      "knowledge.db": {
+        "sha256": "9cc5843fa81a7842fcf744699e7799d6d83aeb199b5bb56e1124b23cf92e76a1",
+        "bytes": 135196,
+        "inode": 1443490,
+        "mtime_ns": 1792850490221525652
+      }
+    }
+  },
+  "archives": {
+    "a": {
+      "sha256": "94eb7c2daba65dcf609a6aff620033c39fc704990500a3a19b4e3db7312d1cd9",
+      "bytes": 4830
+    },
+    "b": {
+      "sha256": "321168fc8553a4744ff17a45c33fd2513b3c4aac2b575fa7d12138bed897ee60",
+      "bytes": 4604
+    },
+    "bad": {
+      "sha256": "6a709f55536734a535490d5a0930200d056d277f6edbce633854ac0550834ce1",
+      "bytes": 4858
+    }
+  },
+  "live_started_at_utc": "2026-10-24T14:01:30.238561+00:00",
+  "remote_branch": {
+    "repository": "xcosmosbox/cairn-app-sandbox",
+    "branch": "acceptance/recovery-20261024T140151-2",
+    "base_sha": "12033cabbf506a59538c6cee56f44ded09509edd"
+  },
+  "failure": "actual watcher pull/auth failure; stopped without retry",
+  "mcp_exit_code": -15,
+  "finished_at_utc": "2026-10-24T14:03:11.111145+00:00"
+}

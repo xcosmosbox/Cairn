@@ -1,0 +1,65 @@
+{
+  "scope": "root-approved read-only existingAasset diagnostic",
+  "asset_id": 672412561,
+  "started_at_utc": "2026-10-24T14:05:50.561322+00:00",
+  "requests": [
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/assets/672412561",
+      "accept": "application/vnd.github+json",
+      "authorization_sent": true,
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "request_id": "8EB4:389899:1A2A3E1:5505557:6ADCBB45"
+    },
+    {
+      "method": "GET",
+      "host": "api.github.com",
+      "path": "/repos/xcosmosbox/cairn-app-sandbox/releases/assets/672412561",
+      "accept": "application/octet-stream",
+      "authorization_sent": true,
+      "status": 302,
+      "content_type": "text/html;charset=utf-8",
+      "request_id": "8EB4:389899:1A2CCBA:550DA8F:6ADCBB4C"
+    },
+    {
+      "method": "GET",
+      "host": "release-assets.githubusercontent.com",
+      "path": "/github-production-release-asset/1432125826/98b47d70-a2d5-4312-857c-82524a3547b6",
+      "accept": "application/octet-stream",
+      "authorization_sent": false,
+      "status": 200,
+      "content_type": "application/octet-stream",
+      "request_id": null
+    }
+  ],
+  "token_helper_exit": 0,
+  "token_metadata": {
+    "app_id": 5454525,
+    "expires_at": "2026-10-24T15:05:57Z",
+    "installation_id": 174795212,
+    "permissions": {
+      "contents": "write",
+      "metadata": "read"
+    },
+    "repository_ids": [
+      1432125826
+    ],
+    "status": 201
+  },
+  "asset_metadata": {
+    "id": 672412561,
+    "name": "bundle.tar.gz",
+    "size": 4830,
+    "digest": "sha256:94eb7c2daba65dcf609a6aff620033c39fc704990500a3a19b4e3db7312d1cd9",
+    "created_at": "2026-10-24T14:02:15Z",
+    "updated_at": "2026-10-24T14:02:15Z",
+    "state": "uploaded"
+  },
+  "redirect_target_host": "release-assets.githubusercontent.com",
+  "download_sha256": "94eb7c2daba65dcf609a6aff620033c39fc704990500a3a19b4e3db7312d1cd9",
+  "download_bytes": 4830,
+  "result": "pass",
+  "finished_at_utc": "2026-10-24T14:06:19.261266+00:00"
+}
