@@ -18,6 +18,7 @@ import (
 	_ "modernc.org/sqlite" // SQLite driver (纯 Go 实现 / pure Go implementation)
 
 	"github.com/xcosmosbox/cairn/core/storage"
+	buildversion "github.com/xcosmosbox/cairn/core/version"
 	"github.com/xcosmosbox/cairn/service/internal/service"
 )
 
@@ -48,6 +49,11 @@ func Run(args []string) error {
 		return nil
 	}
 	cmd, cmdArgs := args[0], args[1:]
+
+	if cmd == "--version" {
+		fmt.Println(buildversion.Summary("cairn"))
+		return nil
+	}
 
 	// 处理帮助请求 / Handle help requests
 	if cmd == "help" || cmd == "-h" || cmd == "--help" {
@@ -184,6 +190,7 @@ func printUsage() {
   cairn help [command]       显示帮助信息 / Show help information
 
 全局标志 / Global Flags:
+  --version         软件版本和源码身份 / Software version and build identity
   --db-path <path>  SQLite 数据库文件路径（默认 ./knowledge.db）
                     SQLite database file path (default ./knowledge.db)
 

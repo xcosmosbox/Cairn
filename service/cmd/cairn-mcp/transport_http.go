@@ -29,6 +29,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	buildversion "github.com/xcosmosbox/cairn/core/version"
 )
 
 // sseSession 表示一个 SSE 客户端连接。
@@ -207,7 +209,7 @@ func runHTTPServer(state *serverState, addr string) {
 			"status":          "ok",
 			"knowledge_bases": kbCount,
 			"sessions":        mgr.count(),
-			"version":         "2.0.0",
+			"version":         buildversion.Current(),
 		})
 	})
 
@@ -320,7 +322,7 @@ func runHTTPServer(state *serverState, addr string) {
 		fmt.Fprintf(w, `<!DOCTYPE html>
 <html><body>
 <h1>Cairn MCP Server</h1>
-<p>Version 2.0.0 (HTTP/SSE transport)</p>
+<p>Version %s (HTTP/SSE transport)</p>
 <h2>Endpoints</h2>
 <ul>
   <li><code>GET /sse</code> — SSE stream (MCP client connects here)</li>
@@ -329,7 +331,7 @@ func runHTTPServer(state *serverState, addr string) {
 </ul>
 <h2>Test with curl</h2>
 <pre>curl http://%s/health</pre>
-</body></html>`, addr)
+</body></html>`, buildversion.Current(), addr)
 	})
 
 	// 后台定期清理超时 session（1 小时无活动）

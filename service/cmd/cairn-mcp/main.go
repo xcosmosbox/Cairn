@@ -51,6 +51,7 @@ import (
 	coregh "github.com/xcosmosbox/cairn/core/githubapp"
 	"github.com/xcosmosbox/cairn/core/kbbundle"
 	"github.com/xcosmosbox/cairn/core/storage"
+	buildversion "github.com/xcosmosbox/cairn/core/version"
 	"github.com/xcosmosbox/cairn/service/internal/config"
 	"github.com/xcosmosbox/cairn/service/internal/service"
 )
@@ -144,12 +145,17 @@ func main() {
 	// 解析命令行参数 / Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "配置文件路径 / Path to config YAML file")
 	listenAddr := flag.String("listen", "", "HTTP/SSE 监听地址（空=stdio 模式，如 :8080）")
+	showVersion := flag.Bool("version", false, "软件版本和源码身份 / Software version and build identity")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(buildversion.Summary("cairn-mcp"))
+		return
+	}
 
 	// listen 优先级：命令行 > 配置文件
 	// listen priority: CLI flag > config file
 
-	fmt.Fprintln(os.Stderr, "Cairn MCP Server v2.0.0 (multi-DB)")
+	fmt.Fprintf(os.Stderr, "Cairn MCP Server %s (multi-DB)\n", buildversion.Current())
 
 	// 加载配置 / Load configuration
 	cfg, err := config.Load(*configPath)
@@ -949,7 +955,7 @@ func handleInitialize(req *jsonRPCRequest) *jsonRPCResponse {
 			"protocolVersion": mcpProtocolVersion,
 			"serverInfo": map[string]interface{}{
 				"name":    "cairn",
-				"version": "2.0.0",
+				"version": buildversion.Current(),
 			},
 			"capabilities": map[string]interface{}{
 				"tools": map[string]interface{}{},
