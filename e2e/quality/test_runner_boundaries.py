@@ -92,7 +92,7 @@ class RunnerBoundaryTests(unittest.TestCase):
                     return Response(tool_response())
 
                 with mock.patch.object(client.durability, "stop_authorization", side_effect=stop), \
-                     mock.patch("urllib.request.urlopen", side_effect=transport), \
+                     mock.patch("agent_eval_native.urlopen", side_effect=transport), \
                      ThreadPoolExecutor(max_workers=3) as pool:
                     jobs = [pool.submit(native.evaluate_question, f"q{i}", "Question", "fts", EmptyEngine(), client, native.EvalConfig()) for i in range(12)]
                     rows = [future.result() for future in jobs]
@@ -115,7 +115,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         requests = JSONLedger(self.root / "requests.jsonl")
         self.addCleanup(requests.close)
         client = native.NativeDeepSeekClient(native.EvalConfig(), "offline-only-secret", native.CallBudget(10), requests)
-        with mock.patch("urllib.request.urlopen", side_effect=[
+        with mock.patch("agent_eval_native.urlopen", side_effect=[
                 HTTPError("https://offline.invalid", 500, "temporary", {}, io.BytesIO(b"temporary")),
                 Response(tool_response())]) as transport:
             _, attempts = client.complete([], {"question_id": "q", "arm": "fts", "turn": 1}, "required")
@@ -133,7 +133,7 @@ class RunnerBoundaryTests(unittest.TestCase):
                 "--kg-db", str(self.root / "kg.db"), "--raw-db", str(self.root / "raw.db"),
                 "--adapter", str(self.root / "adapter"), "--arms", "fts", "--workers", "1", "--allow-paid"]
         with mock.patch("sys.argv", argv), mock.patch("agent_eval_native.RetrievalEngine", EmptyEngine), \
-             mock.patch("urllib.request.urlopen", side_effect=HTTPError("https://offline.invalid", 403, "auth", {}, io.BytesIO())) as transport, \
+             mock.patch("agent_eval_native.urlopen", side_effect=HTTPError("https://offline.invalid", 403, "auth", {}, io.BytesIO())) as transport, \
              self.assertRaises(native.AuthorizationAbort):
             native.main()
         self.assertEqual(transport.call_count, 1)

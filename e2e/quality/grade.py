@@ -19,7 +19,8 @@ import re
 import time
 import threading
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
+from safe_http import urlopen, is_redirect_status
 
 from audit_gold import evidence, questions, safe_source, sha
 from durable_ledger import JSONLedger, LedgerIntegrityError, read_jsonl
@@ -373,7 +374,7 @@ def validate_judge_recovery(grades, events, cases, blind_sha, config_sha):
     return requests, responses
 
 
-def judge(args):
+def judge(args, *, transport=None, verdict_validator=None):
     paths = [Path(args.out), Path(args.usage)]
     if paths[0].resolve() == paths[1].resolve():
         raise LedgerIntegrityError("judge result and usage ledgers must be different files")
@@ -386,10 +387,13 @@ def judge(args):
             ledgers.append(ledger)
         if ledgers[0].identity == ledgers[1].identity:
             raise LedgerIntegrityError("judge ledgers alias the same file")
-        return _judge(args, *ledgers)
+        return _judge(args, *ledgers, transport=transport, verdict_validator=verdict_validator)
 
 
-def _judge(args, result_ledger, usage_ledger):
+def _judge(args, result_ledger, usage_ledger, *, transport=None, verdict_validator=None):
+    # Optional callbacks are local to this invocation; never replace globals while workers run.
+    transport = transport or urlopen
+    verdict_validator = verdict_validator or validate_verdict
     blind = read(args.blind)
     blind_sha = sha(Path(args.blind).read_bytes())
     extra = read(args.extra_body) if args.extra_body else {}
@@ -400,7 +404,7 @@ def _judge(args, result_ledger, usage_ledger):
               "judge_schema_version": JUDGE_SCHEMA_VERSION,
               "runner_instrumentation": "cairn-durable-judge/v1",
               "runner_source_sha256": {name: sha(Path(__file__).with_name(name).read_bytes())
-                                       for name in ("grade.py", "durable_ledger.py", "audit_gold.py")},
+                                       for name in ("grade.py", "durable_ledger.py", "audit_gold.py", "safe_http.py")},
               "max_tokens": args.max_tokens, "extra_body": extra, "system_sha256": sha(SYSTEM.encode()),
               "max_calls": args.max_calls, "max_total_tokens": args.max_total_tokens,
               "max_input_chars": args.max_input_chars, "timeout_seconds": args.timeout,
@@ -409,7 +413,7 @@ def _judge(args, result_ledger, usage_ledger):
     config_sha = sha(json.dumps(config, sort_keys=True).encode())
     existing, ledger = result_ledger.initial_records, usage_ledger.initial_records
     requests, outcomes = validate_judge_recovery(existing, ledger, blind["cases"], blind_sha, config_sha)
-    if any(row.get("http_status") in (401, 403) for row in outcomes.values()):
+    if any(row.get("http_status") in (401, 403) or is_redirect_status(row.get("http_status")) for row in outcomes.values()):
         raise RuntimeError("judge run stopped after authorization failure; explicit new-run review required")
     complete = {row["blind_id"] for row in existing if row["status"] == "ok"}
     latest_existing = {row["blind_id"]: row for row in existing}
@@ -441,7 +445,7 @@ def _judge(args, result_ledger, usage_ledger):
         record = {**base, "status": "error", "judge_config": config, "failure_kind": "provider_or_transport"}
         try:
             req = Request(endpoint, data=body, headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
-            with urlopen(req, timeout=args.timeout) as resp:
+            with transport(req, timeout=args.timeout) as resp:
                 record["http_status"] = getattr(resp, "status", 200)
                 raw = resp.read(4 * 1024 * 1024 + 1)
                 if len(raw) > 4 * 1024 * 1024:
@@ -472,14 +476,16 @@ def _judge(args, result_ledger, usage_ledger):
             record["failure_kind"] = "verdict_validation"
             if parsed is None:
                 raise ValueError("judge final content is not a complete JSON object")
-            verdict = validate_verdict(case, parsed)
+            verdict = verdict_validator(case, parsed)
             record.update(status="ok", verdict=verdict, scores=scores(case, verdict))
             record.pop("failure_kind", None)
         except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, URLError, http.client.HTTPException) as exc:
             # Do not log HTTP response bodies or request headers containing credentials.
             if isinstance(exc, HTTPError):
                 record["http_status"] = exc.code
-                if exc.code in (401, 403):
+                if is_redirect_status(exc.code):
+                    record["redirect_refused"] = True
+                if exc.code in (401, 403) or is_redirect_status(exc.code):
                     # worker 立即锁住新准入，不等待主线程取 future。
                     # Stop admission at observation, while already admitted calls drain.
                     stop("authorization", "HTTP status %s" % exc.code)
