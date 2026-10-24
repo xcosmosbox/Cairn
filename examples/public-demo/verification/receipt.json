@@ -1,0 +1,305 @@
+{
+  "mode": "fixed_fake_not_example_document_ingest",
+  "result": "pass_fixed_fake_only",
+  "commands": [
+    {
+      "args": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "started_at_utc": "2026-10-24T10:01:30.927474+00:00",
+      "exit_code": 0,
+      "stdout": "9995d9a867943bdfe398c1c8f1d8ba49c3a5f4ff\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "go",
+        "version"
+      ],
+      "started_at_utc": "2026-10-24T10:01:30.929528+00:00",
+      "exit_code": 0,
+      "stdout": "go version go1.22.12 linux/amd64\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "make",
+        "build"
+      ],
+      "started_at_utc": "2026-10-24T10:01:30.931670+00:00",
+      "exit_code": 0,
+      "stdout": "✅ binaries built → bin/ (8 binaries)\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "./bin/cairnd",
+        "run",
+        "--once",
+        "--fake",
+        "--config",
+        "configs/cairnd-fake.example.yaml"
+      ],
+      "started_at_utc": "2026-10-24T10:01:36.942721+00:00",
+      "exit_code": 0,
+      "stdout": "run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo 最终状态: Stable\n",
+      "stderr": "2026/10/24 19:01:37 [fake] 本地模拟会话: /workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/cairnd-fake/fake-session-2438742907（固定样例知识，无 GitHub/LLM；自动模拟合并本地 PR）\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: Idle → FetchSource\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: FetchSource → FullBuild\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: FullBuild → ValidateCandidate\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: ValidateCandidate → CreateSourcePR\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: CreateSourcePR → AwaitSourcePR\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: AwaitSourcePR → AwaitSourcePR\n2026/10/24 19:01:37 [fake] 模拟合并本地 source_writeback PR #1\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: AwaitSourcePR → ReconcileMergedSource\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: ReconcileMergedSource → UploadCandidate\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: UploadCandidate → CreateCatalogPR\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: CreateCatalogPR → AwaitCatalogPR\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: AwaitCatalogPR → AwaitCatalogPR\n2026/10/24 19:01:37 [fake] 模拟合并本地 catalog_publish PR #2\n2026/10/24 19:01:37 [once] run run-2fff3734-7b77-4f7d-a47e-9310fbc1423f-demo: AwaitCatalogPR → Stable\n"
+    },
+    {
+      "args": [
+        "./bin/cairn",
+        "--db-path",
+        "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/cairnd-fake/fake-session-2438742907/bundles/demo/stable/knowledge.db",
+        "status"
+      ],
+      "started_at_utc": "2026-10-24T10:01:37.568959+00:00",
+      "exit_code": 0,
+      "stdout": "━━━ 知识库状态 / Knowledge Base Status ━━━\n  KB 版本:    2026-10-24T10:01:37.142073222Z\n  节点总数:   4\n  边总数:     3\n\n  节点按类型:\n    Concept                  1\n    Domain                   1\n    Skill                    1\n    Subdomain                1\n\n  边按类型:\n    composes                 2\n    provides                 1\n\n  节点按域（Top）:\n    demo                     3\n    fake                     1\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "./bin/cairn",
+        "--db-path",
+        "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/cairnd-fake/fake-session-2438742907/bundles/demo/stable/knowledge.db",
+        "find",
+        "阻塞队列"
+      ],
+      "started_at_utc": "2026-10-24T10:01:37.620409+00:00",
+      "exit_code": 0,
+      "stdout": "\n━━━ 匹配 #1 (综合 1.000 | BM25 1.00 图 1.00) ━━━\n  ID:         ccd9e2cf-1848-51c3-b013-229fbcef88b2\n  名称:       阻塞队列\n  类型:       Concept\n  摘要:       Bounded queue blocks when full or empty\n  域:         demo / queue\n  置信度:     1.00\n  来源:       llm_inferred\n  ── 入边（被引用关系）:\n    ← subdomain::demo::queue [composes] — 子域包含概念\n\n共找到 1 个匹配（查询改写: \"阻塞队列\"，耗时 1ms）\n",
+      "stderr": "2026/10/24 19:01:37 [search-pipeline] query rewritten: \"阻塞队列\" → \"阻塞队列\"; syntax=text profile=literal MATCH=\"\\\"阻塞队列\\\"\"\n2026/10/24 19:01:37 [search-pipeline] FTS5 returned 1 hits\n2026/10/24 19:01:37 [search-pipeline] BFS traversal visited 1 nodes, 0 edges\n2026/10/24 19:01:37 [search-pipeline] scoring produced 1 ranked results\n"
+    },
+    {
+      "args": [
+        "./bin/cairn",
+        "--db-path",
+        "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/cairnd-fake/fake-session-2438742907/bundles/demo/stable/knowledge.db",
+        "find",
+        "重试预算"
+      ],
+      "started_at_utc": "2026-10-24T10:01:37.626554+00:00",
+      "exit_code": 0,
+      "stdout": "未找到匹配实体: 重试预算\nNo matching entities found: 重试预算\n",
+      "stderr": "2026/10/24 19:01:37 [search-pipeline] query rewritten: \"重试预算\" → \"重试预算\"; syntax=text profile=literal MATCH=\"\\\"重试预算\\\"\"\n2026/10/24 19:01:37 [search-pipeline] FTS5 returned 0 hits\n"
+    },
+    {
+      "args": [
+        "./bin/cairn",
+        "--db-path",
+        "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/public-demo-grzbv3q0/missing.db",
+        "status"
+      ],
+      "started_at_utc": "2026-10-24T10:01:37.631076+00:00",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "dk: 无法读取数据库文件 / cannot access database /workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/public-demo-grzbv3q0/missing.db (使用 --db-path 指定路径): stat /workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/public-demo-grzbv3q0/missing.db: no such file or directory\n"
+    }
+  ],
+  "rpc": [
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {},
+          "clientInfo": {
+            "name": "public-demo",
+            "version": "1"
+          }
+        },
+        "id": 1
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "capabilities": {
+            "tools": {}
+          },
+          "protocolVersion": "2024-11-05",
+          "serverInfo": {
+            "name": "cairn",
+            "version": "2.0.0"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "demo",
+            "keyword": "阻塞队列"
+          }
+        },
+        "id": 2
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: 阻塞队列（知识库: demo）\n\n## 1. 阻塞队列 (1.00)\n- ID: ccd9e2cf-1848-51c3-b013-229fbcef88b2\n- 类型/Type: Concept\n- 域/Domain: demo/queue\n- 摘要: Bounded queue blocks when full or empty\n- 置信度/Confidence: 1.00\n\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "demo",
+            "uuid": "ccd9e2cf-1848-51c3-b013-229fbcef88b2"
+          }
+        },
+        "id": 3
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✓ UUID ccd9e2cf-1848-51c3-b013-229fbcef88b2 存活 / alive。\n- 名称/Name: 阻塞队列\n- 类型/Type: Concept\n- 域/Domain: demo/queue\n- 摘要/Summary: Bounded queue blocks when full or empty\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "demo",
+            "uuid": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+            "include_sources": true
+          }
+        },
+        "id": 4
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✓ UUID ccd9e2cf-1848-51c3-b013-229fbcef88b2 存活 / alive。\n- 名称/Name: 阻塞队列\n- 类型/Type: Concept\n- 域/Domain: demo/queue\n- 摘要/Summary: Bounded queue blocks when full or empty\n"
+            },
+            {
+              "type": "text",
+              "text": "{\"requested_uuid\":\"ccd9e2cf-1848-51c3-b013-229fbcef88b2\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"ccd9e2cf-1848-51c3-b013-229fbcef88b2\",\"status\":\"available\",\"source_refs\":[\"fake\"],\"locations\":[{\"member_id\":\"fake-concept-blocking-queue\",\"skill\":\"fake\",\"file_path\":\"SKILL.md\",\"start_line\":6,\"end_line\":8,\"span_status\":\"available\"}]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "resolve_node",
+          "arguments": {
+            "kg": "demo",
+            "uuid": "public-demo-missing-uuid",
+            "include_sources": true
+          }
+        },
+        "id": 5
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "✗ UUID public-demo-missing-uuid 在知识库 demo 中不存在，且无血缘记录（可能从未存在或已被物理清除）。\nUUID public-demo-missing-uuid does not exist in KB demo and has no lineage record.\n"
+            },
+            {
+              "type": "text",
+              "text": "{\"requested_uuid\":\"public-demo-missing-uuid\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"status\":\"unknown\",\"reason\":\"node_not_found\"}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "domain_search",
+          "arguments": {
+            "kg": "demo",
+            "keyword": "重试预算"
+          }
+        },
+        "id": 6
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 6,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "搜索关键词: 重试预算（知识库: demo）\n\n未找到匹配结果 / No matching results found.\n"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "source_sha": "9995d9a867943bdfe398c1c8f1d8ba49c3a5f4ff",
+  "example_script_sha256": "7d7f158ce8d922f1c0b8027c594c80983d86b13d74ed7cdff773c9753783f663",
+  "session": "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/cairnd-fake/fake-session-2438742907",
+  "manifest": {
+    "format": "dk-kb-bundle/v1",
+    "kg": "demo",
+    "source_repo": "synthetic/source",
+    "source_ref": "main",
+    "source_commit": "6b75c1f6ce6a185d56153c14c2aceebf6c776f08",
+    "builder_version": "devel",
+    "builder_commit": "9995d9a867943bdfe398c1c8f1d8ba49c3a5f4ff+sha256:a159fb3793e038e55ed7662dbc872e7f8fc42ce38d94fb88f5d459f084eace52",
+    "schema_version": 5,
+    "prompt_set_version": "sha256:929d004939ea10cac0992824e9fd004f2da452a99f7f76e1a983e15c73e66f72",
+    "model": "deepseek-flash",
+    "config_digest": "sha256:4dbad0f8e89a18e83baaa23bb8f4b5794107e89fb390c5ddac8c553b73c1f44e",
+    "bundle_digest": "sha256:761fef3d5515dec51c4b5849819374c6fe2ae5d22e46ea41d0a30927fe984da9",
+    "kb_version": "2026-10-24T10:01:37.142073222Z",
+    "created_at": "2026-10-24T10:01:37Z",
+    "minimum_reader_version": ""
+  },
+  "graph_counts": {
+    "nodes": 4,
+    "edges": 3
+  },
+  "node_uuid": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+  "mcp_config": "/workspace/scratch/110c4593aeb1/cairn-env/.local/issue16-clean/.local/public-demo-grzbv3q0/mcp.yaml",
+  "bundle_sha256_before_and_after": {
+    "checksums.sha256": "f021234b3ce0f23cad184ca3a9665f4b6da1b293b0bf64a86748d075fcd73fb2",
+    "knowledge.db": "766d068c78f7f417b20957fef21ef6028d5601424956d3ad97b4a46edbf4a599",
+    "kb-manifest.json": "ebf2062d27737ee316c2bf07b842b93754d0bfe997e28c1822c185a3da3fc636"
+  },
+  "multi_document_consumption": "not_run_not_supported_by_fixed_fake",
+  "finished_at_utc": "2026-10-24T10:01:37.642833+00:00"
+}

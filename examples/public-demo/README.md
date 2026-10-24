@@ -84,7 +84,7 @@ python3 examples/public-demo/demo.py
 | MCP resolve `public-demo-missing-uuid`，include_sources=true | 来源 `status=unknown`，没有捏造 UUID/文件位置 |
 
 不能把“零结果但协议成功”写成已找到知识，也不能把合成输入的预期关系写成真实抽取结果。
-实际复跑与 #16 原验收条件的逐项边界见本目录的验证回执说明（随验收 PR 归档）。
+实际复跑与 #16 原验收条件的逐项边界见[验证回执说明](verification/README.md)。
 
 ## 还没有证明的内容
 
