@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/bin/cairn",
+    "--db-path",
+    "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/.local/real-model/attempt-03/knowledge.db",
+    "status"
+  ],
+  "exit_code": 0,
+  "stdout": "━━━ 知识库状态 / Knowledge Base Status ━━━\n  KB 版本:    2026-10-24T14:49:29.928541812Z\n  节点总数:   17\n  边总数:     30\n\n  节点按类型:\n    Concept                  6\n    Entity                   5\n    Subdomain                3\n    Domain                   2\n    Skill                    1\n\n  边按类型:\n    composes                 14\n    depends_on               8\n    references               5\n    provides                 2\n    triggers                 1\n\n  节点按域（Top）:\n    并发队列与重试控制                10\n    合成文档与验证                  6\n    public-synthetic-queue   1\n",
+  "stderr": ""
+}

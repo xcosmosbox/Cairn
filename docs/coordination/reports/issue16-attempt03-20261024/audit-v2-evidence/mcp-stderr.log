@@ -1,0 +1,10 @@
+Cairn MCP Server v2.0.0 (multi-DB)
+MCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 1 个知识库 / 1 KBs loaded
+2026/10/24 23:50:13 [search-pipeline] query rewritten: "有界队列阻塞规则" → "有界队列阻塞规则"; syntax=text profile=literal MATCH="\"有界队列阻塞规则\""
+2026/10/24 23:50:13 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 23:50:13 [search-pipeline] BFS traversal visited 2 nodes, 1 edges
+2026/10/24 23:50:13 [search-pipeline] scoring produced 2 ranked results
+2026/10/24 23:50:13 [search-pipeline] query rewritten: "可见错误" → "可见错误"; syntax=text profile=literal MATCH="\"可见错误\""
+2026/10/24 23:50:13 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 23:50:13 [search-pipeline] BFS traversal visited 3 nodes, 2 edges
+2026/10/24 23:50:13 [search-pipeline] scoring produced 3 ranked results

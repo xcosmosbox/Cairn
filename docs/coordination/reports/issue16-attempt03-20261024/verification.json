@@ -1,0 +1,65 @@
+{
+  "source": "75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8",
+  "make_build": {
+    "command": [
+      "make",
+      "build"
+    ],
+    "exit_code": 0,
+    "tool_session": 60544,
+    "timestamp_detail": "outer tool command; exact binary/buildinfo in pre-call freeze"
+  },
+  "pre_call_helper_tests": {
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "examples/public-demo/real-model",
+      "-p",
+      "test_*.py",
+      "-v"
+    ],
+    "tests": 9,
+    "exit_code": 0,
+    "new_requests": 0
+  },
+  "actual_smoke": {
+    "command": [
+      "python3",
+      "examples/public-demo/real-model/run.py",
+      "smoke",
+      "--out",
+      ".local/real-model/attempt-03",
+      "--key-file",
+      "[private runtime file]",
+      "--authorize-deepseek"
+    ],
+    "exit_code": 0,
+    "tool_session": 4441,
+    "timing_receipt": "ingest.json"
+  },
+  "actual_audit": {
+    "command": [
+      "python3",
+      "examples/public-demo/real-model/run.py",
+      "audit",
+      "--out",
+      ".local/real-model/attempt-03"
+    ],
+    "exit_code": 0,
+    "receipt": "audit-v2.json"
+  },
+  "cross_mechanical_audit": "cross-audit.json",
+  "extra_actual_MCP_forward_impact": "mcp-cross-impact.json",
+  "providerIDs_failedUsage": "unknown; root scoped standardclient before replay",
+  "code_changes": false,
+  "old_attempts_changed": false,
+  "QA_holdout_accessed": false,
+  "artifact_whitespace": {
+    "exit_code": 2,
+    "scope": "five original generated Markdown blank lines at EOF, retained byte-exact",
+    "no_source_code_diff": true
+  }
+}

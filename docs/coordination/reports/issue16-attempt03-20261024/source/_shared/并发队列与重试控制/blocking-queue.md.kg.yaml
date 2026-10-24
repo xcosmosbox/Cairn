@@ -1,0 +1,21 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: _shared/并发队列与重试控制/blocking-queue.md
+doc_hash: sha256:b5366bbec49365ed84c8cb1b3cfedd5dbedd3ece2338d87bf0a7ea22c2372f21
+generated_at: "2026-10-24T14:49:29Z"
+nodes:
+  - uuid: 87177315-8d2f-52d8-9d48-68fcf2afeb4e
+    file_slug: blocking-queue
+    tag: entity
+    name: 阻塞队列
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: true
+    members:
+      - public-synthetic-queue-entity-容量为8的阻塞队列
+      - public-synthetic-queue-entity-阻塞队列
+    summary_hash: sha256:c5020b6c8494e10de48eced504b8bf76f38919bb2e1a531a1448dc67e8d727da
+    description_hash: sha256:1aa027995c7704e9c363328b8cf95560a0b2245e47731f26e4e133be0d3c8e90
+    provenance: llm_inferred

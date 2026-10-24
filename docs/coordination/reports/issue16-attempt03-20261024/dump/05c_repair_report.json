@@ -1,0 +1,11 @@
+{
+  "EndpointFailures": null,
+  "DanglingFound": 0,
+  "Cleaned": 0,
+  "PatchesApplied": 0,
+  "PatchErrors": null,
+  "Rounds": 0,
+  "StillDangling": 0,
+  "Degraded": false,
+  "MissingFrom04": 0
+}

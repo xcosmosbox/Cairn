@@ -1,0 +1,285 @@
+{
+  "Domains": [
+    {
+      "name": "并发队列与重试控制",
+      "summary": "围绕阻塞队列的容量、阻塞行为以及生产者/消费者的超时重试进行建模的领域。",
+      "description": "",
+      "reusability_rationale": "阻塞队列、有界阻塞规则、生产者/消费者、重试预算与超时错误是并发编程与消息中间件中高度通用的基础构件，几乎任何涉及限流、背压与失败重试的系统都可复用这些实体与概念。",
+      "source_skills": [
+        "public-synthetic-queue"
+      ],
+      "subdomains": [
+        {
+          "name": "阻塞队列模型",
+          "summary": "描述阻塞队列本体、其阻塞行为规则以及与之交互的生产者和消费者。",
+          "description": "",
+          "entities": [
+            {
+              "id": "blocking-queue",
+              "label": "Entity",
+              "name": "阻塞队列",
+              "summary": "具有固定容量（如容量为8）的队列组件，满时阻塞生产者、空时阻塞消费者。",
+              "description": "",
+              "confidence": 0.92,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-容量为8的阻塞队列",
+                "public-synthetic-queue-entity-阻塞队列"
+              ]
+            },
+            {
+              "id": "producer",
+              "label": "Entity",
+              "name": "生产者",
+              "summary": "向阻塞队列提交元素的角色，队列满时进入等待。",
+              "description": "",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-生产者"
+              ]
+            },
+            {
+              "id": "consumer",
+              "label": "Entity",
+              "name": "消费者",
+              "summary": "从阻塞队列获取元素的角色，队列空时进入等待。",
+              "description": "",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-消费者"
+              ]
+            }
+          ],
+          "concepts": [
+            {
+              "id": "bounded-queue-blocking-rules",
+              "label": "Concept",
+              "name": "有界队列阻塞规则",
+              "summary": "有界队列在满时阻塞生产者、空时阻塞消费者的行为规则。",
+              "description": "",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-有界队列阻塞规则"
+              ]
+            }
+          ],
+          "relations": [
+            {
+              "source": "producer",
+              "target": "blocking-queue",
+              "kind": "depends_on",
+              "description": "生产者向阻塞队列提交元素，其行为依赖队列的容量与阻塞状态。",
+              "confidence": 0.9
+            },
+            {
+              "source": "consumer",
+              "target": "blocking-queue",
+              "kind": "depends_on",
+              "description": "消费者从阻塞队列获取元素，其行为依赖队列的阻塞状态。",
+              "confidence": 0.9
+            },
+            {
+              "source": "bounded-queue-blocking-rules",
+              "target": "blocking-queue",
+              "kind": "references",
+              "description": "有界队列阻塞规则描述并约束阻塞队列的阻塞行为。",
+              "confidence": 0.88
+            }
+          ]
+        },
+        {
+          "name": "超时与重试",
+          "summary": "描述生产者在无法无限等待时的超时等待、有限次重试以及重试耗尽后的可见错误。",
+          "description": "",
+          "entities": [],
+          "concepts": [
+            {
+              "id": "retry-budget",
+              "label": "Concept",
+              "name": "重试预算",
+              "summary": "生产者在不能无限等待时由调用方使用的重试预算机制，约束重试次数。",
+              "description": "",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-重试预算"
+              ]
+            },
+            {
+              "id": "timeout-retry-mechanism",
+              "label": "Concept",
+              "name": "超时与重试机制",
+              "summary": "生产者的超时等待与有限次重试机制，由重试预算约束。",
+              "description": "",
+              "confidence": 0.9,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-超时与重试机制"
+              ]
+            },
+            {
+              "id": "visible-error",
+              "label": "Concept",
+              "name": "可见错误",
+              "summary": "重试预算用尽后返回给调用方的可观测错误结果。",
+              "description": "",
+              "confidence": 0.88,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-可见错误"
+              ]
+            }
+          ],
+          "relations": [
+            {
+              "source": "timeout-retry-mechanism",
+              "target": "retry-budget",
+              "kind": "depends_on",
+              "description": "超时与重试机制由重试预算进行约束。",
+              "confidence": 0.9
+            },
+            {
+              "source": "visible-error",
+              "target": "timeout-retry-mechanism",
+              "kind": "depends_on",
+              "description": "可见错误在重试机制耗尽预算后产生。",
+              "confidence": 0.85
+            },
+            {
+              "source": "retry-budget",
+              "target": "blocking-queue",
+              "kind": "depends_on",
+              "description": "重试预算所依赖的队列组件，其容量与等待行为影响预算。",
+              "confidence": 0.85
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "合成文档与验证",
+      "summary": "围绕用于结构演示的合成输入、固定假运行器以及跨文档关系保真检验进行建模的领域。",
+      "description": "",
+      "reusability_rationale": "合成输入、假运行器、零结果规则与跨文档关系保留检验是任何基于合成数据做知识构建与质量验证系统的通用组件，可跨文档处理、测试替身与评估流程复用。",
+      "source_skills": [
+        "public-synthetic-queue"
+      ],
+      "subdomains": [
+        {
+          "name": "合成输入与假运行器",
+          "summary": "描述作为结构演示的合成输入、不消费它的固定假运行器，以及相应的验证与零结果规则。",
+          "description": "",
+          "entities": [
+            {
+              "id": "fixed-fake-runner",
+              "label": "Entity",
+              "name": "固定假运行器",
+              "summary": "不消费本文合成输入的固定假运行器，其免费版本不含重试预算。",
+              "description": "",
+              "confidence": 0.88,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-fixed-fake-runner"
+              ]
+            },
+            {
+              "id": "synthetic-input",
+              "label": "Entity",
+              "name": "合成输入",
+              "summary": "作为结构演示的合成输入，不被固定假运行器消费。",
+              "description": "",
+              "confidence": 0.88,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-entity-合成输入"
+              ]
+            }
+          ],
+          "concepts": [
+            {
+              "id": "cross-doc-relation-check",
+              "label": "Concept",
+              "name": "跨文档关系保留检验",
+              "summary": "未来用真实 LLM 构建材料时检验是否保留重试预算与阻塞队列跨文档关系的设想。",
+              "description": "",
+              "confidence": 0.85,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-跨文档关系保留检验"
+              ]
+            },
+            {
+              "id": "zero-result-rule",
+              "label": "Concept",
+              "name": "重试预算零结果规则",
+              "summary": "免费固定假运行器中不存在重试预算，查询它应明确得到零结果。",
+              "description": "",
+              "confidence": 0.87,
+              "source_skills": [
+                "public-synthetic-queue"
+              ],
+              "members": [
+                "public-synthetic-queue-concept-重试预算零结果规则"
+              ]
+            }
+          ],
+          "relations": [
+            {
+              "source": "fixed-fake-runner",
+              "target": "synthetic-input",
+              "kind": "references",
+              "description": "固定假运行器不消费合成输入，二者为引用但非消费关系。",
+              "confidence": 0.85
+            },
+            {
+              "source": "zero-result-rule",
+              "target": "fixed-fake-runner",
+              "kind": "depends_on",
+              "description": "零结果规则基于固定假运行器不含重试预算而成立。",
+              "confidence": 0.85
+            },
+            {
+              "source": "cross-doc-relation-check",
+              "target": "retry-budget",
+              "kind": "references",
+              "description": "跨文档关系保留检验关注重试预算相关跨文档关系是否被保留。",
+              "confidence": 0.8
+            },
+            {
+              "source": "cross-doc-relation-check",
+              "target": "blocking-queue",
+              "kind": "references",
+              "description": "跨文档关系保留检验关注阻塞队列相关跨文档关系是否被保留。",
+              "confidence": 0.8
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "UnresolvedFiles": null,
+  "Rounds": 1
+}
