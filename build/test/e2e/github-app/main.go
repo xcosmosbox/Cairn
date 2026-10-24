@@ -23,7 +23,7 @@ func emit(event string, fields map[string]any) {
 	b, _ := json.Marshal(fields)
 	fmt.Println(string(b))
 }
-func run() error {
+func run() (resultErr error) {
 	if os.Getenv("CAIRN_LIVE_GITHUB_APP") != "1" {
 		return fmt.Errorf("requires explicit live acceptance opt-in")
 	}
@@ -55,6 +55,9 @@ func run() error {
 			resp.Body.Close()
 		}
 		emit("cleanup_forge_token", map[string]any{"status": status, "transport_ok": e == nil})
+		if e != nil || (status != 204 && status != 401) {
+			resultErr = fmt.Errorf("created Forge token cleanup not confirmed, status=%d", status)
+		}
 	}()
 	call := func(method, path string, body any) (int, map[string]any, error) {
 		var reader io.Reader

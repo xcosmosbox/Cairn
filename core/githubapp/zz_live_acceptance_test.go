@@ -113,7 +113,7 @@ func TestLiveAppAcceptance(t *testing.T) {
 	if inst["id"] != float64(installationID) || inst["app_id"] != float64(appID) || account["login"] != "xcosmosbox" || permissions["contents"] != "write" || permissions["pull_requests"] != "write" || inst["suspended_at"] != nil {
 		t.Fatal("installation identity/permissions mismatch")
 	}
-	emit("identity", map[string]any{"app_id": appID, "installation_id": installationID, "account": "xcosmosbox", "repo": "xcosmosbox/cairn-app-sandbox", "repo_id": repoID, "key_reference": "user supplied runtime file", "repository_selection": inst["repository_selection"], "contents": permissions["contents"], "pull_requests": permissions["pull_requests"], "native_token_request_scope": "installation default (no body)"})
+	emit("identity", map[string]any{"app_id": appID, "installation_id": installationID, "account": "xcosmosbox", "repo": "xcosmosbox/cairn-app-sandbox", "repo_id": repoID, "key_reference": "user supplied runtime file", "repository_selection": inst["repository_selection"], "permissions": permissions, "native_token_request_scope": "installation default (no body)"})
 	resolved, e := a.ResolveInstallation(ctx, "xcosmosbox", "cairn-app-sandbox")
 	if e != nil || resolved != installationID {
 		t.Fatal("native ResolveInstallation failed")
@@ -177,10 +177,8 @@ func TestLiveAppAcceptance(t *testing.T) {
 	if limitedPerms["contents"] != "read" {
 		t.Fatal("limited scope mismatch")
 	}
-	status, _ = call("GET", repo+"/contents/.cairn-acceptance/README.md?ref=main", readToken, nil)
-	if status != 200 && status != 404 {
-		t.Fatalf("read-only token read unexpected status %d", status)
-	}
+	status, _ = call("GET", repo+"/branches/main", readToken, nil)
+	assertStatus(status, 200)
 	denyPath := repo + "/contents/.cairn-acceptance/denied-" + time.Now().UTC().Format("20060102T150405.000000000") + ".txt"
 	status, unexpected := call("PUT", denyPath, readToken, map[string]any{"message": "test(app): denied read-only permission probe", "branch": "main", "content": base64.StdEncoding.EncodeToString([]byte("This write must be denied.\n"))})
 	if status == 201 {
@@ -198,7 +196,23 @@ func TestLiveAppAcceptance(t *testing.T) {
 	if e != nil || revokedCached != tok || exchanges != before {
 		t.Fatal("revoked-cache observation changed unexpectedly")
 	}
-	status, _ = call("GET", repo, revokedCached, nil)
+	// GitHub revocation may propagate asynchronously. Preserve every observed status
+	// and bound polling rather than claiming DELETE 204 proves immediate rejection.
+	for attempt := 1; attempt <= 12; attempt++ {
+		status, _ = call("GET", repo, revokedCached, nil)
+		emit("revocation_observation", map[string]any{"attempt": attempt, "repository_status": status})
+		if status == 401 {
+			break
+		}
+		if status != 200 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("revocation observation canceled")
+		case <-time.After(2 * time.Second):
+		}
+	}
 	assertStatus(status, 401)
 	emit("revoked_cache", map[string]any{"cached_token_reused": true, "extra_exchange_count": exchanges - before, "repository_status": status, "transparent_401_recovery": false})
 	// Change only cached expiry, not clock/JWT/HTTP response, to enter the real refresh branch.
