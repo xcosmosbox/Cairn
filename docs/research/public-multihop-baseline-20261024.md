@@ -60,7 +60,7 @@ unanswerable labels. Download, identity audit and execution are later dependent 
 
 ## MultiHop split and retrieval freeze
 
-1. Index the full609-article corpus once, with identical title/source/published_at plus
+1. Index the full 609-article corpus once, with identical title/source/published_at plus
    chunk-body templates in both retrieval arms. Questions/gold/evidence never enter the
    retriever or graph construction. `doc_id=sha256(exact URL UTF-8)`; pin body hashes
    separately. Body offsets/fact coverage exclude metadata.
@@ -68,8 +68,8 @@ unanswerable labels. Download, identity audit and execution are later dependent 
    of its UTF-8 bytes. Non-null group is `docs:` plus sorted unique evidence URLs joined
    by newline; null group is `null:` plus normalized query.
 3. SHA256 of `cairn-mhr-v1\0` plus group: first 8 hex digits modulo 5 equal to zero
-   means DEV, otherwise HOLDOUT. The prefix's `\\0` denotes one U+0000 NUL byte,
-   not a backslash followed by0; group/query/URL hashes use UTF-8. Keep groups together;
+   means DEV, otherwise HOLDOUT. The separator after `cairn-mhr-v1` is one U+0000 NUL byte,
+   not a backslash followed by 0; group/query/URL hashes use UTF-8. Keep groups together;
    use no alternate seed.
 4. Within each type/grouped pool sort by qid, select DEV32 and HOLDOUT64 per type:
    128 DEV, 256 HOLDOUT. Smoke uses the first two DEV per type (8 total). Fail if quotas
@@ -77,9 +77,9 @@ unanswerable labels. Download, identity audit and execution are later dependent 
 5. Research audit DEV available counts are 141/160/115/69, HOLDOUT675/696/468/232 for
    inference/comparison/temporal/null. Regex `\w+` normalized tokens, five-token
    shingle Jaccard >=0.85 found zero cross-split near-duplicate pairs in both the full
-   data and selected384. This does not eliminate semantic leakage or training contamination.
-6. Chunk bodies at256 whitespace tokens, stride224, preserving original body codepoint
-   offsets. One original-query retrieval per question, top10; all displayed content shares
+   data and selected 384. This does not eliminate semantic leakage or training contamination.
+6. Chunk bodies at 256 whitespace tokens, stride 224, preserving original body codepoint
+   offsets. One original-query retrieval per question, top 10; all displayed content shares
    10000 Unicode codepoints, with explicit tail truncation and visible offsets.
 7. Free raw literal OR is a sanity control. `raw_source_fts_sqlite` uses SQLite unicode61
    FTS5/BM25, safely quoted original whitespace atoms joined by OR, no expansion or
@@ -98,15 +98,15 @@ and AllGoldFacts require each complete labeled body span to be covered by the un
 visible intervals from that same document; title/path text is not evidence, repeats count
 once. Stratify by type, evidence_fact_count and unique_support_doc_count separately.
 DocRecall deduplicates supporting documents; FactRecall deduplicates gold fact/spans.
-The researcher found168 questions with multiple facts on one URL: fact-count strata
-2/3/4 contain1079/778/398 questions, while unique-doc strata contain1169/774/312.
+The researcher found 168 questions with multiple facts on one URL: fact-count strata
+2/3/4 contain 1079/778/398 questions, while unique-doc strata contain 1169/774/312.
 Null cases do not enter positive-recall
 denominators: report their retrieval counts/empty rate separately. Also record errors,
 empty results, truncation, p50/p95 latency and index bytes. No solver means no answer
 accuracy, correct abstention or grounded-pass claim.
 
 A real graph requires production construction over the whole corpus without QA access.
-Paper-average sizing609×2046 is about1.25M source tokens before prompts/extraction/fusion/
+Paper-average sizing 609×2046 is about 1.25M source tokens before prompts/extraction/fusion/
 retries; this is an estimate, not a cost or usage receipt. Measure a small build and actual
 tokens, then obtain the applicable coordinator decision before a full paid construction.
 The no-key path can complete fixtures and raw/FTS. Node FTS/graph/backfill must say
