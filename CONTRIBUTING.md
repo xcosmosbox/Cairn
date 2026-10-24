@@ -2,6 +2,11 @@
 
 感谢你对 Cairn 的兴趣。本文档说明开发约定与不可违背的架构约束。
 
+多人或多 Agent 协作请先读 [AGENTS.md](AGENTS.md) 和
+[协作协议](docs/coordination/PROTOCOL.md)。[看板 #7](https://github.com/xcosmosbox/Cairn/issues/7)
+管理任务，Issue 评论记录 session、领取/续期与交接，PR 承载实现与评审。独立分支可 provisional
+推进，重叠写入和接管需协调；不要依赖共享 GitHub 账号的 Assignee 区分 agent。
+
 ## 开发环境
 
 ```bash

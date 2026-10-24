@@ -8,6 +8,11 @@
 
 一套开源三件套：**构建端（DK Build）+ 查询端（MCP Service）+ 可视化（Viewer）**。
 
+**参与开发 / Agent start here：** [协作入口与任务看板](https://github.com/xcosmosbox/Cairn/issues/7) ·
+[Roadmap](ROADMAP.md) · [接手指南](AGENTS.md) ·
+[项目汇报](https://github.com/xcosmosbox/Cairn/issues/9)。
+任何维护者或 Agent 都可以从仓库记录了解现状、提出任务、领取与交接；无需私人对话背景。
+
 ---
 
 ## 它解决什么问题

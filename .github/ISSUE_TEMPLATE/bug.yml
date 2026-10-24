@@ -1,0 +1,32 @@
+name: Reproducible defect / 缺陷报告
+description: Preserve the failure, environment and evidence before changing code
+title: "[Bug] "
+labels: ["coord:task", "status:backlog", "kind:bug"]
+body:
+  - type: textarea
+    id: failure
+    attributes:
+      label: Trigger, expected behavior and actual failure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction, exact SHA and environment
+      description: Commands, exit codes, relevant config without secrets, scale and logs
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Impact, suspected boundary and linked tasks
+      description: Data loss, provenance, availability, experiment validity or compatibility; mark unknowns
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Proposed regression and acceptance conditions
+      description: Include original failure and negative/compatibility cases; do not only mirror implementation
+    validations:
+      required: true

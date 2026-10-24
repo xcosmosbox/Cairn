@@ -1,0 +1,32 @@
+name: Research or experiment proposal / 研究与实验
+description: A falsifiable hypothesis, controlled comparison and honest decision rule
+title: "[Research] "
+labels: ["coord:task", "status:backlog", "kind:research"]
+body:
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Problem, prior evidence and falsifiable hypothesis
+    validations:
+      required: true
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Comparison, controls and identities
+      description: Exact source/data/protocol, DEV/holdout, budgets, negative control and failure accounting
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Metrics, limitations and decision rule
+      description: Include no-benefit outcomes; distinguish retrieval/factual support/answer quality
+    validations:
+      required: true
+  - type: textarea
+    id: execution
+    attributes:
+      label: Scope, dependencies, resources and authorization
+      description: Separate offline analysis, implementation and any paid execution; no keys
+    validations:
+      required: true
