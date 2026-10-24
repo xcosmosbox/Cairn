@@ -1,0 +1,27 @@
+[
+  {
+    "name": "repository-race",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "./..."
+    ],
+    "source_sha": "19d684849a1de7eeb97f8fde5990650cdddb4f4e",
+    "started_at_utc": "2026-10-24T13:50:07.767132+00:00",
+    "finished_at_utc": "2026-10-24T13:50:40.440224+00:00",
+    "exit_code": 0
+  },
+  {
+    "name": "make-verify",
+    "command": [
+      "make",
+      "verify"
+    ],
+    "source_sha": "19d684849a1de7eeb97f8fde5990650cdddb4f4e",
+    "started_at_utc": "2026-10-24T13:50:40.440440+00:00",
+    "finished_at_utc": "2026-10-24T13:50:50.058945+00:00",
+    "exit_code": 0
+  }
+]

@@ -1,0 +1,72 @@
+=== RUN   TestRealSchema4ReadCompatibilityWithoutMigration
+=== PAUSE TestRealSchema4ReadCompatibilityWithoutMigration
+=== CONT  TestRealSchema4ReadCompatibilityWithoutMigration
+--- PASS: TestRealSchema4ReadCompatibilityWithoutMigration (0.46s)
+PASS
+ok  	github.com/xcosmosbox/cairn/core/storage	1.468s
+=== RUN   TestInstallReusesImmutableGenerationWhileReaderPinsRollback
+=== PAUSE TestInstallReusesImmutableGenerationWhileReaderPinsRollback
+=== CONT  TestInstallReusesImmutableGenerationWhileReaderPinsRollback
+--- PASS: TestInstallReusesImmutableGenerationWhileReaderPinsRollback (0.76s)
+PASS
+ok  	github.com/xcosmosbox/cairn/core/kbbundle	1.773s
+=== RUN   TestWhyReadsTrueSchema4WithoutMigration
+━━━ 追溯 / Why: legacy-node ━━━
+
+  状态: 🟢 存活
+  节点: legacy [Concept]  domain/sub  置信度 1.00  来源 extraction
+  摘要: 
+
+  血缘史 / Lineage:
+    （无血缘记录：未经历过合并/拆分）
+--- PASS: TestWhyReadsTrueSchema4WithoutMigration (0.40s)
+PASS
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn	1.416s
+=== RUN   TestHotSwapKeepsCompleteRequestAlive
+=== PAUSE TestHotSwapKeepsCompleteRequestAlive
+=== RUN   TestInvalidSwapPreservesHealthyGeneration
+=== PAUSE TestInvalidSwapPreservesHealthyGeneration
+=== RUN   TestLegacyV4StartupAndHotSwapRemainReadOnly
+=== PAUSE TestLegacyV4StartupAndHotSwapRemainReadOnly
+=== RUN   TestSymlinkDoesNotRetargetAcquiredConnections
+=== PAUSE TestSymlinkDoesNotRetargetAcquiredConnections
+=== CONT  TestHotSwapKeepsCompleteRequestAlive
+=== CONT  TestSymlinkDoesNotRetargetAcquiredConnections
+=== CONT  TestInvalidSwapPreservesHealthyGeneration
+=== CONT  TestLegacyV4StartupAndHotSwapRemainReadOnly
+=== RUN   TestInvalidSwapPreservesHealthyGeneration/text
+=== RUN   TestInvalidSwapPreservesHealthyGeneration/missing
+=== RUN   TestLegacyV4StartupAndHotSwapRemainReadOnly/startup
+2026/10/24 22:49:37 [search-pipeline] query rewritten: "aggregate0" → "aggregate0"; syntax=text profile=literal MATCH="\"aggregate0\""
+2026/10/24 22:49:37 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 22:49:37 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 22:49:37 [search-pipeline] scoring produced 1 ranked results
+=== RUN   TestLegacyV4StartupAndHotSwapRemainReadOnly/hot-swap
+=== RUN   TestInvalidSwapPreservesHealthyGeneration/unsupported-old-schema
+--- PASS: TestHotSwapKeepsCompleteRequestAlive (0.80s)
+--- PASS: TestSymlinkDoesNotRetargetAcquiredConnections (0.85s)
+2026/10/24 22:49:37 [search-pipeline] query rewritten: "aggregate0" → "aggregate0"; syntax=text profile=literal MATCH="\"aggregate0\""
+2026/10/24 22:49:37 [search-pipeline] FTS5 returned 1 hits
+2026/10/24 22:49:37 [search-pipeline] BFS traversal visited 1 nodes, 0 edges
+2026/10/24 22:49:37 [search-pipeline] scoring produced 1 ranked results
+--- PASS: TestLegacyV4StartupAndHotSwapRemainReadOnly (0.93s)
+    --- PASS: TestLegacyV4StartupAndHotSwapRemainReadOnly/startup (0.08s)
+    --- PASS: TestLegacyV4StartupAndHotSwapRemainReadOnly/hot-swap (0.35s)
+=== RUN   TestInvalidSwapPreservesHealthyGeneration/future-schema
+=== RUN   TestInvalidSwapPreservesHealthyGeneration/missing-fts
+=== RUN   TestInvalidSwapPreservesHealthyGeneration/missing-node-column
+--- PASS: TestInvalidSwapPreservesHealthyGeneration (2.57s)
+    --- PASS: TestInvalidSwapPreservesHealthyGeneration/text (0.47s)
+    --- PASS: TestInvalidSwapPreservesHealthyGeneration/missing (0.31s)
+    --- PASS: TestInvalidSwapPreservesHealthyGeneration/unsupported-old-schema (0.45s)
+    --- PASS: TestInvalidSwapPreservesHealthyGeneration/future-schema (0.42s)
+    --- PASS: TestInvalidSwapPreservesHealthyGeneration/missing-fts (0.46s)
+    --- PASS: TestInvalidSwapPreservesHealthyGeneration/missing-node-column (0.46s)
+PASS
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-mcp	3.590s
+=== RUN   TestTrueSchema4StatusSentinelAndGetNodeAreReadonly
+=== PAUSE TestTrueSchema4StatusSentinelAndGetNodeAreReadonly
+=== CONT  TestTrueSchema4StatusSentinelAndGetNodeAreReadonly
+--- PASS: TestTrueSchema4StatusSentinelAndGetNodeAreReadonly (0.45s)
+PASS
+ok  	github.com/xcosmosbox/cairn/service/internal/service	1.469s

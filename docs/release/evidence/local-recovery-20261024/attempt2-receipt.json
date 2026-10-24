@@ -1,0 +1,356 @@
+{
+  "result": "incomplete",
+  "scope": "synthetic_linux_local_cli_stdio_mcp",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "stdout": "c6a2b16f21434147947f4ed30d65a06321571546\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "status",
+        "--porcelain"
+      ],
+      "exit_code": 0,
+      "stdout": "?? scripts/release/\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "version"
+      ],
+      "exit_code": 0,
+      "stdout": "go version go1.22.12 linux/amd64\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairn",
+        "./service/cmd/cairn"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairn-mcp",
+        "./service/cmd/cairn-mcp"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairnctl",
+        "./build/cmd/cairnctl"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "build",
+        "-o",
+        "/tmp/cairn-local-recovery-zxmmmuz4/fixture",
+        "./scripts/release/fixture"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-local-recovery-zxmmmuz4/fixture",
+        "create",
+        "/tmp/cairn-local-recovery-zxmmmuz4/fixtures"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-local-recovery-zxmmmuz4/fixture",
+        "verify",
+        "/tmp/cairn-local-recovery-zxmmmuz4/fixtures/a"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairnctl",
+        "bundle",
+        "pull",
+        "--kg",
+        "recovery",
+        "--install-dir",
+        "/tmp/cairn-local-recovery-zxmmmuz4/installed",
+        "--src-dir",
+        "/tmp/cairn-local-recovery-zxmmmuz4/fixtures/a"
+      ],
+      "exit_code": 0,
+      "stdout": "Bundle 已安装: /tmp/cairn-local-recovery-zxmmmuz4/installed/recovery\n  digest: sha256:ee2fc3189…\n  current: /tmp/cairn-local-recovery-zxmmmuz4/installed/recovery/ee2fc318935d00df\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairn",
+        "--db-path",
+        "/tmp/cairn-local-recovery-zxmmmuz4/installed/recovery/current/knowledge.db",
+        "find",
+        "LegacyAnchor"
+      ],
+      "exit_code": 0,
+      "stdout": "\n━━━ 匹配 #1 (综合 1.000 | BM25 1.00 图 1.00) ━━━\n  ID:         recovery-a\n  名称:       LegacyAnchor\n  类型:       Concept\n  摘要:       synthetic LegacyAnchor generation\n  域:         engineering / recovery\n  置信度:     1.00\n  来源:       human_curated\n  (无入边)\n\n共找到 1 个匹配（查询改写: \"LegacyAnchor\"，耗时 0ms）\n",
+      "stderr": "2026/10/24 22:47:24 [search-pipeline] query rewritten: \"LegacyAnchor\" → \"LegacyAnchor\"; syntax=text profile=literal MATCH=\"\\\"LegacyAnchor\\\"\"\n2026/10/24 22:47:24 [search-pipeline] FTS5 returned 1 hits\n2026/10/24 22:47:24 [search-pipeline] BFS traversal visited 1 nodes, 0 edges\n2026/10/24 22:47:24 [search-pipeline] scoring produced 1 ranked results\n"
+    },
+    {
+      "argv": [
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairn",
+        "--db-path",
+        "/tmp/cairn-local-recovery-zxmmmuz4/installed/recovery/current/knowledge.db",
+        "find",
+        "ModernAnchor"
+      ],
+      "exit_code": 0,
+      "stdout": "未找到匹配实体: ModernAnchor\nNo matching entities found: ModernAnchor\n",
+      "stderr": "2026/10/24 22:47:24 [search-pipeline] query rewritten: \"ModernAnchor\" → \"ModernAnchor\"; syntax=text profile=literal MATCH=\"\\\"ModernAnchor\\\"\"\n2026/10/24 22:47:24 [search-pipeline] FTS5 returned 0 hits\n"
+    },
+    {
+      "argv": [
+        "/tmp/cairn-local-recovery-zxmmmuz4/cairn",
+        "--db-path",
+        "/tmp/cairn-local-recovery-zxmmmuz4/installed/recovery/current/knowledge.db",
+        "status"
+      ],
+      "exit_code": 0,
+      "stdout": "━━━ 知识库状态 / Knowledge Base Status ━━━\n  KB 版本:    \n  节点总数:   1\n  边总数:     0\n\n  节点按类型:\n    Concept                  1\n\n  边按类型:\n\n  节点按域（Top）:\n    engineering              1\n",
+      "stderr": ""
+    }
+  ],
+  "rpc": [
+    {
+      "schema": 4,
+      "word": "LegacyAnchor",
+      "requests": [
+        {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "initialize",
+          "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+              "name": "local-recovery",
+              "version": "1"
+            }
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "method": "notifications/initialized"
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "tools/call",
+          "params": {
+            "name": "domain_status",
+            "arguments": {
+              "kg": "recovery"
+            }
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "method": "tools/call",
+          "params": {
+            "name": "domain_search",
+            "arguments": {
+              "kg": "recovery",
+              "keyword": "LegacyAnchor"
+            }
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 4,
+          "method": "tools/call",
+          "params": {
+            "name": "domain_search",
+            "arguments": {
+              "kg": "recovery",
+              "keyword": "ModernAnchor"
+            }
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 5,
+          "method": "tools/call",
+          "params": {
+            "name": "resolve_node",
+            "arguments": {
+              "kg": "recovery",
+              "uuid": "recovery-a",
+              "include_sources": true
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "result": {
+            "capabilities": {
+              "tools": {}
+            },
+            "protocolVersion": "2024-11-05",
+            "serverInfo": {
+              "name": "cairn",
+              "version": "2.0.0"
+            }
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 2,
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "## 知识库状态 / Knowledge Base Status（知识库/KG: recovery）\n\n- 节点总数 / Total Nodes: 1\n- 边总数 / Total Edges: 0\n- 模式版本 / Schema Version: 4\n\n### 域分布 / Domain Distribution\n  - engineering: 1 个节点/nodes\n\n### 标签分布 / Label Distribution\n  - Concept: 1 个节点/nodes\n\n### 关系类型分布 / Relation Kind Distribution\n"
+              }
+            ]
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 3,
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "搜索关键词: LegacyAnchor（知识库: recovery）\n\n## 1. LegacyAnchor (1.00)\n- ID: recovery-a\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要: synthetic LegacyAnchor generation\n- 置信度/Confidence: 1.00\n\n"
+              }
+            ]
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 4,
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "搜索关键词: ModernAnchor（知识库: recovery）\n\n未找到匹配结果 / No matching results found.\n"
+              }
+            ]
+          }
+        },
+        {
+          "jsonrpc": "2.0",
+          "id": 5,
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "✓ UUID recovery-a 存活 / alive。\n- 名称/Name: LegacyAnchor\n- 类型/Type: Concept\n- 域/Domain: engineering/recovery\n- 摘要/Summary: synthetic LegacyAnchor generation\n"
+              },
+              {
+                "type": "text",
+                "text": "{\"requested_uuid\":\"recovery-a\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"recovery-a\",\"status\":\"available\",\"locations\":[{\"member_id\":\"member-a\",\"skill\":\"synthetic\",\"file_path\":\"synthetic/reference.md\",\"start_line\":3,\"end_line\":5,\"span_status\":\"available\"}],\"omitted\":1}}"
+              }
+            ]
+          }
+        }
+      ],
+      "exit_code": 0,
+      "stderr": "Cairn MCP Server v2.0.0 (multi-DB)\nMCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 1 个知识库 / 1 KBs loaded\n2026/10/24 22:47:24 [search-pipeline] query rewritten: \"LegacyAnchor\" → \"LegacyAnchor\"; syntax=text profile=literal MATCH=\"\\\"LegacyAnchor\\\"\"\n2026/10/24 22:47:24 [search-pipeline] FTS5 returned 1 hits\n2026/10/24 22:47:24 [search-pipeline] BFS traversal visited 1 nodes, 0 edges\n2026/10/24 22:47:24 [search-pipeline] scoring produced 1 ranked results\n2026/10/24 22:47:24 [search-pipeline] query rewritten: \"ModernAnchor\" → \"ModernAnchor\"; syntax=text profile=literal MATCH=\"\\\"ModernAnchor\\\"\"\n2026/10/24 22:47:24 [search-pipeline] FTS5 returned 0 hits\n"
+    }
+  ],
+  "started_at_utc": "2026-10-24T13:47:22.501322+00:00",
+  "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+  "work_directory": "/tmp/cairn-local-recovery-zxmmmuz4",
+  "source_sha": "c6a2b16f21434147947f4ed30d65a06321571546",
+  "source_status": "?? scripts/release/\n",
+  "scripts": {
+    "scripts/release/local_recovery.py": "7116c54808f46819660bb615d43fb02766adf96979ffd6482b41faa9285688cd",
+    "scripts/release/fixture/main.go": "409c7440f2040a01951d4e3dd91431fcceb77dacd5e492e435b51772d5c7ca3c"
+  },
+  "go_version": "go version go1.22.12 linux/amd64",
+  "build_environment": {
+    "GOFLAGS": "",
+    "GOTOOLCHAIN": "local",
+    "GOPATH": "/workspace/scratch/c1bb49a45412/cairn-toolchain/gopath",
+    "GOCACHE": "/workspace/scratch/c1bb49a45412/cairn-toolchain/go-build"
+  },
+  "binaries": {
+    "cairn": "72294c8faa8b91bbb8d018772d1000ec6aab1ca292e5f0b9ab51ebb8653186db",
+    "cairn-mcp": "3d94b1316287c7c87f51f87de3f0d7cf629688a3f37f2dc6d732141aeccbf442",
+    "cairnctl": "dd9e04672305cb91d0c64dcc21569c69dfca6e9ca6e3c4e47e58755132d2bf7a",
+    "fixture": "f1da51a8224740e44b3503f403d95e5b67b47cd394067517cb53dd61230ba65d"
+  },
+  "manifests": {
+    "a": {
+      "format": "dk-kb-bundle/v1",
+      "kg": "recovery",
+      "source_repo": "synthetic/local-recovery",
+      "source_ref": "fixture",
+      "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "builder_version": "synthetic-test",
+      "builder_commit": "cccccccccccccccccccccccccccccccccccccccc",
+      "schema_version": 4,
+      "prompt_set_version": "none",
+      "model": "none",
+      "config_digest": "sha256:3b7ae9da5c78071fdb39d3b8b9d14b0a15b8db043c79f22f241f1ffd9c4ac972",
+      "bundle_digest": "sha256:ee2fc318935d00df797a0f04258222e6f8c50428bf5bb5f627156f8123b82cc8",
+      "kb_version": "a",
+      "created_at": "2026-10-24T00:00:00Z",
+      "minimum_reader_version": ""
+    },
+    "b": {
+      "format": "dk-kb-bundle/v1",
+      "kg": "recovery",
+      "source_repo": "synthetic/local-recovery",
+      "source_ref": "fixture",
+      "source_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "builder_version": "synthetic-test",
+      "builder_commit": "cccccccccccccccccccccccccccccccccccccccc",
+      "schema_version": 5,
+      "prompt_set_version": "none",
+      "model": "none",
+      "config_digest": "sha256:3b7ae9da5c78071fdb39d3b8b9d14b0a15b8db043c79f22f241f1ffd9c4ac972",
+      "bundle_digest": "sha256:ab710e21ae17cbef27451363f411564c24a190da4dfca57ed46ec065724c6d2b",
+      "kb_version": "b",
+      "created_at": "2026-10-24T00:00:00Z",
+      "minimum_reader_version": ""
+    }
+  },
+  "finished_at_utc": "2026-10-24T13:47:24.464118+00:00"
+}

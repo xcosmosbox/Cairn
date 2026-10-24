@@ -1,0 +1,49 @@
+go: downloading golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
+go: downloading gonum.org/v1/gonum v0.15.1
+?   	github.com/xcosmosbox/cairn/benchmarks/product_baseline	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-evolve	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-incremental	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-ingest	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairn-rebalance	[no test files]
+?   	github.com/xcosmosbox/cairn/build/cmd/cairnctl	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/annotation	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/controller/model	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/discovery	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/ingest	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/rebalance/community	[no test files]
+?   	github.com/xcosmosbox/cairn/build/internal/rebalance/patch	[no test files]
+?   	github.com/xcosmosbox/cairn/build/test/e2e/github-app	[no test files]
+?   	github.com/xcosmosbox/cairn/core/dktypes	[no test files]
+?   	github.com/xcosmosbox/cairn/core/metrics	[no test files]
+?   	github.com/xcosmosbox/cairn/core/observe	[no test files]
+?   	github.com/xcosmosbox/cairn/core/parallel	[no test files]
+ok  	github.com/xcosmosbox/cairn/build/cmd/cairnd	9.716s
+ok  	github.com/xcosmosbox/cairn/build/internal	1.016s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/fakeforge	1.161s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/githubapp	2.281s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/publisher	3.367s
+?   	github.com/xcosmosbox/cairn/scripts/release/fixture	[no test files]
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/reconcile	9.653s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/runner	8.224s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/scheduler	1.683s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/store	1.816s
+ok  	github.com/xcosmosbox/cairn/build/internal/controller/workspace	1.807s
+ok  	github.com/xcosmosbox/cairn/build/internal/extract	1.037s
+?   	github.com/xcosmosbox/cairn/service/internal/config	[no test files]
+ok  	github.com/xcosmosbox/cairn/build/internal/incremental	10.575s
+ok  	github.com/xcosmosbox/cairn/build/internal/llm	1.049s
+ok  	github.com/xcosmosbox/cairn/build/internal/pipeline	2.803s
+ok  	github.com/xcosmosbox/cairn/build/internal/writeback	1.103s
+ok  	github.com/xcosmosbox/cairn/build/test/e2e/actions-publish	5.075s
+ok  	github.com/xcosmosbox/cairn/build/test/e2e/real-build	1.033s
+ok  	github.com/xcosmosbox/cairn/core/dkconfig	1.038s
+ok  	github.com/xcosmosbox/cairn/core/evolve	4.138s
+ok  	github.com/xcosmosbox/cairn/core/githubapp	1.496s
+ok  	github.com/xcosmosbox/cairn/core/kbbundle	9.634s
+ok  	github.com/xcosmosbox/cairn/core/repoidentity	1.079s
+ok  	github.com/xcosmosbox/cairn/core/storage	6.388s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn	2.033s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-eval-index-copy	1.743s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-eval-retrieve	3.975s
+ok  	github.com/xcosmosbox/cairn/service/cmd/cairn-mcp	6.065s
+ok  	github.com/xcosmosbox/cairn/service/internal/service	2.929s
