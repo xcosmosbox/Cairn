@@ -1,0 +1,13 @@
+{"command": ["make", "verify"], "GOFLAGS": "-buildvcs=false", "source_sha": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775", "started_utc": "2026-10-24T12:03:52.932695+00:00"}
+go vet ./...
+✅ binaries built → bin/ (8 binaries)
+── 架构不变量检查 / architecture invariant checks ──
+✓ 查询端已接入 bundle 版本解析（ResolveLatest）
+✓ 查询端零 LLM
+✓ 查询端与哨兵零 embedding / 向量库
+✓ 查询端只读（无 KG 结构写入）
+✓ 演化层不写 KG（node/edge）
+✓ 演化层零 embedding / 向量库
+✓ 演化层零 LLM
+✅ verify 全绿 / all checks passed
+{"exit_code": 0, "ended_utc": "2026-10-24T12:03:57.632295+00:00"}

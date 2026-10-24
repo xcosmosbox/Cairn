@@ -1,0 +1,96 @@
+{
+  "format": "cairn-issue15-evidence/v1",
+  "tested_harness": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775",
+  "files": [
+    {
+      "path": "build/test/e2e/github-app/README.md",
+      "bytes": 3211,
+      "sha256": "47e48832b44fca4073fe17f6dd4404eceb8a3f93a9451c1c11a9a6bd4535d6b8"
+    },
+    {
+      "path": "build/test/e2e/github-app/main.go",
+      "bytes": 6249,
+      "sha256": "2b6916f3ba6d0cdd15896c40d742ddd26253cdc2ceb2c5756759f4e403c24672"
+    },
+    {
+      "path": "build/test/e2e/github-app/run.py",
+      "bytes": 1985,
+      "sha256": "4e16f9587fea2c3fcd1e760e445a352fc05dc5ce0fdfe5a41c48f84e8afd1c86"
+    },
+    {
+      "path": "core/githubapp/README.md",
+      "bytes": 2795,
+      "sha256": "0690aec65b12781e72e10be956dadcc0360d69e253a0b22104ba1d93537769c2"
+    },
+    {
+      "path": "core/githubapp/zz_live_acceptance_test.go",
+      "bytes": 10496,
+      "sha256": "6392b971f4f0ea8f3cab6c5027b5c71196a145567ff22671b6af2f0b7a5f9582"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/README.md",
+      "bytes": 10015,
+      "sha256": "a6a7c1170057b9fbf83f4fc57eef94ee82fb78125e407542279980df3fee2c81"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/attempt-01/01-native-auth-live.log",
+      "bytes": 4223,
+      "sha256": "d36cfa8ab2bf61290600f6495db17cddae9e56a910e593a480f5b3301a94593c"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/attempt-01/commands.json",
+      "bytes": 508,
+      "sha256": "b431cf57178114b1fd5d8fe373a9224316594f315b6df8e01c15c343b1af9923"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/attempt-02/01-native-auth-live.log",
+      "bytes": 6811,
+      "sha256": "691e9c334dca2afe81f78313971899e2228547bcff6111783d3642b0dfbf72df"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/attempt-02/02-native-forge-live.log",
+      "bytes": 1835,
+      "sha256": "3a15d3533a7af51c044c77255ab2d41aca87b29d4833c219142e59c4c8454fa6"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/attempt-02/commands.json",
+      "bytes": 705,
+      "sha256": "8d2ec42f1d32f08003822926b6b57dab4e19f637dcf8415c105487d1bf3893c3"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/checks/01-go-race.log",
+      "bytes": 3363,
+      "sha256": "1b00259941d8b23bad8ce1e21a9ba98bba07f6a23b20d0440e8229bd17fb64be"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/checks/02-make-verify.log",
+      "bytes": 355,
+      "sha256": "2db48693a50138d1768187138b3b69c058a241ade385384c8abbaa65857eb2cb"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/checks/03-make-verify-buildvcs-off.log",
+      "bytes": 671,
+      "sha256": "c01c6e867b0e0f9de1d476d73af01754281894f5ca04477361c79481ab0931ac"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/checks/04-live-optout.log",
+      "bytes": 537,
+      "sha256": "34040605a2b179f92a15e53350fc7feb728d0d1b2ebe86588cbf82727109452a"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/environment.json",
+      "bytes": 742,
+      "sha256": "03027f4fb8e8abc457ab25471a952fa405f59453e5bbb662ce5975cddf19ac92"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/registered-permissions.json",
+      "bytes": 1753,
+      "sha256": "795a8494a03811e577d4c09a85f205a02ac87c1c0d75705a85bc698619481742"
+    },
+    {
+      "path": "docs/coordination/reports/issue15-real-app-20261024/validation.json",
+      "bytes": 188,
+      "sha256": "e5f5e56a09a6781151415a26b4f153f5eb603638070f8f2c6aba6e01ba55f795"
+    }
+  ]
+}

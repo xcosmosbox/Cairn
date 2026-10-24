@@ -1,0 +1,6 @@
+{"command": ["make", "verify"], "source_sha": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775", "started_utc": "2026-10-24T12:03:09.528261+00:00"}
+go vet ./...
+error obtaining VCS status: exit status 128
+	Use -buildvcs=false to disable VCS stamping.
+make: *** [Makefile:52: build-build] Error 1
+{"exit_code": 2, "ended_utc": "2026-10-24T12:03:10.274578+00:00"}

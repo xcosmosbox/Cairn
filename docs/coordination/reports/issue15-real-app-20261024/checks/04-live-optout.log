@@ -1,0 +1,7 @@
+{"command": ["go", "test", "-tags=livegithubapp", "-count=1", "-v", "-run", "^TestLiveAppAcceptance$", "./core/githubapp"], "GOFLAGS": "-buildvcs=false", "source_sha": "c1c3c90d6626b974b9cb9a5c527ae2dbea890775", "started_utc": "2026-10-24T12:03:57.635287+00:00"}
+=== RUN   TestLiveAppAcceptance
+    zz_live_acceptance_test.go:23: requires explicit live acceptance opt-in
+--- SKIP: TestLiveAppAcceptance (0.00s)
+PASS
+ok  	github.com/xcosmosbox/cairn/core/githubapp	0.003s
+{"exit_code": 0, "ended_utc": "2026-10-24T12:03:57.939002+00:00"}

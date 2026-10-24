@@ -1,0 +1,23 @@
+{
+  "source_sha": "5e765ddeb21cfc7aa032a4eb28ec10eac11b02f2",
+  "app_id": 5454525,
+  "installation_id": 174795212,
+  "repository": "xcosmosbox/cairn-app-sandbox",
+  "key_reference": "user supplied runtime file",
+  "commands": [
+    {
+      "command": [
+        "go",
+        "test",
+        "-tags=livegithubapp",
+        "-count=1",
+        "-v",
+        "-run",
+        "^TestLiveAppAcceptance$",
+        "./core/githubapp"
+      ],
+      "exit_code": 1,
+      "log": "01-native-auth-live.log"
+    }
+  ]
+}
