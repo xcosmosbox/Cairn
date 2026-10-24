@@ -1,0 +1,42 @@
+name: Bounded task / 可领取任务
+description: A self-contained implementation, verification, documentation or optimization task
+title: "[Task] "
+labels: ["coord:task", "status:backlog"]
+body:
+  - type: markdown
+    attributes:
+      value: "Read AGENTS.md and hub #7. Scope this task before moving it to ready; creating an Issue does not start an agent."
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Goal and background / 目标与背景
+      description: Who benefits, current behavior, desired result and supporting evidence
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Write scope and non-goals / 写集合与边界
+      description: Files, APIs, schema, inputs and conflicts with other tasks
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies, stage and priority / 依赖与优先级
+      description: Link blocking Issues; use none if independent; suggest M0-M3 and P0-P2
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance and evidence / 验收与证据
+      description: Observable pass/fail conditions, commands, expected artifacts and compatibility
+      placeholder: "- [ ] Specific measurable condition"
+    validations:
+      required: true
+  - type: textarea
+    id: access
+    attributes:
+      label: Access, experiment identity and limits / 访问与实验约束
+      description: Public or restricted inputs; existing authorizations; no credentials in the Issue

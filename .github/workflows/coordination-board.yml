@@ -1,0 +1,28 @@
+name: Coordination board
+on:
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled, assigned, unassigned]
+  issue_comment:
+    types: [created, edited, deleted]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: cairn-coordination-board
+  cancel-in-progress: false
+jobs:
+  refresh:
+    # Ignore our own hub patch, which would otherwise trigger another refresh.
+    if: github.event_name == 'workflow_dispatch' || (github.event.issue.number != 7 && (contains(github.event.issue.labels.*.name, 'coord:task') || github.event.label.name == 'coord:task'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Update hub from task metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/update_board.py
