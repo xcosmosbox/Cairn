@@ -1,0 +1,19 @@
+{"name": "15-cli-status", "command": ["./bin/cairn", "--db-path", ".local/cairnd-fake/fake-session-2342728636/bundles/demo/stable/knowledge.db", "status"], "cwd": ".", "started_at": "2026-10-24T09:28:35.903906+00:00", "ended_at": "2026-10-24T09:28:35.907717+00:00", "exit_code": 0}
+━━━ 知识库状态 / Knowledge Base Status ━━━
+  KB 版本:    2026-10-24T09:27:30.254598435Z
+  节点总数:   4
+  边总数:     3
+
+  节点按类型:
+    Concept                  1
+    Domain                   1
+    Skill                    1
+    Subdomain                1
+
+  边按类型:
+    composes                 2
+    provides                 1
+
+  节点按域（Top）:
+    demo                     3
+    fake                     1

@@ -1,0 +1,17 @@
+{
+  "format": "dk-kb-bundle/v1",
+  "kg": "demo",
+  "source_repo": "synthetic/source",
+  "source_ref": "main",
+  "source_commit": "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98",
+  "builder_version": "devel",
+  "builder_commit": "1492bfdab9702f7a214083032c9ec514c07f7906+sha256:a159fb3793e038e55ed7662dbc872e7f8fc42ce38d94fb88f5d459f084eace52",
+  "schema_version": 5,
+  "prompt_set_version": "sha256:929d004939ea10cac0992824e9fd004f2da452a99f7f76e1a983e15c73e66f72",
+  "model": "deepseek-flash",
+  "config_digest": "sha256:0a4fa792a5ff13d9174100e07ef1de445971b67703b8c63d9d0c0ba700440523",
+  "bundle_digest": "sha256:ccd70bd8d5e7e309887ba0f857428186ebe819bae27c9481999c8a2a10bb5f88",
+  "kb_version": "2026-10-24T09:27:30.254598435Z",
+  "created_at": "2026-10-24T09:27:30Z",
+  "minimum_reader_version": ""
+}

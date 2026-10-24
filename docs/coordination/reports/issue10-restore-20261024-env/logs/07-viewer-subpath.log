@@ -1,0 +1,26 @@
+{"name": "07-viewer-subpath", "command": ["npm", "run", "test:subpath"], "cwd": "graph-viewer", "started_at": "2026-10-24T09:26:19.311035+00:00", "ended_at": "2026-10-24T09:26:27.542031+00:00", "exit_code": 0}
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> graph-viewer@1.0.0 test:subpath
+> npm run build && node scripts/test-subpath.mjs
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> graph-viewer@1.0.0 build
+> tsc -b && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 2335 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.64 kB │ gzip:   0.48 kB
+dist/assets/index-V_CC-O0A.css     16.67 kB │ gzip:   4.30 kB
+dist/assets/index-CUTkpWVY.js   1,938.59 kB │ gzip: 540.07 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 4.77s
+Subpath /cairn/: built JS/CSS + SQLite WASM + fixture loading passed

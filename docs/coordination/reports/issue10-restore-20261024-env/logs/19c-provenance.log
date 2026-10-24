@@ -1,0 +1,24 @@
+{"name": "19c-provenance", "command": ["python3", ".local/provenance.py"], "cwd": ".", "started_at": "2026-10-24T09:30:05.695015+00:00", "ended_at": "2026-10-24T09:30:05.729593+00:00", "exit_code": 0}
+{
+  "node": {
+    "id": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+    "name": "阻塞队列",
+    "provenance": "llm_inferred",
+    "source_refs": "fake"
+  },
+  "sources": [
+    {
+      "node_uuid": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+      "member_id": "fake-concept-blocking-queue",
+      "skill": "fake",
+      "file_path": "SKILL.md",
+      "start_line": 6,
+      "end_line": 8
+    }
+  ],
+  "manifest_source_repo": "synthetic/source",
+  "manifest_source_commit": "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98",
+  "mcp_source_citation_scope": "domain_search and resolve_node format ID/name/type/domain/summary/confidence; no source-file citation field exposed by these tools at this baseline"
+}
+{"gitdir": ".local/cairnd-fake/fake-session-2342728636/remotes/synthetic-source.git", "command": ["git", "--git-dir", ".local/cairnd-fake/fake-session-2342728636/remotes/synthetic-source.git", "show", "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98:SKILL.md"], "exit_code": 0, "source_lines_6_8": ["", "**摘要**（可编辑）", "Bounded queue blocks when full or empty"]}
+PASS: source ledger UUID/member/skill/path/line span and manifest-pinned Git source match

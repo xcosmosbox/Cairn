@@ -1,0 +1,23 @@
+{"name": "09-make-verify", "command": ["make", "verify"], "cwd": ".", "started_at": "2026-10-24T09:26:29.081008+00:00", "ended_at": "2026-10-24T09:27:06.367566+00:00", "exit_code": 0}
+go vet ./...
+go: downloading github.com/google/uuid v1.6.0
+go: downloading modernc.org/sqlite v1.30.1
+go: downloading gopkg.in/yaml.v3 v3.0.1
+go: downloading golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
+go: downloading gonum.org/v1/gonum v0.15.1
+go: downloading modernc.org/libc v1.55.3
+go: downloading golang.org/x/sys v0.22.0
+go: downloading github.com/dustin/go-humanize v1.0.1
+go: downloading modernc.org/mathutil v1.6.0
+go: downloading modernc.org/memory v1.8.0
+go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
+✅ binaries built → bin/ (8 binaries)
+── 架构不变量检查 / architecture invariant checks ──
+✓ 查询端已接入 bundle 版本解析（ResolveLatest）
+✓ 查询端零 LLM
+✓ 查询端与哨兵零 embedding / 向量库
+✓ 查询端只读（无 KG 结构写入）
+✓ 演化层不写 KG（node/edge）
+✓ 演化层零 embedding / 向量库
+✓ 演化层零 LLM
+✅ verify 全绿 / all checks passed

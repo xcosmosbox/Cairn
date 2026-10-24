@@ -1,0 +1,27 @@
+{
+  "time_utc": "2026-10-24T09:32:21.091781+00:00",
+  "source_sha": "1492bfdab9702f7a214083032c9ec514c07f7906",
+  "git_diff_outside_report_exit": 0,
+  "locks": [
+    {
+      "path": "go.mod",
+      "baseline_sha256": "451467d12c42b93d729025da30c8db74accfe81a1611ba6ecf2cbea5f8fe9e88",
+      "current_sha256": "451467d12c42b93d729025da30c8db74accfe81a1611ba6ecf2cbea5f8fe9e88",
+      "equal": true
+    },
+    {
+      "path": "go.sum",
+      "baseline_sha256": "e1b72633daac07fb480359be7acdb4d91e6edbeefe4189ad5dcff7a0e776885b",
+      "current_sha256": "e1b72633daac07fb480359be7acdb4d91e6edbeefe4189ad5dcff7a0e776885b",
+      "equal": true
+    },
+    {
+      "path": "graph-viewer/package-lock.json",
+      "baseline_sha256": "14f9c88eaa74e7ffd454b3f0c713b5293579bc8e2d3266fe588dfc59a77de987",
+      "current_sha256": "14f9c88eaa74e7ffd454b3f0c713b5293579bc8e2d3266fe588dfc59a77de987",
+      "equal": true
+    }
+  ],
+  "remaining_diff_scope": "docs/coordination/reports/issue10-restore-20261024-env/** only",
+  "binary_fake_bundle": "local ignored; identity/metadata/semantic/source receipts published, no claim of downloadable DB"
+}

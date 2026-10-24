@@ -1,0 +1,143 @@
+{"name": "14-fake-artifact-inspection", "command": ["python3", ".local/inspect.py"], "cwd": ".", "started_at": "2026-10-24T09:28:35.853483+00:00", "ended_at": "2026-10-24T09:28:35.878098+00:00", "exit_code": 0}
+{
+  "session": "/workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636",
+  "runs": [
+    {
+      "run_id": "run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo",
+      "repo_id": "demo",
+      "desired_source_sha": "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98",
+      "base_bundle_digest": "",
+      "builder_fingerprint": "ceea5f385aef14286fa0f477ae77937806a4836d4f1ca2ea6be2fc860ed9a894",
+      "state": "Stable",
+      "retry_state": "",
+      "attempt": 0,
+      "reason": "catalog PR merged: stable",
+      "report_path": "",
+      "error_code": "",
+      "error_message": "",
+      "started_at": "2026-10-24 09:27:30.159340256 +0000 UTC",
+      "finished_at": "2026-10-24T09:27:30Z",
+      "next_retry_at": ""
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo-cand",
+      "run_id": "run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo",
+      "source_sha": "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98",
+      "expected_worktree_digest": "sha256:6f4e8bbb6363e9ef4523eca8f1fba797584df8c3e0e2afc89c337a90eb6fe8a8",
+      "bundle_path": "/workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636/bundles/demo/candidates/run-33c7dae4-8e49-4c70-a81d-49c053b16c67-demo",
+      "bundle_digest": "sha256:ccd70bd8d5e7e309887ba0f857428186ebe819bae27c9481999c8a2a10bb5f88",
+      "release_id": 1,
+      "release_tag": "kb-demo-148fc3df0d3c-ccd70bd8d5e7",
+      "status": "stable"
+    }
+  ],
+  "manifest": {
+    "format": "dk-kb-bundle/v1",
+    "kg": "demo",
+    "source_repo": "synthetic/source",
+    "source_ref": "main",
+    "source_commit": "148fc3df0d3c1b7cf16907c15a8e48105d7e3a98",
+    "builder_version": "devel",
+    "builder_commit": "1492bfdab9702f7a214083032c9ec514c07f7906+sha256:a159fb3793e038e55ed7662dbc872e7f8fc42ce38d94fb88f5d459f084eace52",
+    "schema_version": 5,
+    "prompt_set_version": "sha256:929d004939ea10cac0992824e9fd004f2da452a99f7f76e1a983e15c73e66f72",
+    "model": "deepseek-flash",
+    "config_digest": "sha256:0a4fa792a5ff13d9174100e07ef1de445971b67703b8c63d9d0c0ba700440523",
+    "bundle_digest": "sha256:ccd70bd8d5e7e309887ba0f857428186ebe819bae27c9481999c8a2a10bb5f88",
+    "kb_version": "2026-10-24T09:27:30.254598435Z",
+    "created_at": "2026-10-24T09:27:30Z",
+    "minimum_reader_version": ""
+  }
+}
+{"artifact": "/workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636/bundles/demo/stable/kb-manifest.json", "bytes": 800, "sha256": "a3f2301d0125f8def73424a27c3e09b39864bc7431843789c7e8447923c7f531", "checksum_match": true}
+{"artifact": "/workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636/bundles/demo/stable/knowledge.db", "bytes": 135168, "sha256": "8cc8022fb64ed4f0305ae754734b4fb92ec66efab7305ba73ca092e91a79061a", "checksum_match": true}
+{"tables": ["kb_version", "conflict_reports", "sqlite_sequence", "kg_manifest", "nodes_fts_data", "nodes_fts_idx", "nodes_fts_content", "nodes_fts_docsize", "nodes_fts_config", "node_sources", "uuid_lineage", "file_states", "cross_references", "nodes", "edges", "nodes_fts"]}
+{
+  "nodes": [
+    {
+      "id": "skill::fake",
+      "label": "Skill",
+      "name": "fake",
+      "summary": "Synthetic local fixture",
+      "synonyms": null,
+      "domain": "fake",
+      "subdomain": "",
+      "description": null,
+      "properties": null,
+      "tags": null,
+      "related_entities": null,
+      "confidence": 0.0,
+      "provenance": "llm_inferred",
+      "source_refs": null,
+      "created_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "updated_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "file_slug": null
+    },
+    {
+      "id": "domain::demo",
+      "label": "Domain",
+      "name": "演示",
+      "summary": "Synthetic knowledge domain",
+      "synonyms": null,
+      "domain": "demo",
+      "subdomain": "",
+      "description": null,
+      "properties": null,
+      "tags": null,
+      "related_entities": null,
+      "confidence": 0.0,
+      "provenance": "llm_inferred",
+      "source_refs": "fake",
+      "created_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "updated_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "file_slug": null
+    },
+    {
+      "id": "subdomain::demo::queue",
+      "label": "Subdomain",
+      "name": "队列",
+      "summary": "Synthetic knowledge subdomain",
+      "synonyms": null,
+      "domain": "demo",
+      "subdomain": "queue",
+      "description": null,
+      "properties": null,
+      "tags": null,
+      "related_entities": null,
+      "confidence": 0.0,
+      "provenance": "llm_inferred",
+      "source_refs": null,
+      "created_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "updated_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "file_slug": null
+    },
+    {
+      "id": "ccd9e2cf-1848-51c3-b013-229fbcef88b2",
+      "label": "Concept",
+      "name": "阻塞队列",
+      "summary": "Bounded queue blocks when full or empty",
+      "synonyms": null,
+      "domain": "demo",
+      "subdomain": "queue",
+      "description": "Synthetic local fixture: bounded queue blocks when full or empty.",
+      "properties": null,
+      "tags": null,
+      "related_entities": null,
+      "confidence": 1.0,
+      "provenance": "llm_inferred",
+      "source_refs": "fake",
+      "created_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "updated_at": "2026-10-24 09:27:30.245920836 +0000 UTC",
+      "file_slug": null
+    }
+  ]
+}
+Concrete MCP config (no credentials):
+mcp:
+  knowledge_bases:
+    - name: demo
+      path: /workspace/scratch/110c4593aeb1/cairn-env/.local/cairnd-fake/fake-session-2342728636/bundles/demo/stable/knowledge.db
+      description: "Synthetic fake queue fixture"
+

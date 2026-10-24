@@ -1,0 +1,25 @@
+{"name": "02-environment", "command": ["bash", "-c", "cat /etc/os-release; uname -srmo; git --version; node --version; npm --version; python3 --version; cc --version | head -1; make --version | head -1; git rev-parse HEAD; git status --short; git ls-files \"*activat*\" \"*setup*\" \"*env*\""], "cwd": ".", "started_at": "2026-10-24T09:25:51.896957+00:00", "ended_at": "2026-10-24T09:25:52.042209+00:00", "exit_code": 0}
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+Linux 6.18.55 x86_64 GNU/Linux
+git version 2.51.1
+v24.19.0
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+11.9.0
+Python 3.12.14
+cc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+GNU Make 4.3
+1492bfdab9702f7a214083032c9ec514c07f7906
+docs/coordination/reports/issue10-restore-20261024-SYe4dbpU/logs/01-environment.log
+graph-viewer/src/vite-env.d.ts

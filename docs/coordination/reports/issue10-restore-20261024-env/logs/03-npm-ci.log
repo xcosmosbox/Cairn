@@ -1,0 +1,4 @@
+{"name": "03-npm-ci", "command": ["npm", "ci", "--offline", "--no-audit", "--no-fund"], "cwd": "graph-viewer", "started_at": "2026-10-24T09:25:52.071798+00:00", "ended_at": "2026-10-24T09:25:54.993447+00:00", "exit_code": 0}
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+added 154 packages in 3s
