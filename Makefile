@@ -4,6 +4,9 @@
 BUILD_BINS   := cairnd cairnctl cairn-ingest cairn-incremental cairn-rebalance cairn-evolve
 SERVICE_BINS := cairn cairn-mcp
 
+# Software stamp only; the default never claims a published release.
+CAIRN_VERSION ?= devel
+
 # ═══════════════════════════════════════════════════════════════════
 # help — 默认目标：列出常用命令
 # ═══════════════════════════════════════════════════════════════════
@@ -50,13 +53,13 @@ build: build-build build-service
 # 仅构建端 / build-only the build-side binaries
 build-build:
 	@for b in $(BUILD_BINS); do \
-		go build -o bin/$$b ./build/cmd/$$b/ || exit 1; \
+		go build -ldflags "-X github.com/xcosmosbox/cairn/core/version.Version=$(CAIRN_VERSION)" -o bin/$$b ./build/cmd/$$b/ || exit 1; \
 	done
 
 # 仅查询端 / build-only the query-side binaries
 build-service:
 	@for b in $(SERVICE_BINS); do \
-		go build -o bin/$$b ./service/cmd/$$b/ || exit 1; \
+		go build -ldflags "-X github.com/xcosmosbox/cairn/core/version.Version=$(CAIRN_VERSION)" -o bin/$$b ./service/cmd/$$b/ || exit 1; \
 	done
 
 # ═══════════════════════════════════════════════════════════════════

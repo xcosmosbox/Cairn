@@ -59,6 +59,7 @@ func TestHelpAndUnknownCommandWithoutDatabase(t *testing.T) {
 		{"--db-path", path, "help", "find"},
 		{"--db-path=" + path, "--help"},
 		{"status", "--help", "--db-path", path},
+		{"--db-path", path, "--version"},
 	} {
 		if err := Run(args); err != nil {
 			t.Fatalf("Run(%v): %v", args, err)

@@ -1,6 +1,10 @@
 package buildmeta
 
-import "testing"
+import (
+	"testing"
+
+	buildversion "github.com/xcosmosbox/cairn/core/version"
+)
 
 func TestSourceIdentityIncludesActualBuilderCodeWithAndWithoutVCS(t *testing.T) {
 	first, second := "sha256:first", "sha256:second"
@@ -10,8 +14,11 @@ func TestSourceIdentityIncludesActualBuilderCodeWithAndWithoutVCS(t *testing.T) 
 	if sourceIdentity("", first) != first || sourceIdentity("same-vcs-revision", first) != sourceIdentity("same-vcs-revision", first) {
 		t.Fatal("identity is not deterministic")
 	}
-	_, identity := BuilderVersion()
+	version, identity := BuilderVersion()
 	if identity == "" {
 		t.Fatal("builder identity missing without build VCS")
+	}
+	if version != buildversion.Current() || identity != sourceIdentity(buildversion.Info().Revision, SourceDigest("")) {
+		t.Fatalf("shared version masked builder source identity: version=%s identity=%s", version, identity)
 	}
 }

@@ -7,9 +7,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
-	"runtime/debug"
 	"sort"
 	"strings"
+
+	buildversion "github.com/xcosmosbox/cairn/core/version"
 )
 
 // 提示词目前是 Go 字符串常量。嵌入其实际源码而非手填版本，确保修改会触发重建。
@@ -50,18 +51,9 @@ func SourceDigest(prefixes ...string) string {
 }
 
 func BuilderVersion() (version, commit string) {
-	version = "devel"
-	if info, ok := debug.ReadBuildInfo(); ok {
-		if info.Main.Version != "" && info.Main.Version != "(devel)" {
-			version = info.Main.Version
-		}
-		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" {
-				commit = s.Value
-			}
-		}
-	}
-	commit = sourceIdentity(commit, SourceDigest(""))
+	build := buildversion.Info()
+	version = build.Version
+	commit = sourceIdentity(build.Revision, SourceDigest(""))
 	return
 }
 

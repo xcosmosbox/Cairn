@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	buildversion "github.com/xcosmosbox/cairn/core/version"
 )
 
 // Run the real entry point in a child, keeping handshake/transport regressions
@@ -26,12 +28,35 @@ func TestMCPTransportChild(t *testing.T) {
 		return
 	}
 	os.Args = []string{"cairn-mcp", "--config", os.Getenv("CAIRN_TRANSPORT_CONFIG")}
+	if os.Getenv("CAIRN_TRANSPORT_VERSION_ONLY") == "1" {
+		os.Args = append(os.Args, "--version")
+	}
 	if addr := os.Getenv("CAIRN_TRANSPORT_ADDR"); addr != "" {
 		os.Args = append(os.Args, "--listen", addr)
 	}
 	flag.CommandLine = flag.NewFlagSet("cairn-mcp", flag.ExitOnError)
 	main()
 	os.Exit(0)
+}
+
+// --version 必须在读取不存在的配置/数据库之前退出，不能进入后台 watcher。
+func TestMCPVersionDoesNotLoadConfigOrDatabase(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing-config.yaml")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMCPTransportChild$")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "CAIRN_TRANSPORT_TEST=1", "CAIRN_TRANSPORT_CONFIG="+missing, "CAIRN_TRANSPORT_VERSION_ONLY=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), buildversion.Summary("cairn-mcp")) || strings.Contains(string(output), "config, using defaults") {
+		t.Fatalf("version entered startup/config path: err=%v output=%s", err, output)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("version created runtime files: %v %v", entries, err)
+	}
 }
 
 func transportChild(t *testing.T, addr string) (*exec.Cmd, *bytes.Buffer, context.CancelFunc) {
@@ -100,6 +125,9 @@ func TestRealStdioHandshakeAndQueries(t *testing.T) {
 	if result["protocolVersion"] != mcpProtocolVersion {
 		t.Fatalf("wrong negotiated date: %+v", result)
 	}
+	if mcpProtocolVersion != "2024-11-05" || result["serverInfo"].(map[string]interface{})["version"] != buildversion.Current() {
+		t.Fatalf("software stamp changed protocol or handshake identity: %+v", result)
+	}
 	if err := encoder.Encode(map[string]interface{}{"jsonrpc": "2.0", "method": "notifications/initialized"}); err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +172,13 @@ func TestRealHTTPRESTAndLegacySSEHandshake(t *testing.T) {
 	for {
 		response, err := client.Get(base + "/health")
 		if err == nil {
+			var health map[string]interface{}
+			decodeErr := json.NewDecoder(response.Body).Decode(&health)
 			response.Body.Close()
 			if response.StatusCode == 200 {
+				if decodeErr != nil || health["version"] != buildversion.Current() {
+					t.Fatalf("health version drift: %+v %v", health, decodeErr)
+				}
 				break
 			}
 		}
@@ -153,6 +186,15 @@ func TestRealHTTPRESTAndLegacySSEHandshake(t *testing.T) {
 			t.Fatalf("HTTP server unavailable: %v; %s", err, stderr.String())
 		}
 		time.Sleep(25 * time.Millisecond)
+	}
+	rootResponse, err := client.Get(base + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootBody, err := io.ReadAll(rootResponse.Body)
+	rootResponse.Body.Close()
+	if err != nil || !strings.Contains(string(rootBody), "Version "+buildversion.Current()+" (HTTP/SSE transport)") {
+		t.Fatalf("HTTP info version drift: %s %v", rootBody, err)
 	}
 	for _, path := range []string{"/api/tools", "/api/kbs", "/api/status?kg=smoke", "/api/search?kg=smoke&keyword=aggregate0", "/api/impact?kg=smoke&entity=aggregate0", "/api/describe?kg=smoke"} {
 		res, err := client.Get(base + path)
