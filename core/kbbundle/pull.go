@@ -197,6 +197,7 @@ type ghRelease struct {
 	Assets  []ghAsset `json:"assets"`
 }
 type ghAsset struct {
+	ID                 int64  `json:"id"`
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int    `json:"size"`
@@ -212,7 +213,9 @@ func getReleaseAssetURLContext(ctx context.Context, apiBase, owner, repo, tag, t
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("Authorization", "token "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -233,7 +236,7 @@ func getReleaseAssetURLContext(ctx context.Context, apiBase, owner, repo, tag, t
 	if len(desiredAssets) > 0 && desiredAssets[0] != "" {
 		for _, asset := range rel.Assets {
 			if asset.Name == desiredAssets[0] {
-				return asset.BrowserDownloadURL, asset.Name, nil
+				return releaseAssetDownloadURL(apiBase, owner, repo, asset, token)
 			}
 		}
 		return "", "", fmt.Errorf("Release %s missing catalog asset %s", tag, desiredAssets[0])
@@ -241,10 +244,22 @@ func getReleaseAssetURLContext(ctx context.Context, apiBase, owner, repo, tag, t
 	// 优先选 knowledge.db，否则取第一个。
 	for _, a := range rel.Assets {
 		if a.Name == "knowledge.db" || a.Name == "bundle.tar.gz" {
-			return a.BrowserDownloadURL, a.Name, nil
+			return releaseAssetDownloadURL(apiBase, owner, repo, a, token)
 		}
 	}
-	return rel.Assets[0].BrowserDownloadURL, rel.Assets[0].Name, nil
+	return releaseAssetDownloadURL(apiBase, owner, repo, rel.Assets[0], token)
+}
+
+// 私有 Release 的浏览器链接可返回404；凭据只能发给配置的 API，而非响应提供的 URL。
+// Bind authenticated downloads to the configured API/repository/asset ID; public reads keep browser URLs.
+func releaseAssetDownloadURL(apiBase, owner, repo string, asset ghAsset, token string) (string, string, error) {
+	if token == "" {
+		return asset.BrowserDownloadURL, asset.Name, nil
+	}
+	if asset.ID <= 0 {
+		return "", "", fmt.Errorf("Release asset %s missing positive asset ID", asset.Name)
+	}
+	return fmt.Sprintf("%s/repos/%s/%s/releases/assets/%d", strings.TrimRight(apiBase, "/"), owner, repo, asset.ID), asset.Name, nil
 }
 
 // findReleaseByDigest 列出所有 Release，按 bundle_digest 在 body 中搜索匹配的 Release。
@@ -284,17 +299,17 @@ func findReleaseByDigestContext(ctx context.Context, apiBase, owner, repo, bundl
 			if len(desiredAssets) > 0 && desiredAssets[0] != "" {
 				for _, asset := range rel.Assets {
 					if asset.Name == desiredAssets[0] {
-						return asset.BrowserDownloadURL, asset.Name, nil
+						return releaseAssetDownloadURL(apiBase, owner, repo, asset, token)
 					}
 				}
 				continue
 			}
 			for _, a := range rel.Assets {
 				if a.Name == "knowledge.db" || a.Name == "bundle.tar.gz" {
-					return a.BrowserDownloadURL, a.Name, nil
+					return releaseAssetDownloadURL(apiBase, owner, repo, a, token)
 				}
 			}
-			return rel.Assets[0].BrowserDownloadURL, rel.Assets[0].Name, nil
+			return releaseAssetDownloadURL(apiBase, owner, repo, rel.Assets[0], token)
 		}
 	}
 	return "", "", fmt.Errorf("未找到 bundle_digest=%s 对应的 Release", bundleDigest)
@@ -312,7 +327,10 @@ func downloadFileContext(ctx context.Context, url, destPath, token string) error
 	if token != "" {
 		req.Header.Set("Authorization", "token "+token)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	// GitHub's asset API returns binary/redirect only with octet-stream Accept.
+	req.Header.Set("Accept", "application/octet-stream")
+	client := assetDownloadClient()
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -369,4 +387,37 @@ func validateStableCatalog(cm *CatalogManifest, expectedKG string) error {
 		return fmt.Errorf("catalog Release or asset pointer is missing; republish a complete Bundle")
 	}
 	return nil
+}
+
+// 每次下载独立重定向状态，避免跨请求共享凭据路由决定。
+// assetDownloadClient is scoped to one download/redirect chain.
+func assetDownloadClient() http.Client {
+	client := *http.DefaultClient
+	priorRedirect := client.CheckRedirect
+	crossedOrigin := false
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) > 10 {
+			return fmt.Errorf("kbbundle: stopped after 10 asset redirects")
+		}
+		// 认证链路不能从 HTTPS 降到明文；显式配置的本地 HTTP API 起点仍可测试。
+		// Reject authenticated HTTPS downgrades before sending any HTTP request.
+		if len(via) > 0 && via[0].Header.Get("Authorization") != "" && via[len(via)-1].URL.Scheme == "https" && next.URL.Scheme == "http" {
+			return fmt.Errorf("kbbundle: refusing HTTPS to HTTP authenticated asset redirect")
+		}
+		if priorRedirect != nil {
+			if err := priorRedirect(next, via); err != nil {
+				return err
+			}
+		}
+		// Go 默认可向原域的子域转发敏感头；asset 重定向跨 host 或协议（包括 HTTPS 降级）后永久去掉凭据。
+		// Drop credentials across host/scheme boundaries, including subdomains, downgrade and return hops.
+		if len(via) > 0 && (next.URL.Host != via[len(via)-1].URL.Host || next.URL.Scheme != via[len(via)-1].URL.Scheme) {
+			crossedOrigin = true
+		}
+		if crossedOrigin {
+			next.Header.Del("Authorization")
+		}
+		return nil
+	}
+	return client
 }
