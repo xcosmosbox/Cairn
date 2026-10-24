@@ -1,0 +1,140 @@
+{
+  "arms": {
+    "raw_lexical_sanity": {
+      "by_type": {
+        "comparison_query": {
+          "doc_recall": 0.5520833333333334,
+          "post_all_facts": 0.125,
+          "post_fact_recall": 0.3072916666666667,
+          "pre_all_facts": 0.21875,
+          "pre_fact_recall": 0.3958333333333333,
+          "unique_docs": 7.4375
+        },
+        "inference_query": {
+          "doc_recall": 0.4947916666666667,
+          "post_all_facts": 0,
+          "post_fact_recall": 0.21614583333333331,
+          "pre_all_facts": 0.03125,
+          "pre_fact_recall": 0.2942708333333333,
+          "unique_docs": 7.25
+        },
+        "temporal_query": {
+          "doc_recall": 0.515625,
+          "post_all_facts": 0.0625,
+          "post_fact_recall": 0.2552083333333333,
+          "pre_all_facts": 0.0625,
+          "pre_fact_recall": 0.3020833333333333,
+          "unique_docs": 6.21875
+        }
+      },
+      "fact_error_counts": {
+        "budget_only_loss": 18,
+        "source_absent_top10": 129,
+        "source_present_wrong_chunks": 54,
+        "visible_fact": 65
+      },
+      "facts_total": 266,
+      "mean_full_context_chars": 19254.916666666668,
+      "mean_overlapping_top10_body_chars": 365.3541666666667,
+      "mean_post_fact_recall": 0.2595486111111111,
+      "mean_pre_fact_recall": 0.3307291666666667,
+      "mean_serialization_metadata_chars": 2039.15625,
+      "mean_unique_top10_docs": 6.96875,
+      "mean_visible_body_chars": 7873.479166666667,
+      "mean_visible_chunks": 5.427083333333333,
+      "mean_visible_docs": 3.9895833333333335,
+      "null_queries": 32,
+      "positive_queries": 96,
+      "post_all_facts_count": 6,
+      "pre_all_docs_count": 13,
+      "pre_all_facts_count": 10,
+      "pre_doc_recall": 0.5208333333333334,
+      "queries_with_budget_fact_loss": 18,
+      "unique_top10_docs_distribution": {
+        "1": 1,
+        "10": 8,
+        "2": 3,
+        "3": 3,
+        "4": 5,
+        "5": 7,
+        "6": 17,
+        "7": 17,
+        "8": 18,
+        "9": 17
+      },
+      "visible_all_docs_count": 9,
+      "visible_doc_recall": 0.4461805555555555
+    },
+    "raw_source_fts_sqlite": {
+      "by_type": {
+        "comparison_query": {
+          "doc_recall": 0.7864583333333334,
+          "post_all_facts": 0.1875,
+          "post_fact_recall": 0.4635416666666667,
+          "pre_all_facts": 0.28125,
+          "pre_fact_recall": 0.5052083333333334,
+          "unique_docs": 5.90625
+        },
+        "inference_query": {
+          "doc_recall": 0.6041666666666666,
+          "post_all_facts": 0.03125,
+          "post_fact_recall": 0.3489583333333333,
+          "pre_all_facts": 0.0625,
+          "pre_fact_recall": 0.4479166666666667,
+          "unique_docs": 5.34375
+        },
+        "temporal_query": {
+          "doc_recall": 0.7239583333333334,
+          "post_all_facts": 0.09375,
+          "post_fact_recall": 0.3802083333333333,
+          "pre_all_facts": 0.125,
+          "pre_fact_recall": 0.453125,
+          "unique_docs": 4.46875
+        }
+      },
+      "fact_error_counts": {
+        "budget_only_loss": 20,
+        "source_absent_top10": 87,
+        "source_present_wrong_chunks": 60,
+        "visible_fact": 99
+      },
+      "facts_total": 266,
+      "mean_full_context_chars": 18936.635416666668,
+      "mean_overlapping_top10_body_chars": 589.15625,
+      "mean_post_fact_recall": 0.3975694444444444,
+      "mean_pre_fact_recall": 0.46875,
+      "mean_serialization_metadata_chars": 2078.03125,
+      "mean_unique_top10_docs": 5.239583333333333,
+      "mean_visible_body_chars": 7863.541666666667,
+      "mean_visible_chunks": 5.53125,
+      "mean_visible_docs": 3.3020833333333335,
+      "null_queries": 32,
+      "positive_queries": 96,
+      "post_all_facts_count": 10,
+      "pre_all_docs_count": 34,
+      "pre_all_facts_count": 15,
+      "pre_doc_recall": 0.704861111111111,
+      "queries_with_budget_fact_loss": 18,
+      "unique_top10_docs_distribution": {
+        "1": 5,
+        "2": 2,
+        "3": 10,
+        "4": 17,
+        "5": 19,
+        "6": 15,
+        "7": 14,
+        "8": 13,
+        "9": 1
+      },
+      "visible_all_docs_count": 24,
+      "visible_doc_recall": 0.5859375
+    }
+  },
+  "implementation_sha256": "b2849b4bdeb462242345b7433b325b1a29a60f48ba3eeaef3e97bc3463be4e81",
+  "index_sha256": "9d38e152df5ff1dde536367a5d4654879ce95f9a00338ae6fbca78dde1ddc4d0",
+  "producer_reported_exit_code": 0,
+  "scope": "DEV128 only; aggregate source-localization diagnostic; no news or answers",
+  "source_artifact_bytes": 208953,
+  "source_artifact_sha256": "836ed6ae4d2e6a074712bc9b0f8557fe59904f3d60b84f0bd6dc5dbf91990ebd",
+  "split_sha256": "5edc8738190bf63fc4293259c1fd98428c16cd07f8044fc7663ad08d77086d2e"
+}
