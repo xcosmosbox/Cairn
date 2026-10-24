@@ -1,0 +1,13 @@
+{
+  "source_sha": "18e7e7bfc989fc0216625b0851e105690edd3950",
+  "python": "3.12.14",
+  "go_version": "go version go1.22.12 linux/amd64",
+  "binaries": {
+    "cairn-ingest": "68f9b1cb1fc8f5b58a6c6fbe8c1ef896517417b523e80899f125c81c60ceb71b",
+    "cairn": "08d54c776e5dad0b09b506f7ca036ff7eb8ec2ffee13c926f06aee6e8108f172",
+    "cairn-mcp": "b7396b5a95af3e648c6d78613387b19e89eb31729b4949e9c263dc3e9355259a"
+  },
+  "build_observation": "GOFLAGS=-buildvcs=false make build exited0 earlier in same session with existing verified Go/module/build caches; not a model execution",
+  "model_egress": "not_retried_after_automatic_rejection",
+  "holdout": "not_opened"
+}

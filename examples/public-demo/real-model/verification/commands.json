@@ -1,0 +1,43 @@
+[
+  {
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "examples/public-demo/real-model",
+      "-p",
+      "test_*.py",
+      "-v"
+    ],
+    "started_at_utc": "2026-10-24T12:40:11.316369+00:00",
+    "finished_at_utc": "2026-10-24T12:40:11.417523+00:00",
+    "exit_code": 0,
+    "log": "01-check.log"
+  },
+  {
+    "command": [
+      "python3",
+      "examples/public-demo/real-model/run.py",
+      "prepare",
+      "--out",
+      ".local/real-model/preparation-only-02"
+    ],
+    "started_at_utc": "2026-10-24T12:40:11.417540+00:00",
+    "finished_at_utc": "2026-10-24T12:40:11.475847+00:00",
+    "exit_code": 0,
+    "log": "02-check.log"
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "started_at_utc": "2026-10-24T12:40:11.475861+00:00",
+    "finished_at_utc": "2026-10-24T12:40:11.478841+00:00",
+    "exit_code": 0,
+    "log": "03-check.log"
+  }
+]

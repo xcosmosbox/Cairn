@@ -1,0 +1,22 @@
+{
+  "format": "cairn-public-real-two-doc-v1",
+  "source_commit": "18e7e7bfc989fc0216625b0851e105690edd3950",
+  "input_scope": "SKILL metadata plus exactly two reference documents; no benchmark questions/gold/holdout",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "bytes": 896,
+      "sha256": "048036172a5670d86322988b156f9c4619812c74bd03d47b62f8fdebb4274f97"
+    },
+    {
+      "path": "references/queue.md",
+      "bytes": 553,
+      "sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135"
+    },
+    {
+      "path": "references/timeout.md",
+      "bytes": 626,
+      "sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587"
+    }
+  ]
+}
