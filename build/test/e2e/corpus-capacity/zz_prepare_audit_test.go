@@ -191,3 +191,12 @@ func TestTraceAuditRejectsSwappedLogicalAndProviderBindings(t *testing.T) {
 		}
 	}
 }
+
+func TestTraceSnapshotParsesExactlyItsBytesAndRejectsPartialTail(t *testing.T){
+	t.Parallel()
+	prefix:=[]byte("{\"event\":\"logical_start\",\"call_id\":1}\n{\"event\":\"request\",\"call_id\":1,\"http_attempt\":1,\"provider_attempt\":1,\"admitted\":true}\n")
+	counts,failures:=auditTraceBytes(prefix);if counts["admitted_attempts"]!=1||counts["admitted_without_outcome"]!=1||len(failures)==0{t.Fatal("snapshot denominator lost")}
+	partial:=append(append([]byte(nil),prefix...),[]byte(`{"event":"response"`)...)
+	_,failures=auditTraceBytes(partial);found:=false;for _,failure:=range failures{if strings.Contains(failure,"incomplete tail"){found=true}}
+	if !found{t.Fatal("partial concurrent/kill tail was accepted")}
+}

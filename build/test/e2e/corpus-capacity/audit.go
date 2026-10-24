@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -315,9 +316,12 @@ func audit(ctx context.Context, out string) (*auditReport, error) {
 
 func writeTraceAudit(out string) (map[string]int, []string, error) {
 	path := filepath.Join(out, "requests.jsonl")
-	counts, failures := auditTrace(path)
 	raw, readErr := os.ReadFile(path)
-	receipt := map[string]any{"format": "cairn-capacity-trace-forensics/v1", "created_at": now(), "counts": counts, "errors": failures, "ledger_read_ok": readErr == nil, "ledger_sha256": sha(raw), "ledger_bytes": len(raw), "source_graph_and_quality": "not_checked; trace-only forensic evidence"}
+	counts, failures := auditTraceBytes(raw)
+	if readErr != nil {
+		failures = append(failures, "request ledger snapshot read failed")
+	}
+	receipt := map[string]any{"format": "cairn-capacity-trace-forensics/v1", "created_at": now(), "counts": counts, "errors": failures, "ledger_read_ok": readErr == nil, "ledger_sha256": sha(raw), "ledger_bytes": len(raw), "snapshot_semantics": "counts/hash/bytes bind one read snapshot; a concurrently advancing run may admit later requests outside this prefix", "source_graph_and_quality": "not_checked; trace-only forensic evidence"}
 	name := "trace-audit-" + time.Now().UTC().Format("20060102T150405.000000000Z") + ".json"
 	return counts, failures, writeNew(filepath.Join(out, name), receipt)
 }
@@ -325,14 +329,20 @@ func writeTraceAudit(out string) (map[string]int, []string, error) {
 // A start without an outcome remains a potentially charged, unknown attempt.
 // Never call a killed/incomplete run successful and never silently resume it.
 func auditTrace(path string) (map[string]int, []string) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return map[string]int{}, []string{"request ledger absent"}
+	}
+	return auditTraceBytes(raw)
+}
+
+func auditTraceBytes(raw []byte) (map[string]int, []string) {
 	counts := map[string]int{}
 	var failures []string
-	f, err := os.Open(path)
-	if err != nil {
-		return counts, []string{"request ledger absent"}
+	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
+		failures = append(failures, "ledger snapshot has an incomplete tail")
 	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	scanner.Buffer(make([]byte, 4096), 4*1024*1024)
 	type binding struct {
 		call, provider int64
