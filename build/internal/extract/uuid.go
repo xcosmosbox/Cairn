@@ -24,6 +24,7 @@
 package extract
 
 import (
+	"log"
 	"sort"
 	"strings"
 
@@ -86,72 +87,36 @@ func NodeUUID(members []string) string {
 	return uuid.NewSHA1(cairnNamespace, []byte(strings.Join(uniq, ","))).String()
 }
 
-// AssignNodeUUIDs 在「最后一个 LLM 阶段（stage 3.7 relate）之后、ingest（stage 4）之前」
-// 调用，就地遍历 domains，为每个 entity/concept 融合节点派生并覆盖其 ID（原为 LLM 临时
-// kebab id），并在每个 subdomain 内翻译所有 Relations 的 Source/Target 端点。
-//
-// 行为：
-//  1. 对每个 subdomain 的每个 entity / concept，计算 u = NodeUUID(node.Members)，
-//     在该 subdomain 内建立 旧ID(kebab)→uuid 映射，再用 u 覆盖 node.ID；
-//  2. 遍历该 subdomain 的所有 Relations：若 Source/Target 命中上述映射则替换为 uuid，
-//     未命中（如跨子域引用、或指向已不存在的临时 id）则**保留原值**——后续 ingest 的
-//     端点存在性校验会把它当作悬空端点跳过（绝不产生悬空边，R5）。
-//
-// 就地修改语义：domains 切片及其内部 Node / Relation 均被直接改写（不返回新切片）。
-// 调用方应在完成所有 LLM 阶段后调用本函数；调用后所有 prompt 阶段都已结束，uuid 进入
-// 数据流不再违反 R1。
-//
-// 关键铁律（R2 / V3-a / R1）：
-//   - NodeUUID 仅作首次确定性生成器；uuid 首次分配后钉死永不变（R2 / V3-a）。
-//   - 本函数不做"幂等再分配"——重复调用会再次覆盖 ID（但因 NodeUUID 是纯函数，
-//     同一 members 的输出不变，故重复调用的最终态一致）；生产中应只调一次。
-//   - UUID 绝不进入任何 LLM prompt（R1）——本函数注释明确标注。
-//
-// AssignNodeUUIDs is called after the last LLM stage (3.7 relate) and before ingest (4).
-// It walks domains in place: for each entity/concept it derives u = NodeUUID(node.Members),
-// builds a kebab→uuid map per subdomain, overwrites node.ID with u, and translates the
-// Source/Target of every Relation in that subdomain (unmapped endpoints are left as-is
-// and will be skipped by ingest's endpoint-existence check — never producing dangling
-// edges, R5). Mutates in place; should be called exactly once in production (NodeUUID is
-// pure, so re-calls converge to the same final state, but the contract is "call once").
-//
-// R2 / V3-a / R1: NodeUUID is the first-time-only deterministic generator; a uuid, once
-// assigned, is pinned forever and never re-derived on member changes. UUID NEVER enters
-// any LLM prompt — this function runs only after all prompt stages are done.
+// AssignNodeUUIDs 在所有 LLM 阶段之后一次分配首次 UUID。先建立完整的带归属临时键映射，
+// 再翻译关系，最后修改节点，避免目标子域尚未遍历或别名冲突使跨子域关系丢失。
+// 跨子域候选必须由调用方先做原文验证；解析不代表语义认可。增量既有身份不经过本函数。
+// AssignNodeUUIDs runs after source validation and all other LLM stages (R1).
+// It binds every qualified temporary identity before mutation; existing identities stay pinned (R2).
 func AssignNodeUUIDs(domains []Domain) {
+	index := indexEndpoints(domains)
+	identities := make(map[*Node]string)
+	for _, refs := range index.global {
+		for _, ref := range refs {
+			identities[ref.node] = NodeUUID(ref.node.Members)
+		}
+	}
 	for di := range domains {
 		for si := range domains[di].Subdomains {
 			sd := &domains[di].Subdomains[si]
-			// 该 subdomain 内的 旧ID(kebab)→uuid 映射，用于翻译 Relations 端点。
-			// kebab→uuid map within this subdomain, used to translate relation endpoints.
-			kebabToUUID := make(map[string]string)
-
-			// entity：派生 uuid、建映射、覆盖 ID。
-			// entities: derive uuid, register mapping, overwrite ID.
-			for ni := range sd.Entities {
-				u := NodeUUID(sd.Entities[ni].Members)
-				kebabToUUID[sd.Entities[ni].ID] = u
-				sd.Entities[ni].ID = u
-			}
-			// concept：同上。
-			// concepts: same as entities.
-			for ni := range sd.Concepts {
-				u := NodeUUID(sd.Concepts[ni].Members)
-				kebabToUUID[sd.Concepts[ni].ID] = u
-				sd.Concepts[ni].ID = u
-			}
-			// 翻译 Relations 端点：仅替换命中映射的端点（命中才替换），
-			// 未命中保留原值，交由 ingest 做端点存在性校验（缺端点则跳过，绝不悬空）。
-			// Translate relation endpoints: replace only when the endpoint hits the map;
-			// unmapped endpoints are left untouched for ingest's existence check (R5).
-			for ri := range sd.Relations {
-				if u, ok := kebabToUUID[sd.Relations[ri].Source]; ok {
-					sd.Relations[ri].Source = u
+			kept := sd.Relations[:0]
+			for _, r := range sd.Relations {
+				source, target, ss, ts := index.relation(endpointScope{domains[di].Slug, sd.Slug}, r)
+				if ss != "resolved" || ts != "resolved" {
+					log.Printf("[extract-uuid] 拒绝端点: %s/%s %s --%s--> %s (source=%s target=%s)", domains[di].Slug, sd.Slug, r.Source, r.Kind, r.Target, ss, ts)
+					continue
 				}
-				if u, ok := kebabToUUID[sd.Relations[ri].Target]; ok {
-					sd.Relations[ri].Target = u
-				}
+				r.Source, r.Target = identities[source.node], identities[target.node]
+				kept = append(kept, r)
 			}
+			sd.Relations = kept
 		}
+	}
+	for node, id := range identities {
+		node.ID = id
 	}
 }

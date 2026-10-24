@@ -88,23 +88,27 @@ type Options struct {
 	// StageTimeout 是每个 pipeline 阶段的独立超时预算。
 	// ≤0 取 defaultStageTimeout。统一使用 config.llm.timeout，不做 per-stage 差异化。
 	StageTimeout time.Duration
+	// CrossRelationEvidenceBytes 只调整完整原文验证的容量；≤0 使用64KiB，超限明确不足而非截断。
+	// CrossRelationEvidenceBytes bounds one source neighborhood; it does not cap candidate count.
+	CrossRelationEvidenceBytes int
 }
 
 // Orchestrator 是新 LLM 流水线的内存态状态机编排器。
 // Orchestrator is the in-memory state-machine orchestrator of the new LLM pipeline.
 type Orchestrator struct {
-	repositoryIdentity string
-	scanner            *discovery.FSScanner
-	annotator          *annotation.LLMAnnotator
-	formatGate         *annotation.FormatGate
-	semanticGate       *annotation.SemanticGate
-	extractor          *extract.Extractor
-	client             llm.Client // 供 GenerateFileSlugs 使用 / for GenerateFileSlugs
-	maxRollbacks       int
-	minConf            float64
-	rules              discovery.DiscoveryRules
-	dumpDir            string
-	stageTimeout       time.Duration // 每个阶段的独立超时（统一值，不分阶段）
+	repositoryIdentity         string
+	scanner                    *discovery.FSScanner
+	annotator                  *annotation.LLMAnnotator
+	formatGate                 *annotation.FormatGate
+	semanticGate               *annotation.SemanticGate
+	extractor                  *extract.Extractor
+	client                     llm.Client // 供 GenerateFileSlugs 使用 / for GenerateFileSlugs
+	maxRollbacks               int
+	minConf                    float64
+	rules                      discovery.DiscoveryRules
+	dumpDir                    string
+	crossRelationEvidenceBytes int
+	stageTimeout               time.Duration // 每个阶段的独立超时（统一值，不分阶段）
 }
 
 // NewOrchestrator 组装 Orchestrator 及其全部阶段组件。Client 不可为 nil。
@@ -122,18 +126,19 @@ func NewOrchestrator(opts Options) (*Orchestrator, error) {
 		stageTimeout = defaultStageTimeout
 	}
 	return &Orchestrator{
-		repositoryIdentity: opts.RepositoryIdentity,
-		scanner:            discovery.NewFSScanner(),
-		annotator:          annotation.NewLLMAnnotator(opts.Client, opts.MaxTokens, opts.MaxRetries),
-		formatGate:         annotation.NewFormatGate(opts.MaxNameRunes),
-		semanticGate:       annotation.NewSemanticGate(opts.Client, opts.MaxTokens, opts.MaxRetries),
-		extractor:          extract.NewExtractor(opts.Client, opts.MaxTokens),
-		client:             opts.Client,
-		maxRollbacks:       maxRollbacks,
-		minConf:            opts.MinConfidence,
-		rules:              opts.Rules,
-		dumpDir:            opts.DumpDir,
-		stageTimeout:       stageTimeout,
+		repositoryIdentity:         opts.RepositoryIdentity,
+		scanner:                    discovery.NewFSScanner(),
+		annotator:                  annotation.NewLLMAnnotator(opts.Client, opts.MaxTokens, opts.MaxRetries),
+		formatGate:                 annotation.NewFormatGate(opts.MaxNameRunes),
+		semanticGate:               annotation.NewSemanticGate(opts.Client, opts.MaxTokens, opts.MaxRetries),
+		extractor:                  extract.NewExtractor(opts.Client, opts.MaxTokens),
+		client:                     opts.Client,
+		maxRollbacks:               maxRollbacks,
+		minConf:                    opts.MinConfidence,
+		rules:                      opts.Rules,
+		dumpDir:                    opts.DumpDir,
+		stageTimeout:               stageTimeout,
+		crossRelationEvidenceBytes: opts.CrossRelationEvidenceBytes,
 	}, nil
 }
 
@@ -148,17 +153,18 @@ type SkippedDoc struct {
 // RunReport 是一次全量重建运行的结果摘要（可观测）。
 // RunReport summarizes one full-rebuild run.
 type RunReport struct {
-	SkillsScanned int
-	DocsTotal     int
-	DocsRewritten int          // 通过双门、进入提取的文档数
-	Skipped       []SkippedDoc // 降级跳过的文档
-	ExtractRounds int
-	Selection     *extract.CandidateSelectionReport // 同一候选集用于入库与回写
-	Ingest        *ingest.IngestDomainsResult
-	Coverage      *extract.CoverageReport // 覆盖保障报告（05c1 阶段）；nil 表示未执行
-	Repair        *extract.RepairReport   // 悬空边修正报告（05b/05c 阶段）；nil 表示未执行修正
-	Describe      *extract.DescribeReport // description 融合报告（05d 阶段）；nil 表示未执行
-	Relate        *extract.RelateReport   // relation 补充报告（05e 阶段）；nil 表示未执行
+	SkillsScanned  int
+	DocsTotal      int
+	DocsRewritten  int          // 通过双门、进入提取的文档数
+	Skipped        []SkippedDoc // 降级跳过的文档
+	ExtractRounds  int
+	Selection      *extract.CandidateSelectionReport // 同一候选集用于入库与回写
+	Ingest         *ingest.IngestDomainsResult
+	Coverage       *extract.CoverageReport      // 覆盖保障报告（05c1 阶段）；nil 表示未执行
+	Repair         *extract.RepairReport        // 悬空边修正报告（05b/05c 阶段）；nil 表示未执行修正
+	Describe       *extract.DescribeReport      // description 融合报告（05d 阶段）；nil 表示未执行
+	CrossRelations *extract.CrossRelationReport // 原文验证的完整候选结果 / source-grounded cross-candidate outcomes
+	Relate         *extract.RelateReport        // relation 补充报告（05e 阶段）；nil 表示未执行
 	// Writeback 是 stage 4.5 结构化回写报告（06b 阶段）；nil 表示未执行回写。
 	// 回写失败保留诊断统计，但阻止发布不完整的源闭环。
 	// Writeback is the stage 4.5 write-back report; nil if not executed.
@@ -222,10 +228,11 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	// 每篇文档一个 goroutine，内部完整走「标注→Gate A→Gate B」（含回退重试）。
 	// processDocument 无共享可变状态（dump 写不同文件路径），天然并发安全。
 	type docResult struct {
-		doc    *dktypes.AnnotatedDocument
-		skill  string
-		path   string
-		reason string // 空表示成功
+		doc      *dktypes.AnnotatedDocument
+		skill    string
+		path     string
+		original extract.FrozenSource
+		reason   string // 空表示成功
 	}
 	resultsCh := make(chan docResult, len(tasks))
 	var wg sync.WaitGroup
@@ -239,8 +246,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 				resultsCh <- docResult{skill: skill, path: rel, reason: fmt.Sprintf("读取失败: %v", rerr)}
 				return
 			}
+			original := extract.FreezeSource(skill, rel, string(content))
 			doc, reason := o.processDocument(s2Ctx, skill, rel, string(content))
-			resultsCh <- docResult{doc: doc, skill: skill, path: rel, reason: reason}
+			resultsCh <- docResult{doc: doc, skill: skill, path: rel, reason: reason, original: original}
 		}(t.skill, t.path)
 	}
 	go func() {
@@ -250,11 +258,13 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 
 	// 等所有并发完成，收集结果。
 	var passed []*dktypes.AnnotatedDocument
+	var originals []extract.FrozenSource
 	for r := range resultsCh {
 		if r.doc == nil {
 			report.Skipped = append(report.Skipped, SkippedDoc{Skill: r.skill, Path: r.path, Reason: r.reason})
 		} else {
 			passed = append(passed, r.doc)
+			originals = append(originals, r.original)
 			report.DocsRewritten++
 		}
 	}
@@ -267,6 +277,16 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 		}
 		return passed[i].FilePath < passed[j].FilePath
 	})
+
+	// 冻结标注实际输入，供跨边校验与审计；后续绝不 reread 已回写的生成文档。
+	// Persist the exact bytes seen by annotation, not reconstructed annotation detail.
+	sort.Slice(originals, func(i, j int) bool {
+		if originals[i].Skill != originals[j].Skill {
+			return originals[i].Skill < originals[j].Skill
+		}
+		return originals[i].Path < originals[j].Path
+	})
+	o.dumpJSON("00_frozen_sources.json", originals)
 
 	// 汇总失败文档，输出到终端与日志。
 	if len(report.Skipped) > 0 {
@@ -350,14 +370,23 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	log.Printf("[pipeline] relation 识别: subdomain %d/%d 成功, 新增关系 %d, 过滤越界/自环 %d",
 		relateRpt.SubdomainsOK, relateRpt.SubdomainsTotal, relateRpt.RelationsAdded, relateRpt.InvalidDropped)
 
+	// ——3.75 原文验证跨子域候选；端点存在并不代表语义真实。——
+	// Keep all validation before UUID translation (R1); only accepted candidates survive.
+	s375Ctx, s375Cancel := stageCtx(ctx, o.stageTimeout)
+	report.CrossRelations = o.extractor.ValidateCrossRelations(s375Ctx, res, withIDs, originals,
+		extract.CrossRelationOptions{MaxEvidenceBytes: o.crossRelationEvidenceBytes})
+	s375Cancel()
+	o.dumpJSON("05e_cross_relation_report.json", report.CrossRelations)
+	o.dumpJSON("05e_cross_validated.json", res)
+
 	// ——3.8 UUID 分配（所有 LLM 阶段之后、ingest 之前）——
 	// R1 铁律：AssignNodeUUIDs 必须在所有 LLM 阶段之后执行——它把 node.ID 从 kebab 改为 uuid，
 	// 早于此会让 uuid 进入 supplement/repair/describe/relate 的 prompt，违反"UUID 零 prompt"。
-	// 此处是 stage 3.7（最后一个 LLM 阶段）返回之后、stage 4（ingest）之前，是唯一合法接线点。
+	// 此处是 stage 3.75（原文验证）返回之后、stage 4（ingest）之前，是唯一合法接线点。
 	//
 	// R1 invariant: AssignNodeUUIDs runs ONLY after all LLM stages — it overwrites node.ID
 	// from kebab to uuid; running it earlier would leak uuid into prompts (repair/describe/relate).
-	// This is the sole legal wiring point: after stage 3.7 (last LLM stage), before stage 4 (ingest).
+	// This is the legal wiring point: after source-grounded cross validation, before stage 4 (ingest).
 	extract.AssignNodeUUIDs(res.Domains)
 	o.dumpJSON("05f_uuid_assigned.json", res)
 
