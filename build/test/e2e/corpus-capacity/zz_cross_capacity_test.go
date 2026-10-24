@@ -120,7 +120,7 @@ func newCrossAuditFixture(t *testing.T) *crossAuditFixture {
 		}
 	}
 	rel := extract.Relation{Source: "a", Target: "b", Kind: "depends_on", Confidence: .9}
-	f.before = &extract.Result{Domains: []extract.Domain{{Slug: "d", Name: "d", Subdomains: []extract.Subdomain{{Slug: "a", Name: "a", Entities: []extract.Node{{ID: "a", Members: []string{"m0"}}}, Relations: []extract.Relation{rel}}, {Slug: "b", Name: "b", Concepts: []extract.Node{{ID: "b", Members: []string{"m1"}}}}}}}}
+	f.before = &extract.Result{Domains: []extract.Domain{{Slug: "d", Name: "d", Subdomains: []extract.Subdomain{{Slug: "a", Name: "a", Entities: []extract.Node{{ID: "a", Confidence: .95, Members: []string{"m0"}}}, Relations: []extract.Relation{rel}}, {Slug: "b", Name: "b", Concepts: []extract.Node{{ID: "b", Confidence: .95, Members: []string{"m1"}}}}}}}}
 	clone := func(r *extract.Result) *extract.Result {
 		raw, _ := json.Marshal(r)
 		var c extract.Result
@@ -148,7 +148,19 @@ func (f *crossAuditFixture) write(t *testing.T) {
 	}
 }
 func (f *crossAuditFixture) audit() *crossAuditReport {
-	return auditCrossArtifacts(f.out, f.selection, f.docs, f.final, 1048576, f.report, f.edges)
+	nodes := map[string]bool{}
+	for _, domain := range f.after.Domains {
+		for _, sub := range domain.Subdomains {
+			for _, group := range [][]extract.Node{sub.Entities, sub.Concepts} {
+				for _, node := range group {
+					if node.Confidence >= capacityMinConfidence {
+						nodes[extract.NodeUUID(node.Members)] = true
+					}
+				}
+			}
+		}
+	}
+	return auditCrossArtifacts(f.out, f.selection, f.docs, f.final, 1048576, f.report, f.edges, nodes)
 }
 
 // 安全拒绝模型坏引用不会写坏图，也不能冒充支持；被错误接受的引用/边必须硬失败。
@@ -211,6 +223,8 @@ func TestCrossCapacityDistinguishesSafeRejectionFromInvalidAcceptance(t *testing
 func TestCrossAuditPreservesEveryDispositionAndFilteredEndpoints(t *testing.T) {
 	t.Parallel()
 	f := newCrossAuditFixture(t)
+	f.before.Domains[0].Subdomains[1].Concepts[0].Confidence = .2
+	f.after.Domains[0].Subdomains[1].Concepts[0].Confidence = .2
 	f.final.Domains[0].Subdomains[1].Concepts = nil
 	f.final.Domains[0].Subdomains[0].Relations = nil
 	f.edges = map[string]bool{}
@@ -365,7 +379,7 @@ func TestCompleteCapacityAuditBindsRuntimeIncidencesAndContextBoundary(t *testin
 			writeNew(filepath.Join(out, "runtime-freeze.json"), freeze)
 			writeNew(filepath.Join(out, "run-start.json"), map[string]any{"runtime_overlay_sha256": sha(overlayRaw), "cross_relation_evidence_bytes": 1048576, "minimum_actual_incidence_coverage": .95})
 			writeNew(filepath.Join(out, "run-finish.json"), map[string]any{"build_error": false, "context_error": expired, "ledger_ok": true, "logical_calls": 1})
-			before := &extract.Result{Domains: []extract.Domain{{Name: "domain", Subdomains: []extract.Subdomain{{Name: "sub", Entities: []extract.Node{{ID: "temporary", Members: members}}}}}}}
+			before := &extract.Result{Domains: []extract.Domain{{Name: "domain", Subdomains: []extract.Subdomain{{Name: "sub", Entities: []extract.Node{{ID: "temporary", Confidence: 1, Members: members}}}}}}}
 			raw, _ := json.Marshal(before)
 			var final extract.Result
 			json.Unmarshal(raw, &final)
@@ -403,6 +417,65 @@ func TestCompleteCapacityAuditBindsRuntimeIncidencesAndContextBoundary(t *testin
 			}
 			if err != nil || !r.Pass || r.InputMemberIncidences != 12 || r.MaterializedMemberIncidences != 12 || r.CrossRelations.Candidates != 0 {
 				t.Fatalf("complete runtime/source audit failed: %+v %v", r, err)
+			}
+		})
+	}
+}
+
+// A safe-rejection verdict is only safe if its unsupported identity cannot leak
+// independently into either the final candidate or durable graph.
+func TestCrossAuditRejectsRejectedOnlyIdentityRetainedInCandidateOrDatabase(t *testing.T) {
+	t.Parallel()
+	for _, location := range []string{"candidate_only", "database_only", "both"} {
+		t.Run(location, func(t *testing.T) {
+			f := newCrossAuditFixture(t)
+			f.report.Decisions[0].Disposition = "rejected_semantic"
+			f.report.Accepted = 0
+			f.after.Domains[0].Subdomains[0].Relations = nil
+			if location == "candidate_only" {
+				f.edges = map[string]bool{}
+			}
+			if location == "database_only" {
+				f.final.Domains[0].Subdomains[0].Relations = nil
+			}
+			f.write(t)
+			r := f.audit()
+			if len(r.Errors) == 0 || r.SafeRejected != 1 || r.Supported != 0 {
+				t.Fatalf("rejected identity leaked via %s: %+v", location, r)
+			}
+		})
+	}
+}
+func TestCrossAuditAllowsAcceptedDuplicateAndLocalIdentityJustifications(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"accepted_duplicate", "local_identity"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newCrossAuditFixture(t)
+			f.report.Decisions[0].Disposition = "rejected_semantic"
+			if mode == "accepted_duplicate" {
+				accepted := f.report.Decisions[0]
+				accepted.Disposition = "accepted"
+				f.report.Decisions = append(f.report.Decisions, accepted)
+				f.report.Candidates = 2
+				f.before.Domains[0].Subdomains[0].Relations = append(f.before.Domains[0].Subdomains[0].Relations, f.before.Domains[0].Subdomains[0].Relations[0])
+			} else {
+				f.report.Accepted = 0
+				f.report.Decisions[0].Source.Subdomain = "b"
+				for _, graph := range []*extract.Result{f.before, f.after} {
+					node := graph.Domains[0].Subdomains[0].Entities[0]
+					graph.Domains[0].Subdomains[0].Entities = nil
+					graph.Domains[0].Subdomains[1].Entities = []extract.Node{node}
+					graph.Domains[0].Subdomains[1].Relations = append([]extract.Relation(nil), graph.Domains[0].Subdomains[0].Relations...)
+				}
+				f.after.Domains[0].Subdomains[0].Relations = nil
+				raw, _ := json.Marshal(f.after)
+				json.Unmarshal(raw, &f.final)
+				extract.AssignNodeUUIDs(f.final.Domains)
+			}
+			f.write(t)
+			r := f.audit()
+			if len(r.Errors) > 0 || r.SafeRejected != 1 {
+				t.Fatalf("valid %s identity rejected: %+v", mode, r)
 			}
 		})
 	}

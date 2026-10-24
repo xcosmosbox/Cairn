@@ -114,7 +114,7 @@ func actualCrossKeys(result *extract.Result) map[string]int {
 
 // auditCrossArtifacts 对 accepted 的原文/成员/最终边做独立机械核对；安全拒绝只记质量问题，不能获支持信用。
 // auditCrossArtifacts distinguishes fail-closed rejection from invalid accepted data and unresolved execution.
-func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.AnnotatedDocument, candidate *extract.Result, limit int, buildReport *extract.CrossRelationReport, dbEdges map[string]bool) *crossAuditReport {
+func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.AnnotatedDocument, candidate *extract.Result, limit int, buildReport *extract.CrossRelationReport, dbEdges, dbNodes map[string]bool) *crossAuditReport {
 	r := &crossAuditReport{Counts: map[string]int{}, Artifacts: map[string]string{}, Outcomes: []map[string]any{}, Meaning: "semantic support/rejection is model-judged; original source/quote/member/edge binding is mechanically verified; aggregate readiness does not grant full609 or paid admission"}
 	for _, status := range []string{"accepted", "rejected_semantic", "rejected_evidence", "rejected_endpoint", "rejected_relation", "insufficient_evidence", "execution_error", "invalid_verdict"} {
 		r.Counts[status] = 0
@@ -328,6 +328,104 @@ func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.Annota
 	if !reflect.DeepEqual(accepted, actualCrossKeys(&after)) {
 		fail("validated graph differs from accepted candidate multiset")
 	}
+	for _, reason := range auditSemanticProjection(&after, candidate, dbEdges, dbNodes) {
+		fail(reason)
+	}
 	return r
 }
 func bytesEqual(a, b []byte) bool { return string(a) == string(b) }
+
+// The complete validated graph justifies final semantic identities. Check the
+// negative space too: a rejected-only identity cannot survive candidate/DB writes.
+// Sets deliberately allow an independently accepted duplicate or valid local edge
+// to justify the same identity; rejection of one row does not erase that support.
+func auditSemanticProjection(validated, candidate *extract.Result, dbEdges, dbNodes map[string]bool) []string {
+	var failures []string
+	local, global := indexAuditNodes(validated)
+	type eligibleNode struct {
+		members map[string]bool
+		scope   string
+	}
+	eligible := map[string]eligibleNode{}
+	for _, domain := range validated.Domains {
+		for _, sub := range domain.Subdomains {
+			for _, group := range [][]extract.Node{sub.Entities, sub.Concepts} {
+				for _, node := range group {
+					if node.Confidence < capacityMinConfidence {
+						continue
+					}
+					id := extract.NodeUUID(node.Members)
+					if _, exists := eligible[id]; exists {
+						failures = append(failures, "validated graph has duplicate eligible UUID")
+					}
+					eligible[id] = eligibleNode{memberSet(node.Members), scopeKey(domain.Slug, sub.Slug, "")}
+				}
+			}
+		}
+	}
+	finalNodes := map[string]bool{}
+	finalEdges := map[string]bool{}
+	for _, domain := range candidate.Domains {
+		for _, sub := range domain.Subdomains {
+			for _, group := range [][]extract.Node{sub.Entities, sub.Concepts} {
+				for _, node := range group {
+					want, ok := eligible[node.ID]
+					if !ok || node.Confidence < capacityMinConfidence || want.scope != scopeKey(extract.Slugify(domain.Name), extract.Slugify(sub.Name), "") || !reflect.DeepEqual(want.members, memberSet(node.Members)) {
+						failures = append(failures, "final node is not an eligible qualified validated identity")
+					}
+					finalNodes[node.ID] = true
+				}
+			}
+			for _, rel := range sub.Relations {
+				finalEdges[edgeIdentity(rel.Source, rel.Target, rel.Kind)] = true
+			}
+		}
+	}
+	for id := range eligible {
+		if !finalNodes[id] || !dbNodes[id] {
+			failures = append(failures, "eligible validated node missing from final candidate or database")
+		}
+	}
+	for id := range dbNodes {
+		if !finalNodes[id] {
+			failures = append(failures, "database leaf node absent from validated final candidate")
+		}
+	}
+	allowed := map[string]bool{}
+	for _, domain := range validated.Domains {
+		for _, sub := range domain.Subdomains {
+			for _, rel := range sub.Relations {
+				source, sourceOK := resolveAuditEndpoint(local, global, domain.Slug, sub.Slug, rel.Source)
+				target, targetOK := resolveAuditEndpoint(local, global, domain.Slug, sub.Slug, rel.Target)
+				if !sourceOK || !targetOK {
+					continue
+				}
+				sourceID, targetID := extract.NodeUUID(source.node.Members), extract.NodeUUID(target.node.Members)
+				if _, ok := eligible[sourceID]; !ok {
+					continue
+				}
+				if _, ok := eligible[targetID]; !ok {
+					continue
+				}
+				allowed[edgeIdentity(sourceID, targetID, rel.Kind)] = true
+			}
+		}
+	}
+	for identity := range finalEdges {
+		if !allowed[identity] {
+			failures = append(failures, "final semantic edge has no accepted eligible validated justification")
+		}
+	}
+	for identity := range dbEdges {
+		source := strings.SplitN(identity, "\x00", 2)[0]
+		if dbNodes[source] && !allowed[identity] {
+			failures = append(failures, "database semantic edge has no accepted eligible validated justification")
+		}
+	}
+	for identity := range allowed {
+		if !finalEdges[identity] || !dbEdges[identity] {
+			failures = append(failures, "validated eligible semantic edge absent from final candidate or database")
+		}
+	}
+	return failures
+}

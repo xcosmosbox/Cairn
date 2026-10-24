@@ -182,3 +182,11 @@ Old evidence and the default direct audit helper retain their historical strict 
 Paid12 additionally requires actual attempt03 semantic PASS, merged independently
 reviewed integration, a final executable/source/configuration freeze and root's
 separate decision. No QA/HOLDOUT, paid12 or full609 call is authorized by this profile.
+
+The v1 offline runtime receipt preserves its original compiled-source identity.
+`offline-cross-relations-runtime-v2.json` records the corrected auditor's new
+source/binary preflight after review found a rejected-edge retention false pass.
+The auditor now compares the complete eligible validated semantic projection with
+both final candidate and DB inventories. A rejected-only identity cannot persist;
+an independently accepted duplicate or legitimate validated local edge can justify
+that same identity. Original v1/profile/roster evidence remains unchanged.

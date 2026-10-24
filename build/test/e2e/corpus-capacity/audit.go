@@ -378,7 +378,7 @@ func audit(ctx context.Context, out string) (*auditReport, error) {
 	}
 	edgeRows.Close()
 	r := auditMembership(s, docs, &candidate, sources, nodes, filepath.Join(out, "source"), filepath.Join(out, "original"), cfg.MinimumIncidence)
-	r.CrossRelations = auditCrossArtifacts(out, s, docs, &candidate, cfg.CrossEvidenceBytes, report.CrossRelations, dbEdges)
+	r.CrossRelations = auditCrossArtifacts(out, s, docs, &candidate, cfg.CrossEvidenceBytes, report.CrossRelations, dbEdges, nodes)
 	r.Errors = append(r.Errors, r.CrossRelations.Errors...)
 	if finish.BuildError == nil || *finish.BuildError || finish.ContextError == nil || *finish.ContextError || finish.LedgerOK == nil || !*finish.LedgerOK || finish.LogicalCalls != trace["logical_calls"] {
 		r.Errors = append(r.Errors, "run-finish contains unresolved build/context/ledger boundary")

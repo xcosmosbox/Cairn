@@ -33,6 +33,8 @@ func driverSourceDigest() string {
 	return "sha256:" + sha(content.Bytes())
 }
 
+const capacityMinConfidence = 0.7
+
 // runtimeOverlay 单独冻结新语义容量与覆盖规则，旧协议/选样和旧证据不得被替换。
 // runtimeOverlay adds a hash-pinned experiment profile without rewriting historical inputs.
 type runtimeOverlay struct {
@@ -124,5 +126,5 @@ func (c *runtimeOverlay) checkLimits(max int, request, stage, run time.Duration)
 }
 
 func capacityPipelineOptions(c *runtimeOverlay, client llm.Client, dump string) pipeline.Options {
-	return pipeline.Options{RepositoryIdentity: "cairn-multihop-public-originals-v1", Client: client, MaxTokens: c.MaxTokens, MaxRetries: 3, MaxRollbacks: 3, MinConfidence: 0.7, DumpDir: dump, StageTimeout: time.Duration(c.StageSeconds) * time.Second, CrossRelationEvidenceBytes: c.CrossEvidenceBytes}
+	return pipeline.Options{RepositoryIdentity: "cairn-multihop-public-originals-v1", Client: client, MaxTokens: c.MaxTokens, MaxRetries: 3, MaxRollbacks: 3, MinConfidence: capacityMinConfidence, DumpDir: dump, StageTimeout: time.Duration(c.StageSeconds) * time.Second, CrossRelationEvidenceBytes: c.CrossEvidenceBytes}
 }

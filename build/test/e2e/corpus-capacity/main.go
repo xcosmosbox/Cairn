@@ -137,7 +137,7 @@ func run() error {
 	effective := map[string]any{"format": "cairn-capacity-run/v1", "started_at": now(), "selection_sha256": *selectionSHA, "protocol_sha256": s.ProtocolSHA, "builder_version": version, "builder_commit": commit,
 		"production_source_digest": buildmeta.SourceDigest("annotation/", "extract/", "pipeline/", "llm/", "discovery/", "ingest/", "writeback/"), "endpoint": dkconfig.DeepSeekEndpoint, "requested_model": dkconfig.DeepSeekFlashModel,
 		"executable_sha256": sha(binaryBytes), "capacity_driver_source_digest": driverSourceDigest(), "runtime_overlay_sha256": *overlaySHA, "cross_relation_evidence_bytes": cfg.CrossEvidenceBytes, "minimum_actual_incidence_coverage": cfg.MinimumIncidence,
-		"max_tokens": *maxTokens, "http_max_retries": 3, "annotation_attempts": 3, "annotation_rounds": 3, "min_confidence": 0.7, "concurrency": 8,
+		"max_tokens": *maxTokens, "http_max_retries": 3, "annotation_attempts": 3, "annotation_rounds": 3, "min_confidence": capacityMinConfidence, "concurrency": 8,
 		"request_timeout_seconds": requestTimeout.Seconds(), "stage_timeout_seconds": stageTimeout.Seconds(), "run_timeout_seconds": runTimeout.Seconds(), "whole_run_retries": 0,
 		"token_runtime_sha256": *runtimeSHA, "token_python_sha256": *pythonSHA, "token_adapter_sha256": sha(adapterBytes), "thinking": "unchanged production request; see exact per-attempt metadata", "provider_backing_version": "documentation maps alias to V4.1-Flash-1017; actual served revision unknown unless returned",
 		"original_span_mapping": "selection offsets bind unchanged original bodies; optional original span hints remain unknown/unverified and do not locate rewritten Markdown", "holdout": "closed; no QA inputs"}
