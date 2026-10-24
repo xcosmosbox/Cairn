@@ -1,9 +1,10 @@
 # Public multihop baseline protocol — 2026-10-24
 
-Status: maintainer-adopted protocol; implementation in [#21](https://github.com/xcosmosbox/Cairn/issues/21).
+Status: maintainer-adopted **free baseline** protocol; implementation in [#21](https://github.com/xcosmosbox/Cairn/issues/21).
 Research: read-only baseline_research session (`gpt-6-astra/xhigh`), recorded by
 `cairn-coordination-20261024-alpha-records`. [Decision](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6382563312).
-This is a new protocol, not a continuation of a historical experiment freeze.
+This freezes the free baseline only; future paid/graph comparisons require separate decisions.
+It is a new protocol, not a continuation of a historical experiment freeze.
 No GraphRAG benefit or stable-release readiness is established by this document.
 
 ## Reuse decision and boundaries
@@ -103,11 +104,14 @@ tokens, then obtain the applicable coordinator decision before a full paid const
 The no-key path can complete fixtures and raw/FTS. Node FTS/graph/backfill must say
 `not_run_no_real_graph`; synthetic nodes or hand-authored gold edges cannot prove benefit.
 
-The later four arms are original-text FTS, node FTS on the same real graph, graph expansion,
-and the same graph selection plus exact-source backfill. Use the same solver/model/prompt/
-seed, three searches/four turns/top10,10000 context codepoints and4096 output tokens.
-Keep graph construction time/cost separate and give graph no extra searches/context.
-Pre-registered holdout and external validation are prerequisites for a benefit claim.
+Future graph comparisons need the same source corpus and equal solver/search/context/output
+budgets, plus independently reviewed runner durability. No four-arm paid run or production
+source hydration is enabled here. Original-text FTS in #21 is an evaluation adapter, not
+an existing production product feature. Graph-default or accuracy claims need controlled
+benefit evidence; the maintainer has not adopted numerical benefit/non-inferiority
+thresholds or opened the holdout. Statistical power, user scenarios and the actual baseline
+must inform a later pre-registration. An experimental graph may coexist with a stable
+tool, subject to a separate release decision; this protocol does not reposition Cairn.
 
 Stop on input-hash, source-span, read-only-invariant or ledger errors. Fail quota or
 cross-split near-duplicate checks instead of silently dropping cases. Diagnose in order:
