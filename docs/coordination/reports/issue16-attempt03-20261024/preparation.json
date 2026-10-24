@@ -1,0 +1,65 @@
+{
+  "status": "prepared_no_model_call",
+  "time_utc": "2026-10-24T14:46:49.232819+00:00",
+  "builder_source_sha": "75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8",
+  "helper_sha256": "b0746827745fbb152804c9f2b41af0e61b60e4aee4c2c20c76bd562718c67ac1",
+  "freeze": {
+    "format": "cairn-public-real-two-doc-v1",
+    "source_commit": "18e7e7bfc989fc0216625b0851e105690edd3950",
+    "input_scope": "SKILL metadata plus exactly two reference documents; no benchmark questions/gold/holdout",
+    "files": [
+      {
+        "path": "SKILL.md",
+        "bytes": 896,
+        "sha256": "048036172a5670d86322988b156f9c4619812c74bd03d47b62f8fdebb4274f97"
+      },
+      {
+        "path": "references/queue.md",
+        "bytes": 553,
+        "sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135"
+      },
+      {
+        "path": "references/timeout.md",
+        "bytes": 626,
+        "sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587"
+      }
+    ]
+  },
+  "endpoint": "https://api.deepseek.com/chat/completions",
+  "requested_model": "deepseek-flash",
+  "ingest_options": [
+    "--max-tokens",
+    "16384",
+    "--timeout",
+    "180s",
+    "--max-retries",
+    "3",
+    "--max-rollbacks",
+    "3",
+    "--no-evolve"
+  ],
+  "deadline_seconds": 600,
+  "model_calls": "not_run",
+  "sandbox_publication": "not_run",
+  "configuration_treatment": {
+    "purpose": "one root-admitted actual semantic regression of accepted75a77 cross-relation mechanism; previous01/02negative unchanged",
+    "initial_helper_generated_options": [
+      "--max-tokens",
+      "16384",
+      "--timeout",
+      "180s",
+      "--max-retries",
+      "1",
+      "--max-rollbacks",
+      "1",
+      "--no-evolve"
+    ],
+    "effective_change": {
+      "--max-retries": "3",
+      "--max-rollbacks": "3"
+    },
+    "root_ack": "https://github.com/xcosmosbox/Cairn/issues/16#issuecomment-6385582822",
+    "wire_metadata_scope": "configured model+successful usage only; response IDs and failed/503 usage explicitly unknown; no new driver/proxy",
+    "automatic_whole_run_retry": false
+  }
+}

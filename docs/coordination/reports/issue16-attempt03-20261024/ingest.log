@@ -1,0 +1,64 @@
+2026/10/24 23:48:02 ══════════ 阶段/Stage 1: 扫描 / discovery ══════════
+2026/10/24 23:48:02 [pipeline] 扫描完成: 1 个 skill, 2 篇 reference 文档
+2026/10/24 23:48:02 ══════════ 阶段/Stage 2: 标注 + 双门校验 / annotate + Gate A/B（并发） ══════════
+2026/10/24 23:48:21 [llm-extract] model=deepseek-flash tokens(prompt=830 completion=2530) content_len=2042 reasoning_len=9334
+2026/10/24 23:48:28 [llm-extract] model=deepseek-flash tokens(prompt=859 completion=3861) content_len=3935 reasoning_len=13156
+2026/10/24 23:48:31 [llm-extract] model=deepseek-flash tokens(prompt=1010 completion=1570) content_len=213 reasoning_len=6972
+2026/10/24 23:48:43 [llm-extract] model=deepseek-flash tokens(prompt=1573 completion=2694) content_len=219 reasoning_len=11687
+2026/10/24 23:48:43 [pipeline] 标注阶段完成: 2/2 篇通过双门, 0 篇跳过
+2026/10/24 23:48:43 ══════════ 阶段/Stage 3: 领域提取 + 覆盖保障 / extract with coverage ══════════
+2026/10/24 23:48:58 [llm-extract] model=deepseek-flash tokens(prompt=1592 completion=3756) content_len=9261 reasoning_len=7110
+2026/10/24 23:48:58 [extract-annot] ✓ 第 1 轮提取成功：2 个 domain
+2026/10/24 23:48:58 [extract-coverage] 第 1/2 轮提取：覆盖 12/12 (100.00%)，合并重复节点 0，剔除非法 member 0
+2026/10/24 23:48:58 [extract-coverage] ✓ 覆盖率 100.00% ≥ P99(99%)，直接放行
+2026/10/24 23:48:58 [pipeline] 提取+覆盖: 1 轮提取, 2 个 domain; 覆盖 12/12 (100.00%), 结果=pass_p99; 空节点补 0/0, 合并重复 0, 剔非法 member 0
+2026/10/24 23:48:58 ══════════ 阶段/Stage 3.5: 悬空边修正 / repair dangling relations ══════════
+2026/10/24 23:48:58 [extract-repair] 未发现悬空 relation
+2026/10/24 23:48:58 [pipeline] 悬空边修正: 未发现悬空 relation
+2026/10/24 23:48:58 ══════════ 阶段/Stage 3.6: description 融合 / fuse descriptions（按节点并发） ══════════
+2026/10/24 23:49:02 [llm-extract] model=deepseek-flash tokens(prompt=831 completion=704) content_len=1210 reasoning_len=2109
+2026/10/24 23:49:02 [llm-extract] model=deepseek-flash tokens(prompt=844 completion=615) content_len=1410 reasoning_len=1350
+2026/10/24 23:49:03 [llm-extract] model=deepseek-flash tokens(prompt=927 completion=828) content_len=1510 reasoning_len=2298
+2026/10/24 23:49:03 [extract-describe] description 融合完成：subdomain 3/3 成功，节点 11 个（有素材 11），重写 11 个
+2026/10/24 23:49:03 [pipeline] description 融合: subdomain 3/3 成功, 节点重写 11/11（有素材 11）
+2026/10/24 23:49:03 ══════════ 阶段/Stage 3.7: relation 识别 / identify relations（按 subdomain 并发） ══════════
+2026/10/24 23:49:05 [llm-extract] model=deepseek-flash tokens(prompt=743 completion=174) content_len=726 reasoning_len=0
+2026/10/24 23:49:15 [llm-extract] model=deepseek-flash tokens(prompt=760 completion=1826) content_len=1012 reasoning_len=7039
+2026/10/24 23:49:16 [llm-extract] model=deepseek-flash tokens(prompt=704 completion=2323) content_len=618 reasoning_len=9773
+2026/10/24 23:49:16 [extract-relate] relation 识别完成：subdomain 3/3 成功，新增关系 11，过滤越界/自环 0
+2026/10/24 23:49:16 [pipeline] relation 识别: subdomain 3/3 成功, 新增关系 11, 过滤越界/自环 0
+2026/10/24 23:49:24 [llm-extract] model=deepseek-flash tokens(prompt=1245 completion=1326) content_len=1640 reasoning_len=4338
+2026/10/24 23:49:27 [llm-extract] model=deepseek-flash tokens(prompt=1250 completion=1855) content_len=905 reasoning_len=7558
+2026/10/24 23:49:27 [llm-extract] model=deepseek-flash tokens(prompt=1230 completion=1889) content_len=1207 reasoning_len=7451
+2026/10/24 23:49:27 [extract-cross] 并发队列与重试控制/超时与重试 retry-budget --depends_on--> blocking-queue: accepted (s2 原文明确断言“重试预算”依赖“阻塞队列”的容量与等待行为，方向为 source 依赖 target；s1 原文说明该阻塞队列容量为 8，满/空时分别阻塞生产者/消费者，支撑 target 的容量与等待行为。合成说明及“未观测图谱输出”的限定不否定原文中的明确依赖断言。)
+2026/10/24 23:49:27 [extract-cross] 合成文档与验证/合成输入与假运行器 cross-doc-relation-check --references--> retry-budget: insufficient_evidence (候选声称 source「跨文档关系保留检验」以 references 关系指向 target「重试预算」。但原文只在 s2 中以条件式未来语气提到“可以检验是否保留这条跨文档关系，本次没有运行该抽取”，并未明确断言该检验引用或指向「重试预算」；s1 只说明“跨文档意图是：重试预算依赖队列的阻塞行为”，描述的是重试预算与阻塞队列之间的依赖，而非检验节点对重试预算的引用。两端内容虽同时出现相关概念，但缺少“引用”这一明确关系及其方向，因此不足以支持该 references 候选。)
+2026/10/24 23:49:27 [extract-cross] 合成文档与验证/合成输入与假运行器 cross-doc-relation-check --references--> blocking-queue: insufficient_evidence (候选断言“跨文档关系保留检验”对“阻塞队列”的 references 关系在两份原文中都没有明确陈述。source 端点唯一成员出自 s2，但 s2 只出现泛指的“这条跨文档关系”和“检验是否保留这条跨文档关系”，而且紧接着写明“本次没有运行该抽取”，属于对未来抽取的假设性说明，不是“跨文档关系保留检验”这一实体对阻塞队列的引用断言。s2 中唯一明确指向阻塞队列的关系是“重试预算 依赖 阻塞队列的容量与等待行为”，主体是重试预算，并非该 source 概念；而且 s2 还声明“免费 fixed fake 中不存在 重试预算”。s1（queue.md）只描述阻塞队列本身（容量 8、满/空阻塞），完全没有提及 source 概念，也没有跨文档引用。因此两端虽有各自名称在文档中出现的语境，却不存在明确的关系方向与引用语义；原文既没有明确支持，也没有产生互不相容的反向断言，故不足以判定为 supported，也不构成 rejected。)
+2026/10/24 23:49:27 [file-slug] 为 11 个节点生成 file_slug（LLM 并发 8 路）
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=182 completion=24) content_len=26 reasoning_len=63
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=182 completion=39) content_len=25 reasoning_len=141
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=182 completion=36) content_len=29 reasoning_len=98
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=185 completion=43) content_len=39 reasoning_len=118
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=183 completion=90) content_len=45 reasoning_len=258
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=184 completion=86) content_len=42 reasoning_len=192
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=181 completion=65) content_len=20 reasoning_len=211
+2026/10/24 23:49:28 [llm-extract] model=deepseek-flash tokens(prompt=181 completion=43) content_len=20 reasoning_len=170
+2026/10/24 23:49:29 [llm-extract] model=deepseek-flash tokens(prompt=186 completion=40) content_len=39 reasoning_len=87
+2026/10/24 23:49:29 [llm-extract] model=deepseek-flash tokens(prompt=183 completion=35) content_len=24 reasoning_len=92
+2026/10/24 23:49:29 [llm-extract] model=deepseek-flash tokens(prompt=180 completion=30) content_len=27 reasoning_len=117
+2026/10/24 23:49:29 [file-slug] LLM 成功 11/11，其余回退 slugify
+2026/10/24 23:49:29 [file-slug] 生成完成: 11 个 slug
+2026/10/24 23:49:29 [pipeline] 候选筛选: 节点保留 11/11，置信度过滤 0（entity=0 concept=0）；关系保留 14/14，端点过滤 0
+2026/10/24 23:49:29 ══════════ 阶段/Stage 4: 全量重建入库 / ingest（物化双层图） ══════════
+2026/10/24 23:49:29 [pipeline] 入库完成: 17 节点, 30 边 (跳过 0), node_sources 14 行
+2026/10/24 23:49:29 ══════════ 阶段/Stage 4.5: 结构化回写 / write-back（md + sidecar + _shared） ══════════
+2026/10/24 23:49:29 [pipeline] 回写统计: 文档 2, 节点块 8, shared 3, 镜像块 6, primary 3, sidecar 5
+2026/10/24 23:49:29 ══════════ 阶段/Stage ✓: 流水线完成 / pipeline done ══════════
+2026/10/24 23:49:29 [pipeline] 完成: skills=1 docs=2 rewritten=2 skipped=0 domains=2 nodes=17 edges=30 (悬空修正: 发现0/残留0)
+══════════ 运行摘要 / Run Summary ══════════
+[cairn-ingest] 完成 → /workspace/scratch/c1bb49a45412/cairn-live16-attempt03/.local/real-model/attempt-03/knowledge.db
+  skills 扫描: 1
+  文档总数: 2  通过双门: 2  降级跳过: 0
+  节点入库: skill=1 domain=2 subdomain=3 entity=5 concept=6 (共 17)
+  边入库: provides=2 composes=14 semantic=14 (共 30, 跳过 0)
+  中间产物已 dump 到: /workspace/scratch/c1bb49a45412/cairn-live16-attempt03/.local/real-model/attempt-03/dump
+══════════════════════════════════════════

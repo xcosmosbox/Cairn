@@ -1,0 +1,77 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: references/queue.md
+doc_hash: sha256:9f7bf0b2c9c0e40ad4f01d37668a3dcb51b070fe1392a31557766806703bb50a
+generated_at: "2026-10-24T14:49:29Z"
+nodes:
+  - uuid: 87177315-8d2f-52d8-9d48-68fcf2afeb4e
+    file_slug: blocking-queue
+    tag: entity
+    name: 阻塞队列
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: true
+    members:
+      - public-synthetic-queue-entity-容量为8的阻塞队列
+      - public-synthetic-queue-entity-阻塞队列
+    summary_hash: sha256:c5020b6c8494e10de48eced504b8bf76f38919bb2e1a531a1448dc67e8d727da
+    description_hash: sha256:1aa027995c7704e9c363328b8cf95560a0b2245e47731f26e4e133be0d3c8e90
+    provenance: llm_inferred
+  - uuid: 5a9ab1d8-f65d-504b-a743-33138f36c8b6
+    file_slug: producer
+    tag: entity
+    name: 生产者
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: true
+    members:
+      - public-synthetic-queue-entity-生产者
+    summary_hash: sha256:5d36675e0681a1fae322a9d90b9200865e230285e6dc41761cb18962bc07be63
+    description_hash: sha256:4fae57500c5797c3088af759d3b097c2cbd2039517859c2e5845fb30dfa15582
+    provenance: llm_inferred
+  - uuid: 3456e85c-77bb-575e-9382-89408577ddde
+    file_slug: consumer
+    tag: entity
+    name: 消费者
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: false
+    members:
+      - public-synthetic-queue-entity-消费者
+    summary_hash: sha256:59cbb4c67893e4a8b71ecaca66f8a775505746e5c41f987a481f5136e21739db
+    description_hash: sha256:a1d15cb9b6a4fba6497c9eece104423b3a32dbc93cdd7f3b5b0bb04e37816454
+    provenance: llm_inferred
+  - uuid: 85f91f1c-05be-5486-9594-2a3fe6f3fd3b
+    file_slug: bounded-queue-blocking-rule
+    tag: concept
+    name: 有界队列阻塞规则
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: false
+    members:
+      - public-synthetic-queue-concept-有界队列阻塞规则
+    summary_hash: sha256:8d5c1dc597c99b54671df1828adfb7b9077ef4797dfc276e7a13430809ad8326
+    description_hash: sha256:f64738846bd7634569819901f123c0ff95bcd01d89dd3d45142e14529e9d0a41
+    provenance: llm_inferred
+  - uuid: c3123633-9fad-5391-8d39-ba4d7b393783
+    file_slug: retry-budget
+    tag: concept
+    name: 重试预算
+    domain: 并发队列与重试控制
+    subdomain: 超时与重试
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 超时与重试
+    shared: true
+    members:
+      - public-synthetic-queue-concept-重试预算
+    summary_hash: sha256:b3a3a3c4317fb57cc23abb6837eca48b6a73a9b3af1b5ffbaf810bf1f9fad1d1
+    description_hash: sha256:5792d05fe702d3dc618ee5a0a498e2b12ed8f7e8c19266e83f6924783d4593da
+    provenance: llm_inferred

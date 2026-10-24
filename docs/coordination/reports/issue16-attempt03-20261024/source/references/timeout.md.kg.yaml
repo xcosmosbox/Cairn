@@ -1,0 +1,133 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: references/timeout.md
+doc_hash: sha256:c2bcc106658114a128a2ead129a1dbe4ba086210861390971f8195efba6eedec
+generated_at: "2026-10-24T14:49:29Z"
+nodes:
+  - uuid: 87177315-8d2f-52d8-9d48-68fcf2afeb4e
+    file_slug: blocking-queue
+    tag: entity
+    name: 阻塞队列
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: true
+    members:
+      - public-synthetic-queue-entity-容量为8的阻塞队列
+      - public-synthetic-queue-entity-阻塞队列
+    summary_hash: sha256:c5020b6c8494e10de48eced504b8bf76f38919bb2e1a531a1448dc67e8d727da
+    description_hash: sha256:1aa027995c7704e9c363328b8cf95560a0b2245e47731f26e4e133be0d3c8e90
+    provenance: llm_inferred
+  - uuid: 5a9ab1d8-f65d-504b-a743-33138f36c8b6
+    file_slug: producer
+    tag: entity
+    name: 生产者
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: true
+    members:
+      - public-synthetic-queue-entity-生产者
+    summary_hash: sha256:5d36675e0681a1fae322a9d90b9200865e230285e6dc41761cb18962bc07be63
+    description_hash: sha256:4fae57500c5797c3088af759d3b097c2cbd2039517859c2e5845fb30dfa15582
+    provenance: llm_inferred
+  - uuid: c3123633-9fad-5391-8d39-ba4d7b393783
+    file_slug: retry-budget
+    tag: concept
+    name: 重试预算
+    domain: 并发队列与重试控制
+    subdomain: 超时与重试
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 超时与重试
+    shared: true
+    members:
+      - public-synthetic-queue-concept-重试预算
+    summary_hash: sha256:b3a3a3c4317fb57cc23abb6837eca48b6a73a9b3af1b5ffbaf810bf1f9fad1d1
+    description_hash: sha256:5792d05fe702d3dc618ee5a0a498e2b12ed8f7e8c19266e83f6924783d4593da
+    provenance: llm_inferred
+  - uuid: 67caf821-d848-5bd1-bad2-8838ab6e602c
+    file_slug: timeout-and-retry-mechanism
+    tag: concept
+    name: 超时与重试机制
+    domain: 并发队列与重试控制
+    subdomain: 超时与重试
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 超时与重试
+    shared: false
+    members:
+      - public-synthetic-queue-concept-超时与重试机制
+    summary_hash: sha256:816bf226fe8d643a339bcf801f47aa852c621065dbdabdc14a3f0ece9def8c62
+    description_hash: sha256:5d82d1a2065ac411bd736f8464be134a6370f0e71eff95e39e5a984dd84f7f32
+    provenance: llm_inferred
+  - uuid: 698d2de1-6b03-5972-8a88-ceee42f5816b
+    file_slug: visible-error
+    tag: concept
+    name: 可见错误
+    domain: 并发队列与重试控制
+    subdomain: 超时与重试
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 超时与重试
+    shared: false
+    members:
+      - public-synthetic-queue-concept-可见错误
+    summary_hash: sha256:9f5e607ad4b1c4f68fd2fc6db2b544fcd77d66593fa813fb02a7459cc6edef08
+    description_hash: sha256:59618a643a9e004fbcb9b7038798df4eb4bcd45b9aad5515993f58a74979685b
+    provenance: llm_inferred
+  - uuid: 7d779d1f-57d2-5f13-b71b-7b929e02e152
+    file_slug: fixed-fake-runner
+    tag: entity
+    name: 固定假运行器
+    domain: 合成文档与验证
+    subdomain: 合成输入与假运行器
+    domain_slug: 合成文档与验证
+    subdomain_slug: 合成输入与假运行器
+    shared: false
+    members:
+      - public-synthetic-queue-entity-fixed-fake-runner
+    summary_hash: sha256:ad955fa6e231a78aafee60bf523834cfa218cfae511516a8bd160dec533b2f9f
+    description_hash: sha256:7db98a987582947efdc26e3dc99847130e8326f9656912e12ff9a395311b1c6b
+    provenance: llm_inferred
+  - uuid: 672d23d4-1865-5d4f-8880-b56a77d84ec9
+    file_slug: synthetic-input
+    tag: entity
+    name: 合成输入
+    domain: 合成文档与验证
+    subdomain: 合成输入与假运行器
+    domain_slug: 合成文档与验证
+    subdomain_slug: 合成输入与假运行器
+    shared: false
+    members:
+      - public-synthetic-queue-entity-合成输入
+    summary_hash: sha256:dca757a455214b38619f4e7d030c9844abf076b3fd89911ad3d0bb7e6e839c4d
+    description_hash: sha256:76cea0516fc072080f2141461692489d97d6407d56e2cd1a0851f7a5ed6e16cf
+    provenance: llm_inferred
+  - uuid: 9b12848f-fdb0-5f4e-973d-7ac29039774d
+    file_slug: cross-doc-relation-retention-test
+    tag: concept
+    name: 跨文档关系保留检验
+    domain: 合成文档与验证
+    subdomain: 合成输入与假运行器
+    domain_slug: 合成文档与验证
+    subdomain_slug: 合成输入与假运行器
+    shared: false
+    members:
+      - public-synthetic-queue-concept-跨文档关系保留检验
+    summary_hash: sha256:eaea68266e08dee7fbd0f9bfb58c1808f3676635ff650245211b5e383edd032e
+    description_hash: sha256:9eddea31dbfef814a8c01ffc56d823faccca9b0bc79c49691a9a80a4803e0b7d
+    provenance: llm_inferred
+  - uuid: 81dc5edf-699f-55fa-81cb-5ce972b6552d
+    file_slug: retry-budget-zero-results-rule
+    tag: concept
+    name: 重试预算零结果规则
+    domain: 合成文档与验证
+    subdomain: 合成输入与假运行器
+    domain_slug: 合成文档与验证
+    subdomain_slug: 合成输入与假运行器
+    shared: false
+    members:
+      - public-synthetic-queue-concept-重试预算零结果规则
+    summary_hash: sha256:e4d825e3a1b523ff23d13a160646ea8ecd624bd10416395f23c9e584e315d211
+    description_hash: sha256:f26d14a8a8ce406b3b8bb5935650e4dba814a102c8c69793d54a6bf1c43f2b5c
+    provenance: llm_inferred

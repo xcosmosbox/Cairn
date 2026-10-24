@@ -1,0 +1,62 @@
+{
+  "status": "frozen_before_one_authorized_attempt",
+  "time_utc": "2026-10-24T14:47:55.426493+00:00",
+  "source_sha": "75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8",
+  "helper_sha256": "b0746827745fbb152804c9f2b41af0e61b60e4aee4c2c20c76bd562718c67ac1",
+  "binaries": {
+    "cairn-ingest": "46aa438c629e047c4f9137099a06c769bc171c348ae89067f442d45ed935bddd",
+    "cairn": "6acab2b7ac87c864550f29225c1731a84f0d2e34264977b656edc685267f476d",
+    "cairn-mcp": "f420a42bbf56aa79951ebba12a790a7e5d10eefd7eb8bf83733f7c0009f93886"
+  },
+  "go_build_info": {
+    "cairn-ingest": "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/bin/cairn-ingest: go1.22.12\n\tpath\tgithub.com/xcosmosbox/cairn/build/cmd/cairn-ingest\n\tmod\tgithub.com/xcosmosbox/cairn\t(devel)\t\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgolang.org/x/sys\tv0.22.0\th1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=\n\tdep\tgopkg.in/yaml.v3\tv3.0.1\th1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=\n\tdep\tmodernc.org/libc\tv1.55.3\th1:AzcW1mhlPNrRtjS5sS+eW2ISCgSOLLNyFzRh/V3Qj/U=\n\tdep\tmodernc.org/mathutil\tv1.6.0\th1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=\n\tdep\tmodernc.org/memory\tv1.8.0\th1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=\n\tdep\tmodernc.org/sqlite\tv1.30.1\th1:YFhPVfu2iIgUf9kuA1CR7iiHdcEEsI2i+yjRYHscyxk=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8\n\tbuild\tvcs.time=2026-10-24T14:40:14Z\n\tbuild\tvcs.modified=false\n",
+    "cairn": "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/bin/cairn: go1.22.12\n\tpath\tgithub.com/xcosmosbox/cairn/service/cmd/cairn\n\tmod\tgithub.com/xcosmosbox/cairn\t(devel)\t\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgolang.org/x/sys\tv0.22.0\th1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=\n\tdep\tmodernc.org/libc\tv1.55.3\th1:AzcW1mhlPNrRtjS5sS+eW2ISCgSOLLNyFzRh/V3Qj/U=\n\tdep\tmodernc.org/mathutil\tv1.6.0\th1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=\n\tdep\tmodernc.org/memory\tv1.8.0\th1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=\n\tdep\tmodernc.org/sqlite\tv1.30.1\th1:YFhPVfu2iIgUf9kuA1CR7iiHdcEEsI2i+yjRYHscyxk=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8\n\tbuild\tvcs.time=2026-10-24T14:40:14Z\n\tbuild\tvcs.modified=false\n",
+    "cairn-mcp": "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/bin/cairn-mcp: go1.22.12\n\tpath\tgithub.com/xcosmosbox/cairn/service/cmd/cairn-mcp\n\tmod\tgithub.com/xcosmosbox/cairn\t(devel)\t\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgolang.org/x/sys\tv0.22.0\th1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=\n\tdep\tgopkg.in/yaml.v3\tv3.0.1\th1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=\n\tdep\tmodernc.org/libc\tv1.55.3\th1:AzcW1mhlPNrRtjS5sS+eW2ISCgSOLLNyFzRh/V3Qj/U=\n\tdep\tmodernc.org/mathutil\tv1.6.0\th1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=\n\tdep\tmodernc.org/memory\tv1.8.0\th1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=\n\tdep\tmodernc.org/sqlite\tv1.30.1\th1:YFhPVfu2iIgUf9kuA1CR7iiHdcEEsI2i+yjRYHscyxk=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=75a77a0d5d1e1d5077c4758e56f2bc7fd3ac62a8\n\tbuild\tvcs.time=2026-10-24T14:40:14Z\n\tbuild\tvcs.modified=false\n"
+  },
+  "preparation_sha256": "7b9a65dd9901f556ae4d4015c8932e8a9030cfbb79a0c0379c540318d8b62b67",
+  "frozen_originals": {
+    "format": "cairn-public-real-two-doc-v1",
+    "source_commit": "18e7e7bfc989fc0216625b0851e105690edd3950",
+    "input_scope": "SKILL metadata plus exactly two reference documents; no benchmark questions/gold/holdout",
+    "files": [
+      {
+        "path": "SKILL.md",
+        "bytes": 896,
+        "sha256": "048036172a5670d86322988b156f9c4619812c74bd03d47b62f8fdebb4274f97"
+      },
+      {
+        "path": "references/queue.md",
+        "bytes": 553,
+        "sha256": "a1a3905bcf204cb702a6fd1b48521505d3115b06240a4b3ff4fdbcf8c2b8e135"
+      },
+      {
+        "path": "references/timeout.md",
+        "bytes": 626,
+        "sha256": "962d59eed21fe457189a5cf252f6b95e86e85efa7903717ddbf7df892a0a2587"
+      }
+    ]
+  },
+  "endpoint": "https://api.deepseek.com/chat/completions",
+  "requested_model": "deepseek-flash",
+  "max_tokens": 16384,
+  "request_timeout_seconds": 180,
+  "outer_timeout_seconds": 600,
+  "max_retries": 3,
+  "max_rollbacks": 3,
+  "thinking": "enabled_product_default_high",
+  "json_mode": true,
+  "cross_relation_evidence_bytes": 65536,
+  "required_dumps": [
+    "00_frozen_sources.json",
+    "04_extract_input.json",
+    "05e_cross_relation_report.json",
+    "05e_cross_validated.json",
+    "05f_uuid_assigned.json",
+    "05h_materialization_candidate.json"
+  ],
+  "provider_response_ids": "not_retained_by_standard_client; explicitunknown accepted by root for bounded correctness run",
+  "failed_request_usage": "unknown unless exposed in retained successful logs; no invented503usage/cost",
+  "holdout": "closed",
+  "new_canary_requests": 0,
+  "paid_whole_run_retries": 0
+}

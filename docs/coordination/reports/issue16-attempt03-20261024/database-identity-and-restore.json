@@ -1,0 +1,22 @@
+{
+  "status": "pass_logical_restore",
+  "original_db_bytes": 176128,
+  "original_db_sha256": "d644cb208107dd58aac7b5b74c3b49f0046bbc985d111cfb8918ed19736d8483",
+  "original_binary": "local ignored actual runtime only; not committed",
+  "sql_sha256": "260a2c74f9a8d816de523b7ec49ce2b6ef4f162348a94d4264bdfcccaf98ec7b",
+  "logical_tables_compared": [
+    "conflict_reports",
+    "cross_references",
+    "edges",
+    "file_states",
+    "kb_version",
+    "kg_manifest",
+    "node_sources",
+    "nodes",
+    "uuid_lineage",
+    "nodes_fts"
+  ],
+  "quick_check": "ok",
+  "fts_integrity_check": "pass",
+  "note": "Logical rows/schema/FTS restored; physical SQLite bytes and unused sequence bookkeeping need not reproduce"
+}

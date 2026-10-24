@@ -1,0 +1,10 @@
+{
+  "successful_response_logs": 25,
+  "observed_provider_status503_error_lines": 0,
+  "provider_response_ids": "unknown_not_recorded",
+  "served_backing_revision": "unknown_configured_alias_only",
+  "failed_request_tokens_or_billing": "unknown_not_recorded_by_standard_client",
+  "wire_attempt_count": "unknown_no_wire_observer",
+  "no_extra_canary": true,
+  "root_metadata_scope": "bounded semantic regression explicit prereplaydecision; no precision beyond available logs"
+}

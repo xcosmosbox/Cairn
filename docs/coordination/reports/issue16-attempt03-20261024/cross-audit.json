@@ -1,0 +1,236 @@
+{
+  "status": "pass_mechanical_cross_quote_and_required_final_edge_checks_needs_independent_semantic_review",
+  "required_dump_identities": [
+    {
+      "path": "dump/00_frozen_sources.json",
+      "bytes": 1571,
+      "sha256": "fb20d2146292fd654d877869222f3066f2f0ab1b9542082df6676aba95353875"
+    },
+    {
+      "path": "dump/04_extract_input.json",
+      "bytes": 7978,
+      "sha256": "c7128ac1316046a6a55aef15c954635b8b3ac71697974ae973043342fa3352a3"
+    },
+    {
+      "path": "dump/05e_cross_relation_report.json",
+      "bytes": 12351,
+      "sha256": "44ab6e115ae8f59a52f8cb70a3b9e2f8259296aeac8cd55ff32b34e445dd8a19"
+    },
+    {
+      "path": "dump/05e_cross_validated.json",
+      "bytes": 15721,
+      "sha256": "977ecc839f3c88f9267fee56f942ab9cb295a5cb04896102c360bc7e7989a8d7"
+    },
+    {
+      "path": "dump/05f_uuid_assigned.json",
+      "bytes": 16495,
+      "sha256": "ab12ce930dfc2bd7ce425404e783003f3d15111f38b32a9bab3913584fd8caea"
+    },
+    {
+      "path": "dump/05h_materialization_candidate.json",
+      "bytes": 17040,
+      "sha256": "ccf2a8779cc2dfe863e168a6fb7d34105baded500e15c909d6200e2dd6e224ab"
+    }
+  ],
+  "frozen_sources_byte_identical_to_originals": true,
+  "source_uuid_count": 0,
+  "source_uuid_mask_branch": "not_exercised_no_uuid_in_these_originals; mask correctness belongs separate implementation tests",
+  "pre_uuid_aliases_have_no_canonical_UUIDs": true,
+  "post_last_LLM_ids_are_UUIDs": true,
+  "cross_candidates": 3,
+  "cross_accepted": 1,
+  "all_decisions": [
+    {
+      "relation": {
+        "source": "retry-budget",
+        "target": "blocking-queue",
+        "kind": "depends_on",
+        "description": "重试预算所依赖的队列组件，其容量与等待行为影响预算。",
+        "confidence": 0.85
+      },
+      "source": {
+        "domain": "并发队列与重试控制",
+        "subdomain": "超时与重试",
+        "alias": "retry-budget",
+        "name": "重试预算",
+        "members": [
+          "public-synthetic-queue-concept-重试预算"
+        ]
+      },
+      "target": {
+        "domain": "并发队列与重试控制",
+        "subdomain": "阻塞队列模型",
+        "alias": "blocking-queue",
+        "name": "阻塞队列",
+        "members": [
+          "public-synthetic-queue-entity-容量为8的阻塞队列",
+          "public-synthetic-queue-entity-阻塞队列"
+        ]
+      },
+      "disposition": "accepted",
+      "reason": "s2 原文明确断言“重试预算”依赖“阻塞队列”的容量与等待行为，方向为 source 依赖 target；s1 原文说明该阻塞队列容量为 8，满/空时分别阻塞生产者/消费者，支撑 target 的容量与等待行为。合成说明及“未观测图谱输出”的限定不否定原文中的明确依赖断言。",
+      "quote_checks": [
+        {
+          "endpoint": "source",
+          "member_id": "public-synthetic-queue-concept-重试预算",
+          "source_path": "references/timeout.md",
+          "quote": "`重试预算` 依赖[阻塞队列](queue.md#阻塞队列--blocking-queue)的容量与等待行为。",
+          "derived_original_offsets": {
+            "start_byte": 316,
+            "end_byte": 417,
+            "start_line": 10,
+            "end_line": 10
+          },
+          "native_validated_offsets_present": true,
+          "exact_original_quote_and_member_match": true
+        },
+        {
+          "endpoint": "target",
+          "member_id": "public-synthetic-queue-entity-容量为8的阻塞队列",
+          "source_path": "references/queue.md",
+          "quote": "这个虚构队列容量为 8。满时生产者等待，空时消费者等待；这解释了 `阻塞队列` 的基本含义。",
+          "derived_original_offsets": {
+            "start_byte": 97,
+            "end_byte": 223,
+            "start_line": 5,
+            "end_line": 5
+          },
+          "native_validated_offsets_present": true,
+          "exact_original_quote_and_member_match": true
+        }
+      ]
+    },
+    {
+      "relation": {
+        "source": "cross-doc-relation-check",
+        "target": "retry-budget",
+        "kind": "references",
+        "description": "跨文档关系保留检验关注重试预算相关跨文档关系是否被保留。",
+        "confidence": 0.8
+      },
+      "source": {
+        "domain": "合成文档与验证",
+        "subdomain": "合成输入与假运行器",
+        "alias": "cross-doc-relation-check",
+        "name": "跨文档关系保留检验",
+        "members": [
+          "public-synthetic-queue-concept-跨文档关系保留检验"
+        ]
+      },
+      "target": {
+        "domain": "并发队列与重试控制",
+        "subdomain": "超时与重试",
+        "alias": "retry-budget",
+        "name": "重试预算",
+        "members": [
+          "public-synthetic-queue-concept-重试预算"
+        ]
+      },
+      "disposition": "insufficient_evidence",
+      "reason": "候选声称 source「跨文档关系保留检验」以 references 关系指向 target「重试预算」。但原文只在 s2 中以条件式未来语气提到“可以检验是否保留这条跨文档关系，本次没有运行该抽取”，并未明确断言该检验引用或指向「重试预算」；s1 只说明“跨文档意图是：重试预算依赖队列的阻塞行为”，描述的是重试预算与阻塞队列之间的依赖，而非检验节点对重试预算的引用。两端内容虽同时出现相关概念，但缺少“引用”这一明确关系及其方向，因此不足以支持该 references 候选。",
+      "quote_checks": [
+        {
+          "endpoint": "source",
+          "member_id": "public-synthetic-queue-concept-跨文档关系保留检验",
+          "source_path": "references/timeout.md",
+          "quote": "若未来用真实 LLM 构建这些材料，可以检验是否保留这条跨文档关系；本次没有运行该抽取。",
+          "derived_original_offsets": {
+            "start_byte": 418,
+            "end_byte": 540,
+            "start_line": 11,
+            "end_line": 11
+          },
+          "native_validated_offsets_present": false,
+          "exact_original_quote_and_member_match": true
+        },
+        {
+          "endpoint": "target",
+          "member_id": "public-synthetic-queue-concept-重试预算",
+          "source_path": "references/queue.md",
+          "quote": "跨文档意图是：重试预算依赖队列的阻塞行为，而不是与队列无关的独立概念。",
+          "derived_original_offsets": {
+            "start_byte": 374,
+            "end_byte": 479,
+            "start_line": 9,
+            "end_line": 9
+          },
+          "native_validated_offsets_present": false,
+          "exact_original_quote_and_member_match": true
+        }
+      ]
+    },
+    {
+      "relation": {
+        "source": "cross-doc-relation-check",
+        "target": "blocking-queue",
+        "kind": "references",
+        "description": "跨文档关系保留检验关注阻塞队列相关跨文档关系是否被保留。",
+        "confidence": 0.8
+      },
+      "source": {
+        "domain": "合成文档与验证",
+        "subdomain": "合成输入与假运行器",
+        "alias": "cross-doc-relation-check",
+        "name": "跨文档关系保留检验",
+        "members": [
+          "public-synthetic-queue-concept-跨文档关系保留检验"
+        ]
+      },
+      "target": {
+        "domain": "并发队列与重试控制",
+        "subdomain": "阻塞队列模型",
+        "alias": "blocking-queue",
+        "name": "阻塞队列",
+        "members": [
+          "public-synthetic-queue-entity-容量为8的阻塞队列",
+          "public-synthetic-queue-entity-阻塞队列"
+        ]
+      },
+      "disposition": "insufficient_evidence",
+      "reason": "候选断言“跨文档关系保留检验”对“阻塞队列”的 references 关系在两份原文中都没有明确陈述。source 端点唯一成员出自 s2，但 s2 只出现泛指的“这条跨文档关系”和“检验是否保留这条跨文档关系”，而且紧接着写明“本次没有运行该抽取”，属于对未来抽取的假设性说明，不是“跨文档关系保留检验”这一实体对阻塞队列的引用断言。s2 中唯一明确指向阻塞队列的关系是“重试预算 依赖 阻塞队列的容量与等待行为”，主体是重试预算，并非该 source 概念；而且 s2 还声明“免费 fixed fake 中不存在 重试预算”。s1（queue.md）只描述阻塞队列本身（容量 8、满/空阻塞），完全没有提及 source 概念，也没有跨文档引用。因此两端虽有各自名称在文档中出现的语境，却不存在明确的关系方向与引用语义；原文既没有明确支持，也没有产生互不相容的反向断言，故不足以判定为 supported，也不构成 rejected。",
+      "quote_checks": [
+        {
+          "endpoint": "source",
+          "member_id": "public-synthetic-queue-concept-跨文档关系保留检验",
+          "source_path": "references/timeout.md",
+          "quote": "若未来用真实 LLM 构建这些材料，可以检验是否保留这条跨文档关系；本次没有运行该抽取。",
+          "derived_original_offsets": {
+            "start_byte": 418,
+            "end_byte": 540,
+            "start_line": 11,
+            "end_line": 11
+          },
+          "native_validated_offsets_present": false,
+          "exact_original_quote_and_member_match": true
+        },
+        {
+          "endpoint": "target",
+          "member_id": "public-synthetic-queue-entity-阻塞队列",
+          "source_path": "references/timeout.md",
+          "quote": "`重试预算` 依赖[阻塞队列](queue.md#阻塞队列--blocking-queue)的容量与等待行为。",
+          "derived_original_offsets": {
+            "start_byte": 316,
+            "end_byte": 417,
+            "start_line": 10,
+            "end_line": 10
+          },
+          "native_validated_offsets_present": false,
+          "exact_original_quote_and_member_match": true
+        }
+      ]
+    }
+  ],
+  "desired_final_sql_edge": {
+    "source_id": "c3123633-9fad-5391-8d39-ba4d7b393783",
+    "source": "重试预算",
+    "target_id": "87177315-8d2f-52d8-9d48-68fcf2afeb4e",
+    "target": "阻塞队列",
+    "kind": "depends_on",
+    "description": "重试预算所依赖的队列组件，其容量与等待行为影响预算。"
+  },
+  "false_fixture_absence_contradiction_in_final_graph": false,
+  "absence_contradiction_candidate_present": false,
+  "absence_contradiction_actual_rejection": "not_exercised_no_such_candidate_generated; do_not_claim_rejected",
+  "node_source_original_hints": "all14unknown; quote offsets here are separate original-evidence bindings, not MCP spans",
+  "scope": "all retained candidate quotes mechanically checked; semantic entailment and conservative negative verdicts still independently reviewed"
+}

@@ -1,0 +1,4 @@
+mcp:
+  knowledge_bases:
+    - name: real-demo
+      path: "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/.local/real-model/attempt-03/knowledge.db"

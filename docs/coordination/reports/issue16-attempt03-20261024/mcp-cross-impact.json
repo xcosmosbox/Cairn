@@ -1,0 +1,73 @@
+{
+  "status": "pass_actual_MCP_forward_depth1_cross_edge_surface",
+  "command": [
+    "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/bin/cairn-mcp",
+    "--config",
+    "/workspace/scratch/c1bb49a45412/cairn-live16-attempt03/.local/real-model/attempt-03/audit-v2-evidence/mcp.yaml"
+  ],
+  "requests": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "attempt03-cross-edge-audit",
+          "version": "1"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/call",
+      "params": {
+        "name": "domain_impact",
+        "arguments": {
+          "kg": "real-demo",
+          "entity_name": "重试预算",
+          "depth": 1
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "tools": {}
+        },
+        "protocolVersion": "2024-11-05",
+        "serverInfo": {
+          "name": "cairn",
+          "version": "2.0.0"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "## 影响分析: 重试预算 (c3123633-9fad-5391-8d39-ba4d7b393783, Concept) [知识库/KG: real-demo]\n\n遍历深度 / Traversal depth: 1\n\n可达节点（按深度）/ Reachable nodes (by depth):\n  - ↳ [d1] 可见错误 (698d2de1-6b03-5972-8a88-ceee42f5816b, Concept)\n  - ↳ [d1] 阻塞队列 (87177315-8d2f-52d8-9d48-68fcf2afeb4e, Entity)\n\n关系边 / Edges:\n  重试预算 --[triggers]--> 可见错误 — 重试预算用尽后返回可见错误，预算耗尽是触发可见错误的直接原因。\n  重试预算 --[depends_on]--> 阻塞队列 — 重试预算所依赖的队列组件，其容量与等待行为影响预算。\n\n### 统计 / Statistics\n- 可达节点数 / Reachable nodes: 2\n- 边总数 / Total edges: 2\n"
+          }
+        ]
+      }
+    }
+  ],
+  "stderr": "Cairn MCP Server v2.0.0 (multi-DB)\nMCP Server 就绪（stdio 传输）/ MCP Server ready (stdio transport) — 1 个知识库 / 1 KBs loaded\n",
+  "exit_code": 0,
+  "db_sha256_before": "d644cb208107dd58aac7b5b74c3b49f0046bbc985d111cfb8918ed19736d8483",
+  "db_sha256_after": "d644cb208107dd58aac7b5b74c3b49f0046bbc985d111cfb8918ed19736d8483",
+  "scope": "depth1 forward impact from retry budget includes blocking queue; final SQL independently binds depends_on edge; no model request"
+}

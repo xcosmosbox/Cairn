@@ -1,0 +1,20 @@
+# 由系统维护，请勿手动编辑本文件。人工创作请在对应 .md 的「摘要/详述」可编辑区进行。
+schema_version: 1
+doc: _shared/并发队列与重试控制/producer.md
+doc_hash: sha256:99fd39cd8fa7268c17aed741e2c3d19a213f67ec176285d340876257e092069b
+generated_at: "2026-10-24T14:49:29Z"
+nodes:
+  - uuid: 5a9ab1d8-f65d-504b-a743-33138f36c8b6
+    file_slug: producer
+    tag: entity
+    name: 生产者
+    domain: 并发队列与重试控制
+    subdomain: 阻塞队列模型
+    domain_slug: 并发队列与重试控制
+    subdomain_slug: 阻塞队列模型
+    shared: true
+    members:
+      - public-synthetic-queue-entity-生产者
+    summary_hash: sha256:5d36675e0681a1fae322a9d90b9200865e230285e6dc41761cb18962bc07be63
+    description_hash: sha256:4fae57500c5797c3088af759d3b097c2cbd2039517859c2e5845fb30dfa15582
+    provenance: llm_inferred

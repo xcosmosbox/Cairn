@@ -1,0 +1,7 @@
+{
+  "status": "reused_actual_prior_connectivity_receipt_no_new_request",
+  "original_response_id": "cb977f4b-20bd-4411-98b6-58ad42e913d7",
+  "original_canary_sha256": "38dd7e2eaf15ac5a369b99afd66a2d2006a57431f8fec44a97a3c4221841bb8c",
+  "requested_endpoint_model_unchanged": true,
+  "original_builder_not_reused": true
+}

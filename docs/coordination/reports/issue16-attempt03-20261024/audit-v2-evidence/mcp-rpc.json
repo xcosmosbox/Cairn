@@ -1,0 +1,176 @@
+[
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "real-two-doc-smoke",
+          "version": "1"
+        }
+      },
+      "id": 1
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "tools": {}
+        },
+        "protocolVersion": "2024-11-05",
+        "serverInfo": {
+          "name": "cairn",
+          "version": "2.0.0"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "domain_search",
+        "arguments": {
+          "kg": "real-demo",
+          "keyword": "有界队列阻塞规则"
+        }
+      },
+      "id": 2
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "搜索关键词: 有界队列阻塞规则（知识库: real-demo）\n\n## 1. 有界队列阻塞规则 (1.00)\n- ID: 85f91f1c-05be-5486-9594-2a3fe6f3fd3b\n- 类型/Type: Concept\n- 域/Domain: 并发队列与重试控制/阻塞队列模型\n- 摘要: 有界队列在满时阻塞生产者、空时阻塞消费者的行为规则。\n- 置信度/Confidence: 0.90\n\n## 2. 阻塞队列 (0.40)\n- ID: 87177315-8d2f-52d8-9d48-68fcf2afeb4e\n- 类型/Type: Entity\n- 域/Domain: 并发队列与重试控制/阻塞队列模型\n- 摘要: 具有固定容量（如容量为8）的队列组件，满时阻塞生产者、空时阻塞消费者。\n- 置信度/Confidence: 0.92\n\n"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "resolve_node",
+        "arguments": {
+          "kg": "real-demo",
+          "uuid": "85f91f1c-05be-5486-9594-2a3fe6f3fd3b",
+          "include_sources": true
+        }
+      },
+      "id": 3
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "✓ UUID 85f91f1c-05be-5486-9594-2a3fe6f3fd3b 存活 / alive。\n- 名称/Name: 有界队列阻塞规则\n- 类型/Type: Concept\n- 域/Domain: 并发队列与重试控制/阻塞队列模型\n- 摘要/Summary: 有界队列在满时阻塞生产者、空时阻塞消费者的行为规则。\n"
+          },
+          {
+            "type": "text",
+            "text": "{\"requested_uuid\":\"85f91f1c-05be-5486-9594-2a3fe6f3fd3b\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"85f91f1c-05be-5486-9594-2a3fe6f3fd3b\",\"status\":\"available\",\"source_refs\":[\"public-synthetic-queue\"],\"locations\":[{\"member_id\":\"public-synthetic-queue-concept-有界队列阻塞规则\",\"skill\":\"public-synthetic-queue\",\"file_path\":\"references/queue.md\",\"span_status\":\"unknown\"}]}}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "domain_search",
+        "arguments": {
+          "kg": "real-demo",
+          "keyword": "可见错误"
+        }
+      },
+      "id": 4
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "搜索关键词: 可见错误（知识库: real-demo）\n\n## 1. 可见错误 (1.00)\n- ID: 698d2de1-6b03-5972-8a88-ceee42f5816b\n- 类型/Type: Concept\n- 域/Domain: 并发队列与重试控制/超时与重试\n- 摘要: 重试预算用尽后返回给调用方的可观测错误结果。\n- 置信度/Confidence: 0.88\n\n## 2. 超时与重试机制 (0.40)\n- ID: 67caf821-d848-5bd1-bad2-8838ab6e602c\n- 类型/Type: Concept\n- 域/Domain: 并发队列与重试控制/超时与重试\n- 摘要: 生产者的超时等待与有限次重试机制，由重试预算约束。\n- 置信度/Confidence: 0.90\n\n## 3. 重试预算 (0.20)\n- ID: c3123633-9fad-5391-8d39-ba4d7b393783\n- 类型/Type: Concept\n- 域/Domain: 并发队列与重试控制/超时与重试\n- 摘要: 生产者在不能无限等待时由调用方使用的重试预算机制，约束重试次数。\n- 置信度/Confidence: 0.90\n\n"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "resolve_node",
+        "arguments": {
+          "kg": "real-demo",
+          "uuid": "698d2de1-6b03-5972-8a88-ceee42f5816b",
+          "include_sources": true
+        }
+      },
+      "id": 5
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "✓ UUID 698d2de1-6b03-5972-8a88-ceee42f5816b 存活 / alive。\n- 名称/Name: 可见错误\n- 类型/Type: Concept\n- 域/Domain: 并发队列与重试控制/超时与重试\n- 摘要/Summary: 重试预算用尽后返回给调用方的可观测错误结果。\n"
+          },
+          {
+            "type": "text",
+            "text": "{\"requested_uuid\":\"698d2de1-6b03-5972-8a88-ceee42f5816b\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"node_uuid\":\"698d2de1-6b03-5972-8a88-ceee42f5816b\",\"status\":\"available\",\"source_refs\":[\"public-synthetic-queue\"],\"locations\":[{\"member_id\":\"public-synthetic-queue-concept-可见错误\",\"skill\":\"public-synthetic-queue\",\"file_path\":\"references/timeout.md\",\"span_status\":\"unknown\"}]}}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "resolve_node",
+        "arguments": {
+          "kg": "real-demo",
+          "uuid": "public-demo-unknown-v1",
+          "include_sources": true
+        }
+      },
+      "id": 6
+    },
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "✗ UUID public-demo-unknown-v1 在知识库 real-demo 中不存在，且无血缘记录（可能从未存在或已被物理清除）。\nUUID public-demo-unknown-v1 does not exist in KB real-demo and has no lineage record.\n"
+          },
+          {
+            "type": "text",
+            "text": "{\"requested_uuid\":\"public-demo-unknown-v1\",\"scope\":\"resolved_node_only\",\"source_metadata\":{\"status\":\"unknown\",\"reason\":\"node_not_found\"}}"
+          }
+        ]
+      }
+    }
+  }
+]
