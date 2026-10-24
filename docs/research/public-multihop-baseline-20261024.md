@@ -61,8 +61,9 @@ unanswerable labels. Download, identity audit and execution are later dependent 
 ## MultiHop split and retrieval freeze
 
 1. Index the full 609-article corpus once, with identical title/source/published_at plus
-   chunk-body templates in both retrieval arms. Questions/gold/evidence never enter the
-   retriever or graph construction. `doc_id=sha256(exact URL UTF-8)`; pin body hashes
+   chunk-body templates in both retrieval arms. Question/answer/gold/evidence fields
+   never enter index contents or graph construction; only the question query is supplied
+   to retrieval. `doc_id=sha256(exact URL UTF-8)`; pin body hashes
    separately. Body offsets/fact coverage exclude metadata.
 2. Normalize a query with NFKC, casefold, whitespace collapse and strip; qid is SHA256
    of its UTF-8 bytes. Non-null group is `docs:` plus sorted unique evidence URLs joined
