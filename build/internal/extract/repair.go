@@ -45,36 +45,26 @@ type danglingRelation struct {
 	Relation      Relation
 	MissingSource bool // true 表示 source 端点未声明
 	MissingTarget bool // true 表示 target 端点未声明
+	SourceStatus  string
+	TargetStatus  string
 }
 
 // scanDangling 扫描所有 subdomain 的 relations，返回端点未声明的悬空 relation。
-// 端点存在性 = source/target 是否出现在同 subdomain 的 entities+concepts 的 ID 集合内。
+// 端点存在性 = 局部唯一优先，否则全局唯一；跨子域仅保留候选，不代表语义验证通过。
 //
 // scanDangling scans all subdomain relations and returns those with undeclared endpoints.
 func scanDangling(domains []Domain) []danglingRelation {
+	index := indexEndpoints(domains)
 	var out []danglingRelation
 	for i := range domains {
 		d := &domains[i]
 		for j := range d.Subdomains {
 			sd := &d.Subdomains[j]
-			declared := make(map[string]bool, len(sd.Entities)+len(sd.Concepts))
-			for _, n := range sd.Entities {
-				declared[n.ID] = true
-			}
-			for _, n := range sd.Concepts {
-				declared[n.ID] = true
-			}
 			for _, r := range sd.Relations {
-				ms := !declared[r.Source]
-				mt := !declared[r.Target]
-				if ms || mt {
-					out = append(out, danglingRelation{
-						DomainSlug:    d.Slug,
-						SubdomainSlug: sd.Slug,
-						Relation:      r,
-						MissingSource: ms,
-						MissingTarget: mt,
-					})
+				_, _, ss, ts := index.relation(endpointScope{d.Slug, sd.Slug}, r)
+				if ss != "resolved" || ts != "resolved" {
+					out = append(out, danglingRelation{DomainSlug: d.Slug, SubdomainSlug: sd.Slug,
+						Relation: r, MissingSource: ss != "resolved", MissingTarget: ts != "resolved", SourceStatus: ss, TargetStatus: ts})
 				}
 			}
 		}
@@ -82,28 +72,22 @@ func scanDangling(domains []Domain) []danglingRelation {
 	return out
 }
 
-// cleanDangling 从 sd.Relations 中移除所有悬空 relation（端点未声明）。
-// 返回移除的条数。清洗后的 05 即便修正失败也可安全进入 ingest（无悬空）。
-//
-// cleanDangling removes dangling relations from each subdomain in-place.
+// cleanDangling 保留可唯一解析的跨子域候选；它们还须通过独立原文验证才会进入 UUID/入库。
+// Endpoint resolution preserves candidates, not semantic approval.
 func cleanDangling(domains []Domain) int {
+	index := indexEndpoints(domains)
 	removed := 0
 	for i := range domains {
 		d := &domains[i]
 		for j := range d.Subdomains {
 			sd := &d.Subdomains[j]
-			declared := make(map[string]bool, len(sd.Entities)+len(sd.Concepts))
-			for _, n := range sd.Entities {
-				declared[n.ID] = true
-			}
-			for _, n := range sd.Concepts {
-				declared[n.ID] = true
-			}
 			kept := sd.Relations[:0]
 			for _, r := range sd.Relations {
-				if declared[r.Source] && declared[r.Target] {
+				_, _, ss, ts := index.relation(endpointScope{d.Slug, sd.Slug}, r)
+				if ss == "resolved" && ts == "resolved" {
 					kept = append(kept, r)
 				} else {
+					log.Printf("[extract-repair] 拒绝端点: %s/%s %s --%s--> %s (source=%s target=%s)", d.Slug, sd.Slug, r.Source, r.Kind, r.Target, ss, ts)
 					removed++
 				}
 			}
@@ -289,7 +273,7 @@ func applyPatches(domains []Domain, patches []patch, unitIDs map[string]bool, da
 				errs = append(errs, fmt.Sprintf("patch#%d restore: invalid kind %q", i, p.Relation.Kind))
 				continue
 			}
-			if !declaresNode(sd, p.Relation.Source) || !declaresNode(sd, p.Relation.Target) {
+			if !resolvesRelation(domains, p.DomainSlug, p.SubdomainSlug, p.Relation) {
 				errs = append(errs, fmt.Sprintf("patch#%d restore: undeclared endpoint %q→%q", i, p.Relation.Source, p.Relation.Target))
 				continue
 			}
@@ -337,7 +321,7 @@ func applyPatches(domains []Domain, patches []patch, unitIDs map[string]bool, da
 			if p.Description != "" {
 				candidate.Description = p.Description
 			}
-			if !validRelationKinds[candidate.Kind] || !declaresNode(sd, candidate.Source) || !declaresNode(sd, candidate.Target) {
+			if !validRelationKinds[candidate.Kind] || !resolvesRelation(domains, p.DomainSlug, p.SubdomainSlug, candidate) {
 				errs = append(errs, fmt.Sprintf("patch#%d fix: invalid relation or undeclared endpoint %q→%q", i, candidate.Source, candidate.Target))
 				continue
 			}
@@ -404,14 +388,15 @@ func findSubdomain(domains []Domain, domainSlug, subdomainSlug string) *Subdomai
 // RepairReport 是「融合映射校准 + 悬空边修正」阶段的结果摘要（可观测，写盘到 05c）。
 // RepairReport summarizes the fusion-calibration + dangling-repair stage (written to 05c).
 type RepairReport struct {
-	DanglingFound  int      // 扫描到的悬空 relation 总数
-	Cleaned        int      // 清洗阶段移除的条数（= DanglingFound，清洗是第一步）
-	PatchesApplied int      // 成功应用的 patch 条数
-	PatchErrors    []string // 应用失败的 patch 错误描述
-	Rounds         int      // 实际执行的修正轮数
-	StillDangling  int      // patch 应用后重新扫描仍悬空的条数（最终丢弃）
-	Degraded       bool     // 是否降级（修正耗尽，用清洗后 05 继续 ingest）
-	MissingFrom04  int      // 修正提示用：未被融合覆盖的 04 单元数（漏融合，供 prompt 提示）
+	EndpointFailures []danglingRelation // 原始 missing/ambiguous 明细，不能只报计数 / original endpoint dispositions
+	DanglingFound    int                // 扫描到的悬空 relation 总数
+	Cleaned          int                // 清洗阶段移除的条数（= DanglingFound，清洗是第一步）
+	PatchesApplied   int                // 成功应用的 patch 条数
+	PatchErrors      []string           // 应用失败的 patch 错误描述
+	Rounds           int                // 实际执行的修正轮数
+	StillDangling    int                // patch 应用后重新扫描仍悬空的条数（最终丢弃）
+	Degraded         bool               // 是否降级（修正耗尽，用清洗后 05 继续 ingest）
+	MissingFrom04    int                // 修正提示用：未被融合覆盖的 04 单元数（漏融合，供 prompt 提示）
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -439,6 +424,7 @@ func (e *Extractor) RepairDanglingRelations(ctx context.Context, res *Result, do
 	// 本阶段专注悬空边：扫描 → 清洗 → 伪 session LLM 增量 patch 修正。
 	dangling := scanDangling(res.Domains)
 	rpt.DanglingFound = len(dangling)
+	rpt.EndpointFailures = append(rpt.EndpointFailures, dangling...)
 	if len(dangling) > 0 {
 		rpt.Cleaned = cleanDangling(res.Domains)
 		rpt.MissingFrom04 = len(computeMissing(docs, res.Domains))
@@ -631,4 +617,9 @@ func buildRepairPrompt(domains []Domain, dangling []danglingRelation, docs []*dk
 	}
 
 	return sb.String()
+}
+
+func resolvesRelation(domains []Domain, domain, subdomain string, r Relation) bool {
+	_, _, ss, ts := indexEndpoints(domains).relation(endpointScope{domain, subdomain}, r)
+	return ss == "resolved" && ts == "resolved"
 }

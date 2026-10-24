@@ -35,9 +35,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/storage"
-	"github.com/xcosmosbox/cairn/build/internal/extract"
 )
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -265,14 +265,14 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 			return false, nil
 		}
 		edge := &dktypes.Edge{
-			SourceID:   sourceID,
-			TargetID:   targetID,
-			Kind:       kind,
+			SourceID:    sourceID,
+			TargetID:    targetID,
+			Kind:        kind,
 			Description: desc,
-			Confidence: conf,
-			Provenance: dktypes.ProvenanceLLMInferred,
-			SourceRefs: srcRefs,
-			CreatedAt:  now,
+			Confidence:  conf,
+			Provenance:  dktypes.ProvenanceLLMInferred,
+			SourceRefs:  srcRefs,
+			CreatedAt:   now,
 		}
 		if err := edgeRepo.Insert(ctx, edge); err != nil {
 			return false, fmt.Errorf("insert edge %s->%s: %w", sourceID, targetID, err)
@@ -460,86 +460,92 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 				if ent.Confidence < opts.MinConfidence {
 					continue
 				}
-				entID := ent.ID // UUID 主键（由 extract.AssignNodeUUIDs 分配）
-				ed := ent.ToEntityDef()                    // 复用 extract 转换（DRY）
-			node := &dktypes.Node{
-				ID:          entID,
-				Label:       dktypes.LabelEntity,
-				Name:        ed.Name,
-				Summary:     firstNonEmpty(ed.Summary, ed.Name),
-				Description: ed.Description,
-				Synonyms:    strings.Join(ent.Synonyms, " "),
-				Domain:      dSlug,
-				Subdomain:   sSlug,
-				Confidence:  ent.Confidence,
-				SourceRefs:  strings.Join(ent.SourceSkills, ","),
-				FileSlug:    ent.FileSlug,
-			}
-			if ok, err := insertNode(node); err != nil {
-				return nil, fmt.Errorf("insert entity node %s: %w", entID, err)
-			} else if ok {
-				result.EntityNodes++
-				result.NodesInserted++
-				// 为该 entity 的每个 member 写 node_sources（回写与 shared 判定的命脉）。
-				// Write node_sources rows for this entity's members (write-back lifeline).
-				appendNodeSources(entID, ent.Members, dSlug, sSlug)
-				// 步骤 6b：subdomain --composes--> entity（层级边）。
-				if ok2, err := insertEdge(subID, entID, dktypes.KindComposes,
-					"子域包含实体", 1.0, ""); err != nil {
-					return nil, err
-				} else if ok2 {
-					result.ComposesEdges++
+				entID := ent.ID         // UUID 主键（由 extract.AssignNodeUUIDs 分配）
+				ed := ent.ToEntityDef() // 复用 extract 转换（DRY）
+				node := &dktypes.Node{
+					ID:          entID,
+					Label:       dktypes.LabelEntity,
+					Name:        ed.Name,
+					Summary:     firstNonEmpty(ed.Summary, ed.Name),
+					Description: ed.Description,
+					Synonyms:    strings.Join(ent.Synonyms, " "),
+					Domain:      dSlug,
+					Subdomain:   sSlug,
+					Confidence:  ent.Confidence,
+					SourceRefs:  strings.Join(ent.SourceSkills, ","),
+					FileSlug:    ent.FileSlug,
 				}
-			}
+				if ok, err := insertNode(node); err != nil {
+					return nil, fmt.Errorf("insert entity node %s: %w", entID, err)
+				} else if ok {
+					result.EntityNodes++
+					result.NodesInserted++
+					// 为该 entity 的每个 member 写 node_sources（回写与 shared 判定的命脉）。
+					// Write node_sources rows for this entity's members (write-back lifeline).
+					appendNodeSources(entID, ent.Members, dSlug, sSlug)
+					// 步骤 6b：subdomain --composes--> entity（层级边）。
+					if ok2, err := insertEdge(subID, entID, dktypes.KindComposes,
+						"子域包含实体", 1.0, ""); err != nil {
+						return nil, err
+					} else if ok2 {
+						result.ComposesEdges++
+					}
+				}
 			}
 			for _, con := range sd.Concepts {
 				if con.Confidence < opts.MinConfidence {
 					continue
 				}
-				conID := con.ID // UUID 主键（由 extract.AssignNodeUUIDs 分配）
+				conID := con.ID          // UUID 主键（由 extract.AssignNodeUUIDs 分配）
 				cd := con.ToConceptDef() // 复用 extract 转换（DRY）
-			node := &dktypes.Node{
-				ID:          conID,
-				Label:       dktypes.LabelConcept,
-				Name:        cd.Name,
-				Summary:     firstNonEmpty(cd.Summary, cd.Name),
-				Description: cd.Description,
-				Synonyms:    strings.Join(con.Synonyms, " "),
-				Domain:      dSlug,
-				Subdomain:   sSlug,
-				Confidence:  con.Confidence,
-				SourceRefs:  strings.Join(con.SourceSkills, ","),
-				FileSlug:    con.FileSlug,
-			}
-			if ok, err := insertNode(node); err != nil {
-				return nil, fmt.Errorf("insert concept node %s: %w", conID, err)
-			} else if ok {
-				result.ConceptNodes++
-				result.NodesInserted++
-				// 为该 concept 的每个 member 写 node_sources（回写与 shared 判定的命脉）。
-				// Write node_sources rows for this concept's members (write-back lifeline).
-				appendNodeSources(conID, con.Members, dSlug, sSlug)
-				// 步骤 6b：subdomain --composes--> concept（层级边）。
-				if ok2, err := insertEdge(subID, conID, dktypes.KindComposes,
-					"子域包含概念", 1.0, ""); err != nil {
-					return nil, err
-				} else if ok2 {
-					result.ComposesEdges++
+				node := &dktypes.Node{
+					ID:          conID,
+					Label:       dktypes.LabelConcept,
+					Name:        cd.Name,
+					Summary:     firstNonEmpty(cd.Summary, cd.Name),
+					Description: cd.Description,
+					Synonyms:    strings.Join(con.Synonyms, " "),
+					Domain:      dSlug,
+					Subdomain:   sSlug,
+					Confidence:  con.Confidence,
+					SourceRefs:  strings.Join(con.SourceSkills, ","),
+					FileSlug:    con.FileSlug,
+				}
+				if ok, err := insertNode(node); err != nil {
+					return nil, fmt.Errorf("insert concept node %s: %w", conID, err)
+				} else if ok {
+					result.ConceptNodes++
+					result.NodesInserted++
+					// 为该 concept 的每个 member 写 node_sources（回写与 shared 判定的命脉）。
+					// Write node_sources rows for this concept's members (write-back lifeline).
+					appendNodeSources(conID, con.Members, dSlug, sSlug)
+					// 步骤 6b：subdomain --composes--> concept（层级边）。
+					if ok2, err := insertEdge(subID, conID, dktypes.KindComposes,
+						"子域包含概念", 1.0, ""); err != nil {
+						return nil, err
+					} else if ok2 {
+						result.ComposesEdges++
+					}
 				}
 			}
-			}
 
-			// 步骤 7：entity↔entity 语义边（LLM 产出）。source/target 已由 AssignNodeUUIDs
-			// 翻译为 uuid（未命中翻译的端点保留原值，由 insertEdge 端点存在性校验跳过——R5）。
-			// 两端存在性校验（应用层外键），缺失则跳过并计数——被门控过滤掉的实体、或指向
-			// 不存在实体的关系，都在此安全跳过，绝不产生悬空边。
-			// Step 7: entity↔entity semantic edges; endpoints are already uuids (assigned by
-			// AssignNodeUUIDs; unmapped endpoints left as-is, skipped by insertEdge — R5).
+		}
+	}
+
+	// 所有子域节点必须先存在；否则指向后续子域的合法语义边会被端点检查误删。
+	// Defer semantic edges until every domain/subdomain node is materialized.
+	for di := range opts.Result.Domains {
+		d := &opts.Result.Domains[di]
+		if d.Slug == "" {
+			continue
+		}
+		for si := range d.Subdomains {
+			sd := &d.Subdomains[si]
+			if sd.Slug == "" {
+				continue
+			}
 			for _, rel := range sd.Relations {
-				srcID := rel.Source
-				tgtID := rel.Target
-				ok, err := insertEdge(srcID, tgtID, dktypes.RelationKind(rel.Kind),
-					rel.Description, rel.Confidence, "")
+				ok, err := insertEdge(rel.Source, rel.Target, dktypes.RelationKind(rel.Kind), rel.Description, rel.Confidence, "")
 				if err != nil {
 					return nil, err
 				}
