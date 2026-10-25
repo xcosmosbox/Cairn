@@ -175,6 +175,12 @@ func TestSourceIndexedBlockLimit(t *testing.T) {
 
 func TestSourceIndexedCandidateCopiesAndGateA(t *testing.T) {
 	t.Parallel()
+	var zero SourceIndexedCandidate
+	for _, c := range []*SourceIndexedCandidate{nil, &zero} {
+		if c.Document() != nil || c.Audit().StructuralValid {
+			t.Fatal("uninitialized candidate projected a document or valid audit")
+		}
+	}
 	p := indexedTestPlan(t, "Alpha full source details\n\n# Heading")
 	out := indexedTestOutput()
 	out.Items[0].Name = " `Alpha` "
@@ -333,6 +339,35 @@ func TestSourceIndexedCoverageAndWitnessRejections(t *testing.T) {
 	o.Items[0].Name, o.Items[0].Identity.Mode = "neutral source description", "descriptive"
 	if _, err := p.Validate(&llm.CompleteResponse{Text: indexedTestJSON(t, o)}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 独立评审发现 big.Float 也会把极端负指数下溢为 -0，从而误接纳负置信度。
+// Preserve those failed probes, true signed zeros, and exact decimal/exponent boundaries.
+func TestSourceIndexedExactDecimalConfidence(t *testing.T) {
+	t.Parallel()
+	p := indexedTestPlan(t, "Alpha full source details\n\n# Heading")
+	raw := indexedTestJSON(t, indexedTestOutput())
+	for _, tc := range []struct {
+		number string
+		valid  bool
+	}{
+		{"-1e-646456994", false}, {"-1e-646456995", false}, {"-1e-999999999", false}, {"-1e-2147483648", false},
+		{"-1e-999999999999999999999999999999999999", false}, {"-0.00000001e-999999999", false},
+		{"1.000000000000000000000000000001", false}, {"1000000000000000000001e-21", false},
+		{"1e999999999999999999999999999999999999", false}, {"2", false}, {"-0.1", false},
+		{"-0", true}, {"-0.0000e+999999999", true}, {"0e-999999999999999999999999999999999999", true},
+		{"1e-999999999", true}, {"1e-999999999999999999999999999999999999", true},
+		{"10e-1", true}, {"1000.0000e-3", true}, {"0.0001e4", true},
+		{"0.9999999999999999999999999999999", true}, {"1", true},
+	} {
+		t.Run(tc.number, func(t *testing.T) {
+			t.Parallel()
+			c, err := p.Validate(&llm.CompleteResponse{Text: strings.Replace(raw, `"confidence":0.9`, `"confidence":`+tc.number, 1)})
+			if (err == nil) != tc.valid || (c != nil) != tc.valid {
+				t.Fatalf("valid=%v err=%v", tc.valid, err)
+			}
+		})
 	}
 }
 

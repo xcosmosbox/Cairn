@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 	"slices"
 	"strconv"
 	"strings"
@@ -263,7 +262,9 @@ type SourceIndexedCandidate struct {
 // Document 返回普通 GateA 产物的深拷贝；调用方仍必须运行完整原文 GateB。
 // Full current GateB remains mandatory before any future semantic acceptance.
 func (c *SourceIndexedCandidate) Document() *dktypes.AnnotatedDocument {
-	if c == nil {
+	// 导出不透明类型仍有 Go 零值；不能绕开 Validate 投影出一个空标注。
+	// Exported opaque types still have zero values: only a validated candidate may project.
+	if c == nil || !c.audit.StructuralValid {
 		return nil
 	}
 	d := c.document
@@ -585,10 +586,7 @@ func indexedSchema(v any) error {
 		if !ok {
 			return fmt.Errorf("confidence must be a number")
 		}
-		// float64 会把 1.000…001 舍入为1、把极小负数舍入为-0。
-		// Round away from zero before range checking, so decimal boundary violations survive.
-		confidence, _, err := big.ParseFloat(string(n), 10, 64, big.AwayFromZero)
-		if err != nil || confidence.Sign() < 0 || confidence.Cmp(big.NewFloat(1)) > 0 {
+		if !indexedConfidenceRange(n) {
 			return fmt.Errorf("confidence is outside finite0..1")
 		}
 		evs, ok := it["evidence"].([]any)
@@ -631,6 +629,60 @@ func indexedSchema(v any) error {
 		}
 	}
 	return nil
+}
+
+// 浮点（包括 big.Float）可能把极小负数下溢为 -0；只按十进制字面值比较范围。
+// Compare the exact decimal coefficient/exponent, never a rounded numeric approximation.
+func indexedConfidenceRange(number json.Number) bool {
+	s := string(number) // The strict JSON decoder has already validated number syntax.
+	negative := strings.HasPrefix(s, "-")
+	if negative {
+		s = s[1:]
+	}
+	exponentText := ""
+	if i := strings.IndexAny(s, "eE"); i >= 0 {
+		s, exponentText = s[:i], s[i+1:]
+	}
+	integerDigits := strings.IndexByte(s, '.')
+	if integerDigits < 0 {
+		integerDigits = len(s)
+	}
+	firstNonzero, digitIndex := -1, 0
+	firstDigit, laterNonzero := byte(0), false
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' {
+			continue
+		}
+		if s[i] != '0' {
+			if firstNonzero < 0 {
+				firstNonzero, firstDigit = digitIndex, s[i]
+			} else {
+				laterNonzero = true
+			}
+		}
+		digitIndex++
+	}
+	if firstNonzero < 0 {
+		return true // True zero, including -0 with any exponent, is in range.
+	}
+	if negative {
+		return false
+	}
+	exponent := 0
+	if exponentText != "" {
+		var err error
+		exponent, err = strconv.Atoi(exponentText)
+		if err != nil {
+			// A syntactically valid exponent outside int range dominates every possible
+			// coefficient length (which itself fits int). No huge power allocation is needed.
+			return strings.HasPrefix(exponentText, "-")
+		}
+	}
+	unitExponent := 1 - integerDigits + firstNonzero
+	if exponent != unitExponent {
+		return exponent < unitExponent
+	}
+	return firstDigit == '1' && !laterNonzero
 }
 
 func indexedSHA(s string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(s))) }
