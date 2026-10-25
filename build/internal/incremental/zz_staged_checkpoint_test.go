@@ -4,14 +4,341 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/xcosmosbox/cairn/build/internal/extract"
+	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/storage"
 )
+
+// The pre-amortization proof, intentionally using a fresh schema and canonical
+// input on every call. It remains an independent setup reference for parity;
+// neither path treats an accepted snapshot or persistent stage.db as evidence.
+func stagedFreshReplayReference(s *stagedSession) (stagedCatalogue, *alignLLMOutput, error) {
+	var zero stagedCatalogue
+	_, all, e := stagedCanonicalInput(s.input)
+	if e != nil {
+		return zero, nil, e
+	}
+	batch, e := stagedPendingBatch(s.state, all, s.attempt.Call.Units)
+	if e != nil {
+		return zero, nil, e
+	}
+	db, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
+	if e != nil {
+		return zero, nil, e
+	}
+	defer db.Close()
+	tmp := &stagedSession{db: db, dir: s.dir, input: s.input, state: s.state, acceptedHead: s.acceptedHead}
+	if e = tmp.project(context.Background()); e != nil {
+		return zero, nil, e
+	}
+	feedback := ""
+	if s.attempt.Call.Attempt == 2 {
+		feedback = "输出结构校验失败，请仅按 schema 修正。"
+	}
+	p, e := tmp.preparePlan(context.Background(), batch, s.attempt.Call.Attempt, feedback)
+	if e != nil {
+		return zero, nil, e
+	}
+	if !reflectStagedCallEqual(p.Call, s.attempt.Call) {
+		return zero, nil, fmt.Errorf("historical call mismatch")
+	}
+	if !stagedCompleteResponse(s.response, s.attempt.Binding) {
+		return zero, nil, ErrStagedMappingUncertain
+	}
+	out, groups, e := stagedValidateOutput(s.response.Response.Text, p)
+	if e != nil {
+		return zero, nil, errStagedResponseSchema
+	}
+	next, e := tmp.materializeBatch(context.Background(), p, out, groups)
+	return next, out, e
+}
+
+func stagedReplayHeader(t *testing.T, in StagedMappingInput, dir string) *stagedSession {
+	t.Helper()
+	s := &stagedSession{input: in, dir: dir}
+	if e := s.consume(stagedRecord{Hash: stagedHash("header"), Event: stagedEvent{Kind: "header", Input: &in}}); e != nil {
+		t.Fatal(e)
+	}
+	return s
+}
+func stagedReplayBind(t *testing.T, s *stagedSession, parent stagedCatalogue, attempt int, invalid bool) {
+	t.Helper()
+	s.state = parent
+	s.attempt = nil
+	s.response = nil
+	_, units, e := stagedCanonicalInput(s.input)
+	if e != nil {
+		t.Fatal(e)
+	}
+	db, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	tmp := &stagedSession{db: db, dir: s.dir, input: s.input, state: parent, acceptedHead: s.acceptedHead}
+	if e = tmp.project(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	feedback := ""
+	if attempt == 2 {
+		feedback = "输出结构校验失败，请仅按 schema 修正。"
+	}
+	plan, e := tmp.preparePlan(context.Background(), units[:1], attempt, feedback)
+	if e != nil {
+		t.Fatal(e)
+	}
+	fake := &stagedFake{pins: s.input.Identity.Admission}
+	prepared, e := fake.Prepare(context.Background(), plan.Call)
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.attempt = &stagedPrepared{plan.Call, prepared.Wire(), prepared.Binding()}
+	out := alignLLMOutput{Decisions: []alignDecision{{Unit: units[0].ID, Action: "fuse", Group: "G1"}}, Groups: []alignGroup{{Group: "G1", NodeName: "new alpha", Summary: "alpha summary", Tag: "entity", Domain: "new domain", Subdomain: "new subdomain"}}}
+	if len(plan.Book.nodeByAlias) > 0 {
+		out.Decisions = []alignDecision{{Unit: units[0].ID, Action: "merge_into", Target: "n#1"}}
+		out.Groups = nil
+	}
+	raw, _ := json.Marshal(out)
+	if invalid {
+		raw = []byte(`{"decisions":[],"groups":[]}`)
+	}
+	s.response = &StagedMappingDispatchResult{Binding: prepared.Binding(), ReceiptID: "offline-reference", Response: llm.CompleteResponse{Text: string(raw), InputTokens: 100, OutputTokens: 100, FinishReason: "stop"}}
+}
+func stagedReplayRows(t *testing.T, db *storage.DB) string {
+	t.Helper()
+	var data []any
+	for _, query := range []string{`SELECT rowid,id,label,name,summary,domain,subdomain,COALESCE(description,''),COALESCE(synonyms,''),COALESCE(tags,'') FROM nodes ORDER BY rowid`, `SELECT rowid,name,summary,domain,subdomain,COALESCE(description,''),COALESCE(synonyms,''),COALESCE(tags,'') FROM nodes_fts ORDER BY rowid`, `SELECT node_uuid,member_id,skill,file_path,start_line,end_line FROM node_sources ORDER BY node_uuid,member_id,file_path`, `SELECT key,value FROM kg_manifest ORDER BY key`, `SELECT nodes.id,nodes_fts.rank FROM nodes_fts JOIN nodes ON nodes.rowid=nodes_fts.rowid WHERE nodes_fts MATCH '"alpha"' AND nodes.label IN ('Entity','Concept') ORDER BY nodes_fts.rank,nodes.id COLLATE BINARY LIMIT 15`} {
+		rows, e := db.Conn().Query(query)
+		if e != nil {
+			t.Fatal(e)
+		}
+		columns, e := rows.Columns()
+		if e != nil {
+			rows.Close()
+			t.Fatal(e)
+		}
+		var values [][]any
+		for rows.Next() {
+			v := make([]any, len(columns))
+			ptr := make([]any, len(v))
+			for i := range ptr {
+				ptr[i] = &v[i]
+			}
+			if e = rows.Scan(ptr...); e != nil {
+				rows.Close()
+				t.Fatal(e)
+			}
+			values = append(values, v)
+		}
+		e = errors.Join(rows.Err(), rows.Close())
+		if e != nil {
+			t.Fatal(e)
+		}
+		data = append(data, values)
+	}
+	return stagedHash(data)
+}
+
+func TestStagedReplayOwnedCanonicalAndScratchFreshParity(t *testing.T) {
+	in := stagedTestInput(2)
+	canonical, _, e := stagedCanonicalInput(in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	s := stagedReplayHeader(t, canonical, t.TempDir())
+	defer s.close()
+	inputHash, unitsHash := stagedHash(s.input), stagedHash(s.replayState.units)
+	// SourceSpan pointers, shared slices and complete source fields must be owned
+	// before reuse. Mutating both constructor/header caller values cannot change them.
+	canonical.Documents[0].Annotation.Items[0].Detail = "caller mutation"
+	canonical.Documents[0].Annotation.Items[0].SourceSpan.Quote = "caller mutation"
+	canonical.Roster[0].Skill = "caller mutation"
+	if stagedHash(s.input) != inputHash || stagedHash(s.replayState.units) != unitsHash {
+		t.Fatal("cached source material aliases caller input")
+	}
+	var reused *storage.DB
+	for _, count := range []int{25, 2, 0, 25} {
+		seedDB, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		seed := &stagedSession{db: seedDB, dir: s.dir, input: s.input}
+		if count > 0 {
+			stagedSeedCatalogue(t, seed, count)
+		}
+		parent := seed.state
+		seedDB.Close()
+		// A stale scratch-only UUID would collide with the next generated node
+		// if reset leaked previous rows/collision lookups into an empty parent.
+		if count == 0 && s.replayState.db != nil {
+			_, e = s.replayState.db.Conn().Exec(`INSERT INTO nodes(id,label,name,summary,domain,subdomain) VALUES(?,'Entity','alpha stale','alpha','stale','stale')`, extract.NodeUUID([]string{"unit-000"}))
+			if e != nil {
+				t.Fatal(e)
+			}
+		}
+		stagedReplayBind(t, s, parent, 1, false)
+		before := stagedHash(s.input)
+		next, out, e := s.reconstructResponse()
+		if e != nil {
+			t.Fatal(e)
+		}
+		freshNext, freshOut, e := stagedFreshReplayReference(s)
+		if e != nil || stagedHash(next) != stagedHash(freshNext) || stagedHash(out) != stagedHash(freshOut) {
+			t.Fatalf("fresh proof mismatch parent%d: %v", count, e)
+		}
+		if reused == nil {
+			reused = s.replayState.db
+		} else if reused != s.replayState.db {
+			t.Fatal("historical response recreated scratch schema")
+		}
+		fresh, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		reference := &stagedSession{db: fresh, dir: s.dir, input: s.input, state: parent, acceptedHead: s.acceptedHead}
+		if e = reference.project(context.Background()); e != nil {
+			fresh.Close()
+			t.Fatal(e)
+		}
+		if stagedReplayRows(t, fresh) != stagedReplayRows(t, reused) {
+			fresh.Close()
+			t.Fatal("full reset changed rowid/FTS/BM25 cutoff/source/head projection")
+		}
+		fresh.Close()
+		if stagedHash(s.input) != before || stagedHash(s.replayState.units) != unitsHash {
+			t.Fatal("legacy flatten/materialization mutated canonical cache")
+		}
+	}
+	s.close()
+	s.close()
+	if e = reused.Conn().Ping(); e == nil {
+		t.Fatal("scratch outlived owned replay/session")
+	}
+}
+
+func TestStagedReplayRequiresValidatedHeaderBeforeCache(t *testing.T) {
+	for _, mode := range []string{"unexpected-header", "self-matching-invalid-roots"} {
+		t.Run(mode, func(t *testing.T) {
+			in := stagedTestInput(1)
+			header := in
+			if mode == "unexpected-header" {
+				header.Identity.MethodSHA256 = stagedHash("unexpected")
+			} else {
+				in.Identity.InputSHA256 = stagedHash("wrong source root")
+				header = in
+			}
+			s := &stagedSession{input: in, dir: t.TempDir()}
+			if e := s.consume(stagedRecord{Event: stagedEvent{Kind: "header", Input: &header}}); e == nil || s.replayState != nil {
+				t.Fatal("unverified header entered reusable cache")
+			}
+		})
+	}
+	canonical, _, _ := stagedCanonicalInput(stagedTestInput(1))
+	s, e := openStagedSession(context.Background(), canonical, StagedMappingOptions{StageDir: filepath.Join(t.TempDir(), "stage")})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.close()
+	hash := stagedHash(s.input)
+	canonical.Documents[0].Annotation.Items[0].Name = "mutated caller"
+	canonical.Documents[0].Annotation.Items[0].SourceSpan.Quote = "mutated caller"
+	if hash != stagedHash(s.input) {
+		t.Fatal("open session retains caller-owned slices/pointers")
+	}
+}
+
+func TestStagedReplaySchemaRepairAndPoisonedScratchStop(t *testing.T) {
+	canonical, _, _ := stagedCanonicalInput(stagedTestInput(1))
+	s := stagedReplayHeader(t, canonical, t.TempDir())
+	defer s.close()
+	stagedReplayBind(t, s, stagedCatalogue{}, 1, true)
+	if _, _, e := s.reconstructResponse(); !errors.Is(e, errStagedResponseSchema) || s.replayState.failure != nil {
+		t.Fatal("complete schema failure poisoned legitimate repair")
+	}
+	db := s.replayState.db
+	stagedReplayBind(t, s, stagedCatalogue{}, 2, false)
+	if _, _, e := s.reconstructResponse(); e != nil || db != s.replayState.db {
+		t.Fatalf("fixed repair did not reuse exact scratch setup: %v", e)
+	}
+	// An infrastructure error cannot be mistaken for a complete schema failure
+	// or cause a replacement DB/retry inside this owned replay.
+	db.Close()
+	if _, _, e := s.reconstructResponse(); e == nil || errors.Is(e, errStagedResponseSchema) || s.replayState.failure == nil || s.replayState.db != nil {
+		t.Fatal("infrastructure failure did not poison/close scratch")
+	}
+	if _, _, e := s.reconstructResponse(); e == nil || s.replayState.db != nil {
+		t.Fatal("poisoned replay silently recreated scratch")
+	}
+}
+
+func TestStagedReplayScratchClosedOnEveryReplayExit(t *testing.T) {
+	for _, mode := range []string{"complete", "project-failure", "accepted-mismatch", "incomplete-tail"} {
+		t.Run(mode, func(t *testing.T) {
+			in := stagedTestInput(8)
+			f := &stagedFake{pins: in.Identity.Admission, invalid: 1}
+			_, dir := stagedTestRun(t, in, f)
+			before := f.dispatched
+			if mode == "accepted-mismatch" {
+				stagedRewriteJournal(t, dir, func(row *stagedRecord) {
+					if row.Event.Kind == "accepted" {
+						row.Event.Output.Decisions[0].Target = "unbound accepted target"
+					}
+				})
+			}
+			if mode == "incomplete-tail" {
+				file, e := os.OpenFile(filepath.Join(dir, "journal.jsonl"), os.O_APPEND|os.O_WRONLY, 0600)
+				if e != nil {
+					t.Fatal(e)
+				}
+				_, e = file.WriteString(`{"Sequence":`)
+				e = errors.Join(e, file.Close())
+				if e != nil {
+					t.Fatal(e)
+				}
+			}
+			canonical, _, _ := stagedCanonicalInput(in)
+			file, e := os.Open(filepath.Join(dir, "journal.jsonl"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer file.Close()
+			s := &stagedSession{input: canonical, dir: dir, file: file}
+			var scratch *storage.DB
+			projects := 0
+			s.opts.fault = func(point string) error {
+				if point == "after_replay_project" {
+					projects++
+					if scratch == nil {
+						scratch = s.replayState.db
+					} else if scratch != s.replayState.db {
+						t.Fatal("multiple replay scratch DBs")
+					}
+					if mode == "project-failure" && projects == 2 {
+						return errors.New("injected replay infrastructure failure")
+					}
+				}
+				return nil
+			}
+			e = s.replay()
+			if (e != nil) != (mode != "complete") || scratch == nil || s.replayState != nil {
+				t.Fatalf("replay exit lifetime wrong: %v projects%d", e, projects)
+			}
+			if e = scratch.Conn().Ping(); e == nil {
+				t.Fatal("replay left scratch open")
+			}
+			if f.dispatched != before {
+				t.Fatal("offline replay paid")
+			}
+		})
+	}
+}
 
 func TestStagedCheckpointCrashBoundariesNoRepayment(t *testing.T) {
 	t.Parallel()

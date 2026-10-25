@@ -39,6 +39,16 @@ type stagedRecord struct {
 	Event          stagedEvent
 }
 type stagedDBHead struct{ InputIdentitySHA256, CatalogueSHA256, AcceptedHeadSHA256 string }
+
+// Owned only by one journal replay, after its independently expected header
+// and complete source material have been validated. This is setup reuse, not
+// accepted-result evidence: every parent/call/response is still reconstructed.
+type stagedReplayState struct {
+	input   StagedMappingInput
+	units   []stagedUnit
+	db      *storage.DB
+	failure error
+}
 type stagedSession struct {
 	db                        *storage.DB
 	lock                      *sql.DB
@@ -52,6 +62,7 @@ type stagedSession struct {
 	sequence, accepted        int
 	attempt                   *stagedPrepared
 	response                  *StagedMappingDispatchResult
+	replayState               *stagedReplayState
 }
 
 func (s *stagedSession) crash(point string) error {
@@ -70,6 +81,20 @@ func stagedSyncDir(dir string) error {
 }
 
 func openStagedSession(ctx context.Context, in StagedMappingInput, opts StagedMappingOptions) (s *stagedSession, err error) {
+	// Do not retain caller slices or SourceSpan pointers while a replay cache
+	// exists. Reject invalid UTF8 before JSON can silently replace any bytes.
+	if !stagedValidUTF8(reflect.ValueOf(in)) {
+		return nil, fmt.Errorf("staged mapping: invalid UTF-8")
+	}
+	raw, e := json.Marshal(in)
+	if e != nil {
+		return nil, fmt.Errorf("staged mapping: invalid input encoding")
+	}
+	var ownedInput StagedMappingInput
+	if e = json.Unmarshal(raw, &ownedInput); e != nil {
+		return nil, e
+	}
+	in = ownedInput
 	if opts.StageDir == "" {
 		return nil, fmt.Errorf("staged mapping: explicit isolated stage directory required")
 	}
@@ -185,19 +210,74 @@ func openStagedSession(ctx context.Context, in StagedMappingInput, opts StagedMa
 }
 
 func (s *stagedSession) close() {
+	s.closeReplay()
 	if s.db != nil {
 		s.db.Close()
+		s.db = nil
 	}
 	if s.file != nil {
 		s.file.Close()
+		s.file = nil
 	}
 	if s.lockConn != nil {
 		s.lockConn.ExecContext(context.Background(), "ROLLBACK")
 		s.lockConn.Close()
+		s.lockConn = nil
 	}
 	if s.lock != nil {
 		s.lock.Close()
+		s.lock = nil
 	}
+}
+func (s *stagedSession) closeReplay() {
+	if s.replayState != nil {
+		if s.replayState.db != nil {
+			s.replayState.db.Close()
+			s.replayState.db = nil
+		}
+		s.replayState = nil
+	}
+}
+func (r *stagedReplayState) poison(err error) {
+	if r.failure == nil {
+		r.failure = err
+	}
+	if r.db != nil {
+		r.db.Close()
+		r.db = nil
+	}
+}
+func (r *stagedReplayState) reset() error {
+	if r.failure != nil {
+		return r.failure
+	}
+	if r.db == nil {
+		db, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
+		if e != nil {
+			r.poison(e)
+			return e
+		}
+		r.db = db
+	}
+	tx, e := r.db.Conn().BeginTx(context.Background(), nil)
+	if e != nil {
+		r.poison(e)
+		return e
+	}
+	// No incremental projection: discard ALL prior owned rows, including FTS
+	// document statistics and rowids, before rebuilding this exact parent.
+	for _, table := range []string{"node_sources", "nodes_fts", "nodes", "kg_manifest"} {
+		if _, e = tx.Exec("DELETE FROM " + table); e != nil {
+			tx.Rollback()
+			r.poison(e)
+			return e
+		}
+	}
+	if e = tx.Commit(); e != nil {
+		r.poison(e)
+		return e
+	}
+	return nil
 }
 
 func (s *stagedSession) append(event stagedEvent) error {
@@ -234,6 +314,9 @@ func (s *stagedSession) append(event stagedEvent) error {
 }
 
 func (s *stagedSession) replay() error {
+	// Scratch state never escapes this replay, including decode/transition,
+	// projection, schema, materialization or persistent-session-open failures.
+	defer s.closeReplay()
 	if _, e := s.file.Seek(0, io.SeekStart); e != nil {
 		return e
 	}
@@ -275,6 +358,14 @@ func (s *stagedSession) consume(row stagedRecord) error {
 		if s.sequence != 0 || e.Input == nil || stagedHash(e.Input) != stagedHash(s.input) {
 			return fmt.Errorf("staged mapping: journal input identity mismatch")
 		}
+		canonical, units, err := stagedCanonicalInput(*e.Input)
+		if err != nil {
+			return err
+		}
+		// canonical and units own the same private deep copy. preparePlan already
+		// copies full incidences before the mutating legacy flatten helper.
+		s.input = canonical
+		s.replayState = &stagedReplayState{input: canonical, units: units}
 		s.acceptedHead = row.Hash
 	case "prepared":
 		if s.sequence == 0 || e.Prepared == nil || (s.phase != "" && s.phase != "invalid") {
@@ -601,27 +692,60 @@ func (s *stagedSession) verifyProjection(ctx context.Context, c stagedCatalogue)
 
 // reconstructResponse 使用临时内存索引重建历史父目录，绝不调用 admitter 或提供商。
 // In-memory projection makes BM25 cutoff/alias reconstruction identical to the original stage.
-func (s *stagedSession) reconstructResponse() (stagedCatalogue, *alignLLMOutput, error) {
+func (s *stagedSession) reconstructResponse() (next stagedCatalogue, output *alignLLMOutput, err error) {
 	var zero stagedCatalogue
+	cache := s.replayState
+	defer func() {
+		if cache != nil && err != nil && !errors.Is(err, errStagedResponseSchema) {
+			cache.poison(err)
+		}
+	}()
 	if s.attempt == nil || s.response == nil {
 		return zero, nil, fmt.Errorf("missing response")
 	}
-	_, all, e := stagedCanonicalInput(s.input)
-	if e != nil {
-		return zero, nil, e
+	input := s.input
+	var all []stagedUnit
+	if cache != nil {
+		if cache.failure != nil {
+			return zero, nil, cache.failure
+		}
+		input = cache.input
+		all = cache.units
+	} else {
+		var e error
+		_, all, e = stagedCanonicalInput(s.input)
+		if e != nil {
+			return zero, nil, e
+		}
 	}
 	batch, e := stagedPendingBatch(s.state, all, s.attempt.Call.Units)
 	if e != nil {
 		return zero, nil, e
 	}
-	db, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
-	if e != nil {
-		return zero, nil, e
+	var db *storage.DB
+	if cache != nil {
+		if e = s.crash("before_replay_reset"); e != nil {
+			return zero, nil, e
+		}
+		if e = cache.reset(); e != nil {
+			return zero, nil, e
+		}
+		db = cache.db
+	} else {
+		db, e = storage.NewDB(storage.DBOptions{Path: ":memory:"})
+		if e != nil {
+			return zero, nil, e
+		}
+		defer db.Close()
 	}
-	defer db.Close()
-	tmp := &stagedSession{db: db, dir: s.dir, input: s.input, state: s.state, acceptedHead: s.acceptedHead}
+	tmp := &stagedSession{db: db, dir: s.dir, input: input, state: s.state, acceptedHead: s.acceptedHead}
 	if e = tmp.project(context.Background()); e != nil {
 		return zero, nil, e
+	}
+	if cache != nil {
+		if e = s.crash("after_replay_project"); e != nil {
+			return zero, nil, e
+		}
 	}
 	feedback := ""
 	if s.attempt.Call.Attempt == 2 {
@@ -641,6 +765,6 @@ func (s *stagedSession) reconstructResponse() (stagedCatalogue, *alignLLMOutput,
 	if e != nil {
 		return zero, nil, errStagedResponseSchema
 	}
-	next, e := tmp.materializeBatch(context.Background(), plan, out, groups)
+	next, e = tmp.materializeBatch(context.Background(), plan, out, groups)
 	return next, out, e
 }
