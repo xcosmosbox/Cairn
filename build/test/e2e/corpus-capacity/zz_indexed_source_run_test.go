@@ -420,3 +420,32 @@ func TestIndexedDriverRegressionPreparedBindingCannotCoherentlyReplaceFrozenFirs
 		})
 	}
 }
+
+// Original last-wins evidence proofs retained from independent review.
+func TestIndexedDriverRegressionDuplicateRequiredErrorFieldsAreNotLastWinsEvidence(t *testing.T) {
+	in, generation := indexedFixture(t)
+	out, calls, e := indexedFixtureAttempt(t, generation, `{"idempotent":true}`, 100, 20)
+	if e != nil || calls != 2 {
+		t.Fatal("baseline", calls, e)
+	}
+	for _, entry := range []struct{ name, key string }{{"indexed-run-finish.json", "execution_error"}, {"generation-response.private.json", "complete_error"}} {
+		t.Run(entry.name, func(t *testing.T) {
+			name := filepath.Join(out, entry.name)
+			raw, e := os.ReadFile(name)
+			if e != nil {
+				t.Fatal(e)
+			}
+			modified := append([]byte("{\""+entry.key+"\":true,"), raw[1:]...)
+			if e := os.WriteFile(name, modified, 0600); e != nil {
+				t.Fatal(e)
+			}
+			e = indexedAudit(out, in, "fixture-plan", &indexedFixtureCounter{})
+			if restore := os.WriteFile(name, raw, 0600); restore != nil {
+				t.Fatal(restore)
+			}
+			if e == nil {
+				t.Fatal("duplicate explicit true then false accepted as known complete evidence", entry.key)
+			}
+		})
+	}
+}

@@ -202,9 +202,22 @@ func indexedPreflight(ctx context.Context, in indexedInputs, out, planSHA string
 	return nil
 }
 
+// 所有被结构化消费的快照先做共享的递归重复键检查；保留原始字节用于证据哈希。
+// Original text/JSONL and opaque diagnostics stay on their separate byte-bound paths.
+func indexedReadStructured(out, name string) ([]byte, error) {
+	raw, err := receiptRead(out, name)
+	if err != nil {
+		return raw, err
+	}
+	if !utf8.Valid(raw) || stagedBridgeCheckJSON(raw, false) != nil {
+		return raw, fmt.Errorf("indexed: ambiguous structured snapshot %s", name)
+	}
+	return raw, nil
+}
+
 func readIndexedPreflight(out string, in indexedInputs, planSHA string) (indexedPreflightRecord, []byte, error) {
 	var pre indexedPreflightRecord
-	raw, err := receiptRead(out, "indexed-preflight.json")
+	raw, err := indexedReadStructured(out, "indexed-preflight.json")
 	binary, berr := indexedBinarySHA()
 	if err != nil || berr != nil || decodeStrict(raw, &pre) != nil || !stagedBridgeSameJSON(raw, pre) || pre.Format != "cairn-indexed-preflight/v1" || pre.Mode != indexedMode || pre.SourceRole != in.spec.SourceRole || pre.PlanSHA != planSHA || pre.OriginalSHA != in.spec.OriginalSHA || pre.DiagnosticsSHA != in.spec.DiagnosticsSHA || pre.Helper != in.helper.Identity() || pre.Binary != binary || pre.Driver != driverSourceDigest() || pre.Production != indexedProductionDigest() || pre.Counter != in.spec.Counter || pre.ModelCalls != 0 || !pre.Counter.matches(pre.Generation.Count) {
 		return pre, raw, fmt.Errorf("indexed: preflight source/binary/runtime/recipe mismatch")
@@ -221,7 +234,7 @@ func readIndexedPreflight(out string, in indexedInputs, planSHA string) (indexed
 		}
 	}
 	for name, want := range map[string]any{"generation-preflight-request.private.json": req, "source-index.private.json": in.helper.Blocks()} {
-		b, e := receiptRead(out, name)
+		b, e := indexedReadStructured(out, name)
 		if e != nil || !stagedBridgeSameJSON(b, want) {
 			return pre, raw, fmt.Errorf("indexed: private recipe/index changed")
 		}
@@ -772,7 +785,13 @@ func indexedAudit(out string, in indexedInputs, planSHA string, counter tokenCou
 		if raw, ok := files[name]; ok {
 			return raw
 		}
-		raw, e := receiptRead(out, name)
+		var raw []byte
+		var e error
+		if strings.HasSuffix(name, ".json") {
+			raw, e = indexedReadStructured(out, name)
+		} else {
+			raw, e = receiptRead(out, name)
+		}
 		if e != nil {
 			failures = append(failures, "missing private artifact: "+name)
 		}
