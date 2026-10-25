@@ -1,12 +1,14 @@
-# First stable release: proposed acceptance contract
+# First stable release: support and acceptance contract
 
-As of 2026-10-24; inspected source `18e7e7bfc989fc0216625b0851e105690edd3950`.
-This is the bounded #18 proposal for maintainer review. Cairn remains Alpha;
-no stable version, release date, tag or new support guarantee is assigned here.
+As of **2026-10-25 01:10 UTC**; inspected integrated source
+`a1a016f92cd2883675ed54f9f6afcbefa4a823d4`. This updates the accepted #18 design
+under [#67](https://github.com/xcosmosbox/Cairn/issues/67). Cairn remains **Alpha**.
+`1.0.0` / `1.0.0-rc.1` are planned packaging targets; actual final candidate, tag
+and release are **NONE**. This document does not publish a support guarantee.
 Live task evidence is in [#9](https://github.com/xcosmosbox/Cairn/issues/9),
 with direction and decisions in [#8](https://github.com/xcosmosbox/Cairn/issues/8).
 
-## Proposed support and evidence boundary
+## Bounded support and evidence boundary
 
 The proposed release keeps Cairn's build/update → immutable Bundle/Catalog →
 read-only CLI/MCP/Viewer purpose. It does not reposition the product as the
@@ -15,15 +17,31 @@ needs a controlled answer-quality decision; graph may remain experimental only
 under an explicit maintainer support decision. Query-side zero LLM/embedding,
 immutable identity, human-curated edits and source provenance remain required.
 
-| Surface | Accepted baseline evidence | Still needed for stable decision |
+The intended first support boundary is Linux amd64 native CLI and stdio MCP.
+REST/SSE are bounded loopback surfaces, with no public hosting/authentication or
+internet-exposure guarantee. Viewer root/subdirectory checks use Node 22; neither
+those checks nor the current Node 24 recovery environment establish a full browser,
+operating-system or deployment matrix. The final maintainer decision must accept
+these boundaries with evidence on the frozen candidate.
+
+| Surface | Accepted evidence within its recorded source/scope | Still needed for the stable decision |
 | --- | --- | --- |
-| Development and free example | #10/#23 restored Go, build/race, fake Bundle, semantic CLI/MCP; #16/#31 clean-clone fixed-fake demo | Final candidate replay; #16 added multi-document inputs have not been consumed by that fake |
-| Real extraction/update | Historical #1–#6 implementation and regressions | Fresh bounded real multi-document smoke, retained source lineage and update/recovery evidence; current #16 work is free preparation only |
-| Bundle/Catalog and query lifecycle | Existing strict pull, immutable generation and in-flight-reader regressions; #17/#32 actual loopback watcher timing | Exact final-candidate compatibility/rollback replay and published supported-platform scope |
-| GitHub App and HTTPForge | #15/#34 real JWT, token/cache, reduced-token denial, revocation propagation, accelerated refresh, branch/PR/prerelease replay | State the tested scope explicitly: natural one-hour expiry, transparent401 recovery, assets/merges and full daemon/MCP lifecycle were not established |
-| Retrieval/answers | #21/#28 lexical DEV baseline; #27/#30 negative cap2 result retained and adoption rejected | New controlled graph/answer/refusal protocol, same resources, intact provenance, closed fresh HOLDOUT until preregistration; numerical quality/efficiency gates remain proposals awaiting decision |
-| Resource/reliability | #17/#32 timing on source `bf5d7ec`, 21,271 samples and10 watcher changes | #17 trustworthy server RSS/peak/update increment; #33 original SQLITE_BUSY cause/risk disposition. Current timing is neither a current-main capacity claim nor an SLO |
-| Viewer | Existing CI subdirectory/WASM regression; #10 free restoration | Final candidate's supported deployment-path check |
+| Free example | #10/PR23; #16/PR31 clean fixed-fake CLI/MCP/immutable Bundle path | Final-candidate replay; fixed fake does not consume the supplied multi-document references |
+| Real extraction and source lineage | #16/PR58 actual two-reference dependency stored and traversed through MCP; PR61 targeted positive/negative verifier replay | General construction and answer quality remain unaccepted; unknown MCP original-span hints and unexercised live UUID masking remain explicit |
+| Local compatibility/recovery | #40/PR43 actual read-only schema 4/5 A→B→A and invalid-generation rejection, immutable inventories | Replay on the final candidate; no arbitrary schema/state downgrade guarantee |
+| Private native update/recovery | #44/PR55 actual Linux stdio one-installation native App/Catalog A→B→bad-checksum retention→originalA on source `5d99a24` | Final-candidate bounded recovery evidence; original 404 retained, native HTTP/poll counts unknown, no full daemon lifecycle or natural expiry guarantee |
+| GitHub App/HTTPForge | #15/PR34 JWT/install/cache/permission/revocation and accelerated refresh; #47/PR51 authenticated assets/redirect fence | Natural one-hour expiry, transparent 401 and broader platform/lifecycle coverage remain unverified; all-repository installation scope was not changed |
+| Retrieval and answers | #21/PR28 lexical DEV baseline; #27/PR30 negative cap2; #54/PR66 synthetic-only paired evaluator and ADR | Controlled actual answer/refusal/visible-support results under frozen resources and a fresh HOLDOUT; evaluator implementation is not measured utility |
+| Construction/capacity | #41/PR49 and #56/PR60 exact-wire tracing/token guard/audit; #63 sole calibration actually failed all 12 coverage, only 11 materialized | Immutable #63 report review and separately frozen corrected validation; #64 annotation revision and #68 local contradiction correction are active, unaccepted implementations; no full609 or QA admission |
+| Resource/reliability | #17/PR32 timing on `bf5d7ec`; PR39 identity-bound RSS on `18e7e7b` (observed maximum43,716 KiB) | Candidate-specific observations and support disposition; no SLO, hard 2 GiB enforcement or production capacity established |
+| Viewer | Node 22 CI root/subdirectory/WASM tests and #10 free restoration | Exact final-candidate root/subdirectory check; no complete browser/platform matrix |
+
+#33's original SQLITE_BUSY cause remains **UNKNOWN/unfixed**. Root accepted only
+the narrow local risk that a nonfatal evolution-sidecar Record failure may omit a
+history entry. Preserve this warning in candidate evidence; it is not a complete
+concurrent-history or general failure-safety guarantee. See the
+[dated evidence register](../coordination/EVIDENCE.md) and latest task records for
+exact commits, reviews and original negative results.
 
 The old SourceBackfill pilot stays disabled under #13. #11 full archive audit
 and #13 are requirements when relying on those historical controls, not automatic
@@ -39,9 +57,9 @@ unavailable evidence unknown, and publish no private content or credential locat
 
 | Boundary | Current behavior / compatibility evidence | Proposed release and rollback requirement |
 | --- | --- | --- |
-| Software version | No first-stable version selected; evidence binds exact commits and binary hashes | Record candidate commit, built binary hashes/toolchains and selected version before acceptance; retain previous binaries/configuration |
+| Software version | Shared `devel`/stamp/buildinfo identity is accepted in #59/PR62; software version is separate from Bundle/schema/MCP/Viewer versions | Planned1.0.0/1.0.0-rc.1 only; freeze candidate commit, exact official Go 1.27.3 and binary hashes before final acceptance; retain previous binaries/configuration |
 | Bundle format | [`dk-kb-bundle/v1`](../../core/kbbundle/bundle.go) is a permanent historical identifier; promotion changes Catalog channel, never repacks the Bundle | Verify checksums, aggregate digest, source/builder/config/schema identity; preserve exact old Bundle bytes and Catalog commit |
-| Current DB | Builder migration list ends at schema5; query contract checks actual tables/columns/FTS as well as version | Run current reader/build tests on candidate; do not claim arbitrary older/newer DB compatibility |
+| Current DB | Builder migration list ends at schema 5; query contract checks actual tables/columns/FTS as well as version | Run current reader/build tests on candidate; do not claim arbitrary older/newer DB compatibility |
 | Legacy schema4 library | [`ValidateQueryContract`](../../core/storage/query_contract.go) supports4..5; v4 uses a NULL `file_slug` projection. Read-only open skips migrations | Exercise legacy startup and hot swap; compare before/after DB hashes. Querying must not upgrade the library |
 | Missing/broken/unsupported DB | Contract-invalid generations are rejected; lifecycle tests retain the healthy generation | Retain rejection and byte-preservation evidence. Rebuild/migrate only an explicitly copied writable build input; no in-place query migration or assumed downgrade |
 | Reader declaration | Manifest stores `minimum_reader_version`; this baseline has no semantic-version enforcement of that field | Publish the tested reader/schema matrix; do not promise an automatic minimum-version gate or cross-version rollback without a test |
@@ -68,7 +86,8 @@ Bundle; this document performs no such write. `retry`/`unblock` are not DB repai
 
 ## Candidate acceptance and minimal operations
 
-From a clean pinned candidate checkout with Go1.22+ and the existing dependencies,
+Follow the [final-candidate checklist](RELEASE_CHECKLIST.md). From a clean pinned
+candidate checkout with official Go 1.27.3 and the existing locked dependencies,
 the following existing free commands cover the basic engineering/reproduction
 gates. Run them for the final candidate; their presence here is not a new run:
 
@@ -85,7 +104,7 @@ python3 e2e/quality/export_receipts.py --self-test
 (cd graph-viewer && npm ci && npm run test:subpath)
 ```
 
-Viewer checks use Node22 as in [Correctness CI](../../.github/workflows/correctness.yml).
+Viewer checks use Node 22 as in [Correctness CI](../../.github/workflows/correctness.yml).
 If an environment requires `GOFLAGS=-buildvcs=false`, retain the original failure
 and explicit override with exact source/binary identity, as in #10/#15; never erase
 the failure. The full race run includes legacy-schema, invalid-swap, in-flight
@@ -101,10 +120,14 @@ failure with sanitized status/revocation/refresh evidence, bad Bundle with check
 and query-contract evidence, and SQLITE_BUSY with #33's bounded diagnostics; never
 publish secrets or treat zero/absent resource samples as measurements.
 
-Current model execution is blocked by automatic approval review of external
-credential egress. This is an authorization block, not evidence of a bad key,
-provider outage, budget exhaustion or model quality. No agent retries requests
-until applicable authorization clears review. Free preparation may continue.
+The historical credential-egress approval block was superseded by the maintainer's
+[authorization record](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656)
+and subsequent actual execution receipts. The permanent policy authorizes ordinary
+Cairn DeepSeek experiments at official `https://api.deepseek.com` with
+`deepseek-flash`; do not request that user authorization repeatedly. Task/profile
+freezes, independent review and acceptance remain technical controls. No model run
+is performed by this document, and the old #13 pilot remains disabled within its
+separate historical-control boundary. See [execution policy](../coordination/EXECUTION_POLICY.md).
 
 The maintainer's final decision must accept the support scope, compatibility and
 rollback results, resource/reliability disposition and preregistered quality gates
