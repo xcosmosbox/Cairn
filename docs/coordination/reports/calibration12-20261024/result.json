@@ -1,0 +1,518 @@
+{
+  "format": "cairn-calibration12-public-result/v1",
+  "task": 63,
+  "outcome": "FAIL",
+  "scope": "one frozen corpus-only12 attempt; eleven-document diagnostic retained",
+  "run_source_commit": "1f49dc0af50bc4619ae8b2a888f6589351f7a144",
+  "started_at_utc": "2026-10-24T15:51:33.473946+00:00",
+  "finished_at_utc": "2026-10-24T16:04:50.897136+00:00",
+  "process_exit_code": 1,
+  "wall_seconds": 797.4238948822021,
+  "outer_timeout": false,
+  "builder_error": false,
+  "ledger_ok": true,
+  "all_originals_attempted": 12,
+  "accepted_documents": 11,
+  "materialized_documents": 11,
+  "missing_document_id": "6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b",
+  "audit_errors": [
+    "annotation document missing: references/6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b.md",
+    "selected document has no actual materialized member: references/6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b.md",
+    "frozen original document denominator incomplete",
+    "build skipped or failed selected documents"
+  ],
+  "coverage": {
+    "input_member_incidences": 298,
+    "candidate_member_incidences": 298,
+    "materialized_member_incidences": 298,
+    "actual_incidence_coverage": 1,
+    "minimum_actual_incidence_coverage": 0.95,
+    "coverage_denominator": "distinct(original_doc_id,accepted04member_id), from 04_extract_input before fusion/confidence/drops; global unique IDs are supplemental diagnostics",
+    "source_rows": 298,
+    "unknown_original_spans": 298,
+    "invalid_original_spans": 0
+  },
+  "cross_relations": {
+    "candidates": 0,
+    "per_disposition": {
+      "accepted": 0,
+      "execution_error": 0,
+      "insufficient_evidence": 0,
+      "invalid_verdict": 0,
+      "rejected_endpoint": 0,
+      "rejected_evidence": 0,
+      "rejected_relation": 0,
+      "rejected_semantic": 0
+    },
+    "model_supported_candidates": 0,
+    "safe_rejected_candidates": 0,
+    "materialized_supported_candidates": 0,
+    "supported_candidates_with_filtered_endpoints": 0,
+    "mechanically_verified_quotes": 0,
+    "errors": [
+      "frozen original document denominator incomplete"
+    ],
+    "meaning": "semantic support/rejection is model-judged; original source/quote/member/edge binding is mechanically verified; aggregate readiness does not grant full609 or paid admission"
+  },
+  "ledger": {
+    "sha256": "dcf65fc30f454f8e0d499b33ee4b868344e77e8fee06087060fb971e3d2249b2",
+    "bytes": 806077,
+    "logical_calls": 385,
+    "wire_attempts": 385,
+    "http200_responses": 385,
+    "stop_responses": 385,
+    "retries": 0,
+    "missing_usage": 0,
+    "provider_input_tokens": 466741,
+    "provider_output_tokens": 547983,
+    "provider_and_local_input_equal_attempts": 385,
+    "max_input_tokens": 35349,
+    "max_input_call_id": 36,
+    "max_output_tokens": 46296,
+    "max_output_call_id": 39,
+    "max_output_stage": "extract",
+    "peak_logical_concurrency": 8,
+    "all_wire_guards_fit": true
+  },
+  "stages": [
+    {
+      "stage": "annotation",
+      "logical_calls": 19,
+      "wire_attempts": 19,
+      "input_tokens": 96451,
+      "output_tokens": 213260,
+      "max_input_tokens": 17115,
+      "max_output_tokens": 25922,
+      "max_request_bytes": 75146,
+      "max_response_bytes": 102950,
+      "min_http_seconds": 26.408038238,
+      "max_http_seconds": 127.01256151
+    },
+    {
+      "stage": "describe",
+      "logical_calls": 24,
+      "wire_attempts": 24,
+      "input_tokens": 64509,
+      "output_tokens": 57272,
+      "max_input_tokens": 7035,
+      "max_output_tokens": 6124,
+      "max_request_bytes": 24508,
+      "max_response_bytes": 25142,
+      "min_http_seconds": 2.22779716,
+      "max_http_seconds": 30.216697917
+    },
+    {
+      "stage": "extract",
+      "logical_calls": 1,
+      "wire_attempts": 1,
+      "input_tokens": 15367,
+      "output_tokens": 46296,
+      "max_input_tokens": 15367,
+      "max_output_tokens": 46296,
+      "max_request_bytes": 58666,
+      "max_response_bytes": 190396,
+      "min_http_seconds": 174.070517074,
+      "max_http_seconds": 174.070517074
+    },
+    {
+      "stage": "file_slug",
+      "logical_calls": 298,
+      "wire_attempts": 298,
+      "input_tokens": 54476,
+      "output_tokens": 12703,
+      "max_input_tokens": 193,
+      "max_output_tokens": 223,
+      "max_request_bytes": 737,
+      "max_response_bytes": 1312,
+      "min_http_seconds": 0.975653829,
+      "max_http_seconds": 2.464835049
+    },
+    {
+      "stage": "relate",
+      "logical_calls": 24,
+      "wire_attempts": 24,
+      "input_tokens": 42700,
+      "output_tokens": 129296,
+      "max_input_tokens": 4357,
+      "max_output_tokens": 13711,
+      "max_request_bytes": 17028,
+      "max_response_bytes": 60561,
+      "min_http_seconds": 2.4766078990000002,
+      "max_http_seconds": 70.012110767
+    },
+    {
+      "stage": "semantic_gate",
+      "logical_calls": 19,
+      "wire_attempts": 19,
+      "input_tokens": 193238,
+      "output_tokens": 89156,
+      "max_input_tokens": 35349,
+      "max_output_tokens": 8330,
+      "max_request_bytes": 144843,
+      "max_response_bytes": 35496,
+      "min_http_seconds": 16.013994039,
+      "max_http_seconds": 45.370645912
+    }
+  ],
+  "documents": [
+    {
+      "doc_id": "a2faa24229c5bd59149b61bb342a69f34928ec8d50734a229c646a5b62efdd3b",
+      "path": "references/a2faa24229c5bd59149b61bb342a69f34928ec8d50734a229c646a5b62efdd3b.md",
+      "body_bytes": 5241,
+      "wrapper_bytes": 5543,
+      "wrapper_sha256": "68a284de0462ea86b241cbe30afa39e2db4271a9fb974987b58a9d323d90a50f",
+      "original_body_sha256": "259f036cea05e171c792fddb03e1f131109f54ffd66468d1653b04bf4418724a",
+      "annotation_call_ids": [
+        3
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 23,
+      "accepted_member_incidences": 23,
+      "candidate_member_incidences": 23,
+      "materialized_member_incidences": 23,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "d3172c982144948458b24c3ffa61ece062cfe9735caf56a419d31f59362eba2c",
+      "path": "references/d3172c982144948458b24c3ffa61ece062cfe9735caf56a419d31f59362eba2c.md",
+      "body_bytes": 5598,
+      "wrapper_bytes": 5962,
+      "wrapper_sha256": "762ab587d5ffa4ab3b2e8431b641ef03bc80fb15767788f9ec07f200995e07b9",
+      "original_body_sha256": "e80b9c29db97ef31ad775510e64951f333b2e94bac7cd0b8fb63dcfaa94398eb",
+      "annotation_call_ids": [
+        11
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 25,
+      "accepted_member_incidences": 25,
+      "candidate_member_incidences": 25,
+      "materialized_member_incidences": 25,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "748486620fb29d21f34852091dbb7462d2dbed2c98079cd68a61937d36867a3c",
+      "path": "references/748486620fb29d21f34852091dbb7462d2dbed2c98079cd68a61937d36867a3c.md",
+      "body_bytes": 5799,
+      "wrapper_bytes": 6193,
+      "wrapper_sha256": "e71a840f1696e1216f191054ff21a9d60b57d542c4b3b929e23039ff5e2d9413",
+      "original_body_sha256": "c12fe618583b1721e10b8393e34646f73f4eeef030bda1844e0ccf3a9ba347ce",
+      "annotation_call_ids": [
+        7
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 22,
+      "accepted_member_incidences": 22,
+      "candidate_member_incidences": 22,
+      "materialized_member_incidences": 22,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "5da45acb3a14629d43a46e8d237d54f051db097d57369ec9d724131cd12bdb3a",
+      "path": "references/5da45acb3a14629d43a46e8d237d54f051db097d57369ec9d724131cd12bdb3a.md",
+      "body_bytes": 6660,
+      "wrapper_bytes": 6927,
+      "wrapper_sha256": "b9e168a0d09bcfa873eb70e61e0901880b44cb8d1d5ebf74c835cabe8140efba",
+      "original_body_sha256": "81f9ba14f6c77aeec94ce688fa628d75ac4c21b9dd28ee0d342d754ce9262aab",
+      "annotation_call_ids": [
+        4,
+        26
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": false,
+          "artifact_sha256": "77632ea1fcce96e93774c1d1578d8107f000e9aea44b3be92fce9ca16b9c407b"
+        },
+        {
+          "round": 2,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 41,
+      "accepted_member_incidences": 41,
+      "candidate_member_incidences": 41,
+      "materialized_member_incidences": 41,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "60e8a1622380e31b45354d25e390fa77e1ef2a47f93b386acd2053221c9e6f68",
+      "path": "references/60e8a1622380e31b45354d25e390fa77e1ef2a47f93b386acd2053221c9e6f68.md",
+      "body_bytes": 6411,
+      "wrapper_bytes": 6741,
+      "wrapper_sha256": "26fb5621171e50d26932080ab21690934814282388190f3c410ecd1694af3b8f",
+      "original_body_sha256": "eb9c84d62aef4210887bd79034336aa2590904323797a41b97abf47f36ef6b5f",
+      "annotation_call_ids": [
+        2
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 26,
+      "accepted_member_incidences": 26,
+      "candidate_member_incidences": 26,
+      "materialized_member_incidences": 26,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "5414e6dab63999c3fee0f87bdbc4836bb57aebe40567ea9667ac586e2505e572",
+      "path": "references/5414e6dab63999c3fee0f87bdbc4836bb57aebe40567ea9667ac586e2505e572.md",
+      "body_bytes": 7235,
+      "wrapper_bytes": 7550,
+      "wrapper_sha256": "ad5e592b24ecc551587eb66c849c309d274dac5025fe0dab3c4e9c7aed807cbd",
+      "original_body_sha256": "c689493875c409e32bf7934777c311c122e1c04aaeaca4622f0869f7214e4ea7",
+      "annotation_call_ids": [
+        9
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 23,
+      "accepted_member_incidences": 23,
+      "candidate_member_incidences": 23,
+      "materialized_member_incidences": 23,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "7067b622822b2677924a9e54415f233f241dd039b7f050172dfed73fc84dbfde",
+      "path": "references/7067b622822b2677924a9e54415f233f241dd039b7f050172dfed73fc84dbfde.md",
+      "body_bytes": 7925,
+      "wrapper_bytes": 8175,
+      "wrapper_sha256": "3cbff0f0ede92fa40f611b06111ecae61b93e3632736d43c357c8255ab28d7de",
+      "original_body_sha256": "f5f3de96236a73caf39fbbd244bedf8ef88bbd33bfe4401815c66874e734fd7d",
+      "annotation_call_ids": [
+        5
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 15,
+      "accepted_member_incidences": 15,
+      "candidate_member_incidences": 15,
+      "materialized_member_incidences": 15,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "a3c932de7c92a9f40f2fdc11b8b0ba66c3f8ba9952a4b794efdfd9b14a721c80",
+      "path": "references/a3c932de7c92a9f40f2fdc11b8b0ba66c3f8ba9952a4b794efdfd9b14a721c80.md",
+      "body_bytes": 9009,
+      "wrapper_bytes": 9236,
+      "wrapper_sha256": "dee6ffb782b45d8f0b5305d80df97eea70f524c813924e6c00135d2c7725894d",
+      "original_body_sha256": "97d0d094ceb286ffe1328020bacc337f68c1c88c6554aa1d856839759cf108f0",
+      "annotation_call_ids": [
+        1,
+        25,
+        34
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": false,
+          "artifact_sha256": "d1e121bbf02f5519d80252e2a649011f1a2b8fa8e729e1bb57e06cef893141ea"
+        },
+        {
+          "round": 2,
+          "accepted": false,
+          "artifact_sha256": "8d3cfe60c87234454adf9766f2fe0383a95ccccea4e07766df7f71010f625b3c"
+        },
+        {
+          "round": 3,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 23,
+      "accepted_member_incidences": 23,
+      "candidate_member_incidences": 23,
+      "materialized_member_incidences": 23,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "6df4c083b7966078650724ca8f4e134f87f6a8c02b5f9ff2d5857d5218b9e92d",
+      "path": "references/6df4c083b7966078650724ca8f4e134f87f6a8c02b5f9ff2d5857d5218b9e92d.md",
+      "body_bytes": 10685,
+      "wrapper_bytes": 10902,
+      "wrapper_sha256": "b9231dc6caba2e549d80f473e9fbbff0c407ea90ffe2e4be1d3936a221b337c1",
+      "original_body_sha256": "8ff55c06f820fc1d0e9027705ad0ab888f9fdcfbc648ba58b693268f4a0b8836",
+      "annotation_call_ids": [
+        12
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 20,
+      "accepted_member_incidences": 20,
+      "candidate_member_incidences": 20,
+      "materialized_member_incidences": 20,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "b011b12fe73bf4de991f306ce1c7eceb13bc0acd6ad4bd0b00994b2a658d703a",
+      "path": "references/b011b12fe73bf4de991f306ce1c7eceb13bc0acd6ad4bd0b00994b2a658d703a.md",
+      "body_bytes": 11278,
+      "wrapper_bytes": 11605,
+      "wrapper_sha256": "f0afa8246bd848b7d7655b157a90a67b0014fbafb8436b9513cefbac2b7c92ed",
+      "original_body_sha256": "b812f58d507ff792f2c9cc0126128b0018153299717c0ef4eff7ce9147dcda8e",
+      "annotation_call_ids": [
+        8,
+        24
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": false,
+          "artifact_sha256": "b5f7a655d92d81585ecc0469ffc984cc13909153108543091a8a0eb7a68ebf81"
+        },
+        {
+          "round": 2,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 36,
+      "accepted_member_incidences": 36,
+      "candidate_member_incidences": 36,
+      "materialized_member_incidences": 36,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "bfa33570f039c7cf2c1be7d366c27981948d221fe10f982f5e7e04356e3d8621",
+      "path": "references/bfa33570f039c7cf2c1be7d366c27981948d221fe10f982f5e7e04356e3d8621.md",
+      "body_bytes": 15920,
+      "wrapper_bytes": 16134,
+      "wrapper_sha256": "70d7eea69421ada6d275df421870f34796c98c1752df54eb340651dc37746ac2",
+      "original_body_sha256": "4675e61c8b0ee562dd9fd5bffd69eb16c303cbe71ee3f8c4320c147495c7d491",
+      "annotation_call_ids": [
+        6,
+        27
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": false,
+          "artifact_sha256": "415d5db77115aacec2044c48815bdcc8e50a41170e65df8bf614a356151a71d9"
+        },
+        {
+          "round": 2,
+          "accepted": true,
+          "artifact_sha256": "3dcac20b39db21e07313b9d0b87578b0c340bc2ef0a629e10c05703b27ba0041"
+        }
+      ],
+      "accepted_annotation_items": 44,
+      "accepted_member_incidences": 44,
+      "candidate_member_incidences": 44,
+      "materialized_member_incidences": 44,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "materialized"
+    },
+    {
+      "doc_id": "6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b",
+      "path": "references/6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b.md",
+      "body_bytes": 71119,
+      "wrapper_bytes": 71332,
+      "wrapper_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+      "original_body_sha256": "4e0c6e6644b39e5c4be056773abb9a7a1c2399b6a98c65ca940094afe7059bbb",
+      "annotation_call_ids": [
+        10,
+        29,
+        37
+      ],
+      "gate_rounds": [
+        {
+          "round": 1,
+          "accepted": false,
+          "artifact_sha256": "2352afd995c7c84387cc1a2b4a3595ce063a5208eb6e03c82dad1d00db38570f"
+        },
+        {
+          "round": 2,
+          "accepted": false,
+          "artifact_sha256": "f44a315f3ebd637cbb0cc20ae5289011b2308bd7a9cf7376db8ddf3739a1765b"
+        },
+        {
+          "round": 3,
+          "accepted": false,
+          "artifact_sha256": "c2d503378f06c25940c2e698dd00b78763fafeb582d7de9a00734e73a018b735"
+        }
+      ],
+      "accepted_annotation_items": 0,
+      "accepted_member_incidences": 0,
+      "candidate_member_incidences": 0,
+      "materialized_member_incidences": 0,
+      "missing_accepted_member_incidences": 0,
+      "all12_document_status": "FAILED_no_accepted_annotation_or_materialized_member"
+    }
+  ],
+  "database": {
+    "sha256": "53a44663ff1d82477a9e29b5a2114c72e1432033f954e9b75a6b5869169ac901",
+    "bytes": 1363968,
+    "quick_check": "ok",
+    "nodes": 331,
+    "edges": 822,
+    "source_rows": 298,
+    "unknown_original_spans": 298,
+    "same_subdomain_contradicts_edges": 12,
+    "reviewed_semantic_false_edges": [
+      615,
+      782
+    ],
+    "other_contradicts_edges_semantic_status": "unadjudicated"
+  },
+  "native_readonly": {
+    "scope": "read_only_mechanics_on_failed_11_document_diagnostic",
+    "status": "pass",
+    "rpc_count": 16,
+    "mcp_exit_code": 0,
+    "source_path_checks": 11,
+    "db_before_sha256": "53a44663ff1d82477a9e29b5a2114c72e1432033f954e9b75a6b5869169ac901",
+    "db_after_sha256": "53a44663ff1d82477a9e29b5a2114c72e1432033f954e9b75a6b5869169ac901",
+    "initial_wrapper_assertion_failed": true,
+    "initial_raw_rpc_receipt": "unavailable; not written before assertion",
+    "corrected_receipts_archived": true
+  },
+  "new_provider_calls_in_recovery": 0,
+  "QA_gold_HOLDOUT_full609": "not run or read in this task"
+}

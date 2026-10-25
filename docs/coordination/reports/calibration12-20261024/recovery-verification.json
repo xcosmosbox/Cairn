@@ -1,0 +1,26 @@
+{
+  "recovered_at_utc": "2026-10-25T01:07:44.631664+00:00",
+  "remote_commit": "1a44fa27db4221778da3986efa5f4414c6f27611",
+  "parts_checked": 26,
+  "archive_bytes": 1684762,
+  "archive_sha256": "90d58abe40b6eb29c2234578ba8bae08a9be93dd3d53460114c673faac36b278",
+  "files_checked": 143,
+  "all_hashes_match": true,
+  "new_provider_calls": 0,
+  "archive_writes": 0,
+  "session": "cairn-calibration63-recovery-20261025",
+  "claim_comment": 6391754253,
+  "lease_correction_comment": 6391760692,
+  "claim_ack_comment": 6391759171,
+  "database_sha256": "53a44663ff1d82477a9e29b5a2114c72e1432033f954e9b75a6b5869169ac901",
+  "database_quick_check": "ok",
+  "preserved_historical_failure": true,
+  "checks_exit_code": 0,
+  "method": "fetch pinned26parts using GitHub connector; decode base64; verify part bytes/SHA256/Gitblob; concatenate by order; verify archive bytes/SHA256; safe tar extract; verify all143files; SQLite mode=ro&immutable=1; reconcile ledger and per-document counts",
+  "not_reexecuted": [
+    "model/provider invocation",
+    "original binary build",
+    "official-tokenizer rerender",
+    "native MCP/CLI replay"
+  ]
+}
