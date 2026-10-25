@@ -151,9 +151,33 @@ func buildRevisionUserMessage(original string, candidate *dktypes.AnnotatedDocum
 	}
 	// 别名必须在原文、候选和意见中都未出现，避免反解时误改原有文字。
 	// Only new feedback is masked; original source bytes/first Annotate remain outside this change.
-	prefix := "__cairn_revision_ref_"
-	for strings.Contains(original+string(projected)+reason, prefix) {
-		prefix += "_"
+	const base = "__cairn_revision_ref_"
+	haystack := original + string(projected) + reason
+	used := make(map[string]struct{})
+	// 一次扫描实际的 indexed prefix；不能逐个候选重扫长原文，也不能逐个追加下划线。
+	// Scan occurrences once, including prefixes sharing a boundary underscore, for bounded work.
+	for offset := 0; offset < len(haystack); {
+		rel := strings.Index(haystack[offset:], base)
+		if rel < 0 {
+			break
+		}
+		start := offset + rel
+		digits := start + len(base)
+		end := digits
+		for end < len(haystack) && haystack[end] >= '0' && haystack[end] <= '9' {
+			end++
+		}
+		if end > digits && end < len(haystack) && haystack[end] == '_' {
+			used[haystack[start:end+1]] = struct{}{}
+		}
+		offset = digits
+	}
+	var prefix string
+	for index := 0; ; index++ {
+		prefix = fmt.Sprintf("%s%d_", base, index)
+		if _, exists := used[prefix]; !exists {
+			break
+		}
 	}
 	known := make(map[string]string)
 	var reverse []string
