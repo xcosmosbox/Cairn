@@ -1,0 +1,70 @@
+{
+  "format": "cairn-seeded-public-origin-proof/v1",
+  "verified_at_utc": "2026-10-25T10:31:09.825707+00:00",
+  "scope": "read-only existing corpus.json and fixed archived inputs; no question/gold/HOLDOUT file or external request",
+  "corpus_origin": "https://huggingface.co/datasets/yixuantt/MultiHopRAG/resolve/71ac0d0bd1f951d2d6b70311f7d2ae404e1ffa82/corpus.json",
+  "corpus_sha256": "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f",
+  "corpus_documents": 609,
+  "source_url": "https://www.wired.com/story/best-october-prime-day-deals-2023-5/",
+  "source_document_id": "6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b",
+  "url_sha256_matches_document_id": true,
+  "body_exact_match": true,
+  "body_bytes": 71119,
+  "body_sha256": "4e0c6e6644b39e5c4be056773abb9a7a1c2399b6a98c65ca940094afe7059bbb",
+  "wrapper_bytes": 71332,
+  "wrapper_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+  "wrapper_prefix_bytes": 213,
+  "wrapper_category": "deterministic corpus title/source/published_at/url metadata header plus exact public corpus body",
+  "candidate_category": "57 previous model-derived annotation items, retained final historical R3 GateA output, not a new user document or a credential file",
+  "candidate_top_level_keys": [
+    "skill",
+    "file_path",
+    "items"
+  ],
+  "candidate_item_field_name_counts": {
+    "tag": 57,
+    "name": 57,
+    "content": 57,
+    "detail": 57,
+    "confidence": 57
+  },
+  "candidate_items": 57,
+  "archived_rejection_category": "previous model-derived wrapped rejection prose, provenance only; never promoted to current typed rejection",
+  "privacy_scan": {
+    "full_original_wrapper": {
+      "bytes": 71332,
+      "sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+      "actual_configured_credential_value_matches": 0,
+      "pem_private_key_blocks": 0,
+      "aws_access_key_ids": 0,
+      "google_api_key_patterns": 0,
+      "credential_assignment_patterns": 0,
+      "email_address_patterns": 0
+    },
+    "fixed_R3_candidate": {
+      "bytes": 27992,
+      "sha256": "7b7a3d15e711f0857d3899c981e79b17eb7f47a5a7b694ec59d1e983e63de34a",
+      "actual_configured_credential_value_matches": 0,
+      "pem_private_key_blocks": 0,
+      "aws_access_key_ids": 0,
+      "google_api_key_patterns": 0,
+      "credential_assignment_patterns": 0,
+      "email_address_patterns": 0
+    },
+    "archived_rejection_provenance": {
+      "bytes": 656,
+      "sha256": "c2d503378f06c25940c2e698dd00b78763fafeb582d7de9a00734e73a018b735",
+      "actual_configured_credential_value_matches": 0,
+      "pem_private_key_blocks": 0,
+      "aws_access_key_ids": 0,
+      "google_api_key_patterns": 0,
+      "credential_assignment_patterns": 0,
+      "email_address_patterns": 0
+    }
+  },
+  "privacy_scan_limit": "Counts from exact-credential equality and finite automated patterns only. Zero matches do not establish absence of all sensitive information or substitute for a disclosure decision.",
+  "historical_archive_unchanged": true,
+  "new_live_calls": 0,
+  "complete_wrapper_reconstructed_exactly_from_public_corpus_metadata_and_body": true,
+  "wrapper_constructor_source": "build/test/e2e/corpus-capacity/prepare.go:wrap at adb45e1"
+}

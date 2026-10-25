@@ -16,6 +16,12 @@ Private observed-content hashes bind saved responses and captures. Complete offl
 
 ## Execution status and limits
 
-**No live request has started. Separate root technical GO is pending.** The ordinary user DeepSeek authorization persists; this preparation does not itself admit execution. Independent engineering/scientific agent reviews share the repository account and do not constitute independent human quality judgment.
+The frozen preparation was followed by [root technical GO](https://github.com/xcosmosbox/Cairn/issues/73#issuecomment-6396490111) and one actual process start at 10:27:29Z. Automatic approval review then rejected continuation: it judged authorization insufficiently specific for sending the archived inputs and derived content to DeepSeek. No bypass, additional live action or retry followed.
+
+**The attempt is platform blocked and incomplete.** The retained trace has one qualification request admission and no response/outcome/finish receipt. Actual provider delivery, outcome and billing are unknown; this is neither a semantic pass nor a semantic failure. Offline audit exited1 because complete evidence is unavailable. See [result.json](result.json), [exact tool rejection](platform-rejection-verbatim.txt), [request metadata without bodies](actual-request-metadata.json), [the durable block record](https://github.com/xcosmosbox/Cairn/issues/73#issuecomment-6396517270), [restricted archive metadata](restricted-archive-manifest.json) and [verified remote reconstruction](archive-verification.json). No accepted checkpoint exists. The original freeze files retain their preparation-time status as a historical snapshot.
+
+[Read-only origin/category proof](origin-category-proof.json) reconstructs the complete wrapper exactly from the frozen public corpus article and identifies the57 candidate items as previous model-derived annotations. Finite credential/key/email-pattern scans found zero matches; their limits are stated. This proof does not itself resolve the platform rejection or authorize another request.
+
+Independent engineering/scientific agent reviews share the repository account and do not constitute independent human quality judgment.
 
 Originals, candidate contents, archived/new reasons, responses and private logs remain restricted. This public packet contains method, identities, counts and limits only. Original spans remain unknown. A later result cannot establish causal improvement, factual recall, all12/full609 capacity, graph or answer quality, QA/gold/HOLDOUT results, or stable-release readiness.
