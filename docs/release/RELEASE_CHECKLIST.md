@@ -1,6 +1,8 @@
 # Final candidate and release checklist
 
-Prepared **2026-10-25 01:10 UTC** under [#67](https://github.com/xcosmosbox/Cairn/issues/67).
+Originally prepared under [#67](https://github.com/xcosmosbox/Cairn/issues/67),
+refreshed **2026-10-25 12:44 UTC** under [#93](https://github.com/xcosmosbox/Cairn/issues/93)
+against accepted source `dcf1dd19ffa99a9baf93fefbba8d0dab68047a56`.
 This is an operator checklist for the [support contract](STABLE_CONTRACT.md), not
 an execution receipt or an additional acceptance policy. All boxes are unverified
 for the final candidate. Cairn remains **Alpha**; planned identities are `1.0.0`
@@ -10,29 +12,36 @@ for the final candidate. Cairn remains **Alpha**; planned identities are `1.0.0`
 
 - [ ] Root accepts the construction/quality/evaluation evidence and final support
   scope. #63's historical calibration remains FAILED (11/12 materialized), with
-  its archive/report separately reviewed. #64/#68 implementation or CI cannot
-  substitute for an admitted corrected validation or actual answer quality.
+  its execution/archive accepted separately. #64/#68/#74 safeguards and
+  #75/#80/#83/#88 bounded components are accepted implementations, not an actual
+  admitted bounded construction/default promotion or answer-quality result.
+  #73's first attempt remains UNKNOWN; its later attempt and #85's continuation
+  ended with final semantic rejection/no accepted checkpoint. Keep #85's latest
+  packet-review status explicit; do not treat 163/193 items as measured improvement.
 - [ ] Freeze candidate commit **C** after the relevant changes are integrated;
   record its full SHA/tree, clean status, branch and independent reviews. The
-  present documentation baseline `a1a016f92cd2883675ed54f9f6afcbefa4a823d4` is
+  present documentation baseline `dcf1dd19ffa99a9baf93fefbba8d0dab68047a56` is
   not a selected final candidate. Keep raw receipts/logs outside C so running
   checks does not amend the frozen source or overwrite historical evidence.
 - [ ] Record the chosen candidate software stamp, official Go 1.27.3 archive and
   executable hashes, Linux amd64/C toolchain identity, Node 22 exact version,
   Python version and locked dependency identities. Existing Go 1.22 CI coverage
-  remains compatibility evidence; Node 24 recovery is not the Node 22 check.
+  remains compatibility evidence; restored Node 22 availability and historical CI
+  do not replace the exact candidate's Viewer check.
 - [ ] Confirm the bounded native CLI/stdio MCP and loopback REST/SSE scope,
   Bundle `dk-kb-bundle/v1`, reader schema 4..5 and builder schema 5. Record Viewer
-  root/subdirectory coverage and its browser/platform limits. Keep #33's unknown
-  cause and accepted narrow evolution-history warning visible. Natural token
-  expiry, transparent 401, full daemon lifecycle, SLO and production capacity
+  root/subdirectory coverage and its browser/platform limits. Record #33's accepted
+  same-process admission fix and remaining cross-process BUSY, unmeasured historical
+  hold/fairness and evolution-history limits; it is not a universal reliability gate.
+  Natural token expiry, transparent 401, full daemon lifecycle, SLO and production capacity
   remain unverified unless separately evidenced and accepted.
 
 The [execution policy](../coordination/EXECUTION_POLICY.md) permanently authorizes
-ordinary official DeepSeek/Cairn experiments within its scope. A future run still
-needs its exact technical freeze/review; do not request the same user permission
-again or run a paid control as routine release regression. QA/gold/HOLDOUT access
-and new model runs are not part of this documentation task.
+ordinary paid/network official DeepSeek/Cairn experiments and the specifically
+confirmed source/annotation/feedback data egress within its scope. A future run
+still needs its exact technical freeze/review/live admission; do not request the
+same user permission again or run a paid control as routine release regression.
+QA/gold/HOLDOUT access and new model runs are not part of this documentation task.
 
 ## 2. Run the inherited free gates on C
 

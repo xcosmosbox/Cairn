@@ -1,8 +1,9 @@
 # First stable release: support and acceptance contract
 
-As of **2026-10-25 01:10 UTC**; inspected integrated source
-`a1a016f92cd2883675ed54f9f6afcbefa4a823d4`. This updates the accepted #18 design
-under [#67](https://github.com/xcosmosbox/Cairn/issues/67). Cairn remains **Alpha**.
+As of **2026-10-25 12:44 UTC**; inspected accepted integrated source
+`dcf1dd19ffa99a9baf93fefbba8d0dab68047a56`. This refreshes the accepted #18/#67
+design under [#93](https://github.com/xcosmosbox/Cairn/issues/93); it is a dated
+evidence snapshot, not a selected candidate. Cairn remains **Alpha**.
 `1.0.0` / `1.0.0-rc.1` are planned packaging targets; actual final candidate, tag
 and release are **NONE**. This document does not publish a support guarantee.
 Live task evidence is in [#9](https://github.com/xcosmosbox/Cairn/issues/9),
@@ -20,9 +21,9 @@ immutable identity, human-curated edits and source provenance remain required.
 The intended first support boundary is Linux amd64 native CLI and stdio MCP.
 REST/SSE are bounded loopback surfaces, with no public hosting/authentication or
 internet-exposure guarantee. Viewer root/subdirectory checks use Node 22; neither
-those checks nor the current Node 24 recovery environment establish a full browser,
-operating-system or deployment matrix. The final maintainer decision must accept
-these boundaries with evidence on the frozen candidate.
+those source-specific checks nor restored Node 22 availability establish a final
+candidate check or a full browser, operating-system or deployment matrix. The final
+maintainer decision must accept these boundaries on the frozen candidate.
 
 | Surface | Accepted evidence within its recorded source/scope | Still needed for the stable decision |
 | --- | --- | --- |
@@ -32,16 +33,38 @@ these boundaries with evidence on the frozen candidate.
 | Private native update/recovery | #44/PR55 actual Linux stdio one-installation native App/Catalog A→B→bad-checksum retention→originalA on source `5d99a24` | Final-candidate bounded recovery evidence; original 404 retained, native HTTP/poll counts unknown, no full daemon lifecycle or natural expiry guarantee |
 | GitHub App/HTTPForge | #15/PR34 JWT/install/cache/permission/revocation and accelerated refresh; #47/PR51 authenticated assets/redirect fence | Natural one-hour expiry, transparent 401 and broader platform/lifecycle coverage remain unverified; all-repository installation scope was not changed |
 | Retrieval and answers | #21/PR28 lexical DEV baseline; #27/PR30 negative cap2; #54/PR66 synthetic-only paired evaluator and ADR | Controlled actual answer/refusal/visible-support results under frozen resources and a fresh HOLDOUT; evaluator implementation is not measured utility |
-| Construction/capacity | #41/PR49 and #56/PR60 exact-wire tracing/token guard/audit; #63 sole calibration actually failed all 12 coverage, only 11 materialized | Immutable #63 report review and separately frozen corrected validation; #64 annotation revision and #68 local contradiction correction are active, unaccepted implementations; no full609 or QA admission |
+| Construction and corrective execution | #41/PR49 and #56/PR60 tracing/token guard/audit; #63/PR70 accepted execution/archive with all12 coverage FAIL (11 materialized); #73/PR76/PR78/PR84 accepted driver and UNKNOWN/negative attempt archives; #85/PR87 accepted continuation driver | #85's later two-wire continuation also ended with final GateB rejection/no accepted checkpoint; its reported integrity-pass result awaits final packet acceptance. No all12 corrected coverage, actual bounded full609 construction or QA result |
+| Annotation, relations and curated edges | #64/PR72 typed bounded semantic revision; #68/PR71 full-rebuild local contradicts verification/report-v2; #74/PR77 protection of existing human-curated I7/I8 edge payloads | These are accepted implementation scopes, not general semantic accuracy. #68 does not establish new incremental contradiction validation; #74 does not establish true endpoint-deletion or blanket NULL compatibility |
+| Bounded construction components | #75/PR79 strict accepted04 importer/planner; #80/PR86 offline staged mapping/recovery; #83/PR90 pure bounded Description/Relation APIs; #88/PR92 pure source-verifier seam | Actual production wire/counter bridge, admitted orchestration/materialization and complete accepted-source inputs remain separate. Pure APIs/fake callbacks do not prove actual construction, wire fit, quality or default promotion |
 | Resource/reliability | #17/PR32 timing on `bf5d7ec`; PR39 identity-bound RSS on `18e7e7b` (observed maximum43,716 KiB) | Candidate-specific observations and support disposition; no SLO, hard 2 GiB enforcement or production capacity established |
 | Viewer | Node 22 CI root/subdirectory/WASM tests and #10 free restoration | Exact final-candidate root/subdirectory check; no complete browser/platform matrix |
 
-#33's original SQLITE_BUSY cause remains **UNKNOWN/unfixed**. Root accepted only
-the narrow local risk that a nonfatal evolution-sidecar Record failure may omit a
-history entry. Preserve this warning in candidate evidence; it is not a complete
-concurrent-history or general failure-safety guarantee. See the
+[#33/PR89](https://github.com/xcosmosbox/Cairn/pull/89) is accepted for the
+observed **same-process writer admission** failure: a context-aware owner gate for
+the canonical existing evolution directory now precedes DB/DDL/IMMEDIATE admission
+and covers capture/commit/cleanup. SQLite's 5000ms busy timeout and existing
+concurrency assertions are unchanged. A controlled old-style BeginTx admission
+failure and two new complete commits support that mechanism; they are not a forced
+pristine-old-Record counterfactual. Original failures and later passes remain visible.
+Cross-process SQLITE_BUSY remains possible, and precise historical hold durations,
+aggregate contention and fairness bounds are not established. Other nonfatal Record
+failures may still omit an evolution-history entry; no complete concurrent-history
+or general failure-safety guarantee follows. See the
 [dated evidence register](../coordination/EVIDENCE.md) and latest task records for
-exact commits, reviews and original negative results.
+exact source/reviews and retained failures.
+
+Accepted components are **not yet an admitted bounded construction pipeline**.
+The legacy accepted cache remains 11 documents; incomplete 609-document input is
+NOT ADMISSIBLE,
+and no candidate C has been selected. #73's first attempt retains UNKNOWN delivery/
+billing after the platform block; its later three-wire attempt and #85's two-wire
+continuation both ended in explicit final semantic rejection. Larger item counts
+(163 then 193) are not accepted annotations or measured improvement. At this
+snapshot, #85 source is accepted; final acceptance of its negative execution packet
+is separate and still pending.
+Optional empty Detail in the pure API and compatibility with the existing final
+materializer still require an explicit integration decision. No default pipeline
+promotion or quality-equivalence claim is adopted here.
 
 The old SourceBackfill pilot stays disabled under #13. #11 full archive audit
 and #13 are requirements when relying on those historical controls, not automatic
@@ -120,14 +143,18 @@ failure with sanitized status/revocation/refresh evidence, bad Bundle with check
 and query-contract evidence, and SQLITE_BUSY with #33's bounded diagnostics; never
 publish secrets or treat zero/absent resource samples as measurements.
 
-The historical credential-egress approval block was superseded by the maintainer's
-[authorization record](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656)
-and subsequent actual execution receipts. The permanent policy authorizes ordinary
-Cairn DeepSeek experiments at official `https://api.deepseek.com` with
-`deepseek-flash`; do not request that user authorization repeatedly. Task/profile
-freezes, independent review and acceptance remain technical controls. No model run
-is performed by this document, and the old #13 pilot remains disabled within its
-separate historical-control boundary. See [execution policy](../coordination/EXECUTION_POLICY.md).
+The maintainer's [original authorization](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656)
+and [specific data-egress confirmation](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6396678380)
+cover ordinary paid/network Cairn experiments and authorized public source text,
+machine annotations and model-derived feedback sent to official
+`https://api.deepseek.com` with `deepseek-flash`, plus the scoped repository
+publication destinations in [execution policy](../coordination/EXECUTION_POLICY.md).
+Do not request these user permissions repeatedly within that scope. Preserve the
+actual earlier platform rejection/UNKNOWN attempt rather than rewriting its outcome.
+Exact source/input/profile/budget freezes, independent review, live admission and
+platform safeguards remain effective technical controls. No model run is performed
+by this document; the old #13 pilot stays disabled within its separate historical
+control boundary.
 
 The maintainer's final decision must accept the support scope, compatibility and
 rollback results, resource/reliability disposition and preregistered quality gates
