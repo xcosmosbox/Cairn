@@ -742,6 +742,13 @@ func (c *indexedReplayClient) Complete(ctx context.Context, req llm.CompleteRequ
 			return bad()
 		}
 	}
+	for key := range responseRow.fields {
+		for _, canonical := range []string{"transport_error", "response_read_error", "cancelled", "total_tokens"} {
+			if strings.EqualFold(key, canonical) && key != canonical {
+				return bad()
+			}
+		}
+	}
 	total, hasTotal := envelope.Usage["total_tokens"]
 	ledgerTotal, hasLedgerTotal := responseRow.fields["total_tokens"]
 	if hasTotal && !bytes.Equal(bytes.TrimSpace(total), []byte("null")) {

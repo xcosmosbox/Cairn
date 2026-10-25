@@ -311,7 +311,7 @@ func TestIndexedDriverRegressionExactEvidenceAliasesAndNulls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"cancelled", "null-error-flag", "response-json-alias", "mode-alias", "model-alias", "max-alias", "count-alias", "saved-error-null"} {
+	for _, kind := range []string{"cancelled", "null-error-flag", "response-json-alias", "mode-alias", "model-alias", "max-alias", "count-alias", "saved-error-null", "optional-error-alias", "optional-total-alias"} {
 		t.Run(kind, func(t *testing.T) {
 			if err := os.WriteFile(ledgerPath, original, 0600); err != nil {
 				t.Fatal(err)
@@ -351,6 +351,10 @@ func TestIndexedDriverRegressionExactEvidenceAliasesAndNulls(t *testing.T) {
 					row["MAX_TOKENS"] = 17
 				case "count-alias":
 					row["token_count"].(map[string]any)["Input_Tokens"] = 101
+				case "optional-error-alias":
+					row["Response_Read_Error"] = true
+				case "optional-total-alias":
+					row["Total_Tokens"] = 999
 				}
 				lines[pos], _ = json.Marshal(row)
 				if err := os.WriteFile(ledgerPath, append(bytes.Join(lines, []byte{'\n'}), '\n'), 0600); err != nil {
