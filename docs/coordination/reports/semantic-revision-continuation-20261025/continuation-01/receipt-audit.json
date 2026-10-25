@@ -1,0 +1,41 @@
+{
+  "accepted": false,
+  "accepted_checkpoint_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "accepted_cleaned_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "assign_ids": "not performed",
+  "counts": {
+    "admitted_attempts": 2,
+    "attempt_outcomes": 2,
+    "input_tokens": 74970,
+    "logical_calls": 2,
+    "output_tokens": 40022,
+    "stage:annotation:admitted_attempts": 1,
+    "stage:annotation:attempt_outcomes": 1,
+    "stage:annotation:logical_calls": 1,
+    "stage:semantic_gate:admitted_attempts": 1,
+    "stage:semantic_gate:attempt_outcomes": 1,
+    "stage:semantic_gate:logical_calls": 1
+  },
+  "errors": null,
+  "finish_sha256": "83d2a39c800a88a034f260b9df98f4cb95a60c935434454e6c773432cb54103e",
+  "format": "cairn-receipt-audit/v1",
+  "integrity_pass": true,
+  "ledger_bytes": 6743,
+  "ledger_sha256": "ccc6c6c0c5dd5f21340d8314f9d010cc8425cf73a45269475d3bc2479ab2c17b",
+  "mode": "parent163-revision-validation/v1",
+  "original_spans": "unknown",
+  "parent_manifest_sha256": "e70f01201c281d5d2d19c1fb9603bca812abbcee9afc7c124e0a0aac2f59fef3",
+  "parent_proof_sha256": "f2e2ab37d77bec1563c21c6441e2791a0f3d3c34369e3d0b30462701c89b1674",
+  "pass": false,
+  "plan_sha256": "1e95918a32206760f8cd92bd890c6855db5405fb772e200896240dcb300a3465",
+  "preflight_sha256": "093fa68d23b7614d5e445407a6ca9314155c33b3e73d745187ad52cd5bb8e91c",
+  "private_replay_file_sha256": {
+    "revision-request-capture.json": "0149dfaa0126ef2cd104ed9b4f3989b7409ae1de0a2b21c958861aa44435fe4f",
+    "revision-response.private.json": "48477d4da75a5644801a5e284fb2bb1685c32b921370394cfbe4b0aec09741d5",
+    "validation-request-capture.json": "56090c033269642fac4b025385653439c7bfde71e3e2a897ad69a18dd1222713",
+    "validation-response.private.json": "de0d9b5086917be22a8cbcad9831f8bfffe4f718b51637b2fbfbcc4235db9d5d"
+  },
+  "quality_capacity_causal_effect": "not established",
+  "start_sha256": "abb3237548da4ff6222d3bd40c3aeb8df5191b82baf4fccf85be9f384ca275fe",
+  "status": "FAIL_final_gate"
+}
