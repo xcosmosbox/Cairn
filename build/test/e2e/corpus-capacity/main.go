@@ -36,10 +36,13 @@ func main() {
 func run() error {
 	overlay := flag.String("runtime-overlay", filepath.Join(rootPath(), "e2e/benchmarks/multihop_public/capacity/runtime-cross-relations-v1.json"), "new immutable reviewed runtime overlay")
 	overlaySHA := flag.String("runtime-overlay-sha256", "", "exact reviewed runtime overlay SHA256 required for preflight/run")
-	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit, trace-audit, seed-preflight, seed-run or seed-audit; no whole-run retry")
+	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit, trace-audit, seed-preflight/run/audit or receipt-preflight/run/audit; no whole-run retry")
 	seedRoot := flag.String("seed-input-root", "", "read-only restored historical attempt root for fixed R3")
 	seedPlan := flag.String("seed-manifest", "", "new fixed-R3 experiment plan; never the historical capacity overlay")
 	seedPlanSHA := flag.String("seed-manifest-sha256", "", "exact independently reviewed seeded plan identity")
+	parentRoot := flag.String("parent-root", "", "read-only extracted complete known-parent archive")
+	receiptPlan := flag.String("receipt-manifest", "", "separate strict parent-receipt continuation manifest")
+	receiptPlanSHA := flag.String("receipt-manifest-sha256", "", "independently reviewed exact receipt manifest identity")
 	corpus := flag.String("corpus", "", "exact frozen corpus.json; no QA input")
 	out := flag.String("out", "", "new prepare output, or prepared directory for preflight/run/audit")
 	selectionSHA := flag.String("selection-sha256", "", "reviewed exact selection.json SHA256 required after preparation")
@@ -55,6 +58,12 @@ func run() error {
 	flag.Parse()
 	if *out == "" || flag.NArg() != 0 {
 		return fmt.Errorf("output required and positional arguments forbidden")
+	}
+	if strings.HasPrefix(*mode, "receipt-") {
+		if *maxTokens != seededMaxTokens || *requestTimeout != 600*time.Second || *stageTimeout != 90*time.Minute || *runTimeout != 90*time.Minute {
+			return fmt.Errorf("receipt: capacity flag overrides forbidden; the separate plan fixes its bounded timeout")
+		}
+		return runReceiptCLI(receiptCLI{mode: *mode, root: *parentRoot, manifest: *receiptPlan, pin: *receiptPlanSHA, out: *out, python: *python, pythonSHA: *pythonSHA, runtime: *runtimeReceipt, runtimeSHA: *runtimeSHA, allowPaid: *allowPaid})
 	}
 	if strings.HasPrefix(*mode, "seed-") {
 		if *maxTokens != seededMaxTokens || *requestTimeout != 600*time.Second || *stageTimeout != 90*time.Minute || *runTimeout != 90*time.Minute {
