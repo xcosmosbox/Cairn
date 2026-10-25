@@ -1,0 +1,51 @@
+{
+  "format": "cairn-seeded-restricted-archive-manifest/v1",
+  "attempt": 2,
+  "repository": "xcosmosbox/kd_manifeat",
+  "visibility": "private",
+  "commit": "2da71d37dfda6db29a25445283f205b90d873334",
+  "prefix": "semantic-revision-seeded-20261025/attempt-02",
+  "archive": {
+    "path": "seeded-attempt02-final-gate-fail.tar.gz",
+    "bytes": 132738,
+    "sha256": "e916091a731b4811ca07f8cacf615bbeee604089ceee91966212f46fb5d3319a",
+    "compression": "gzip;tar;fixedmtime0",
+    "parts": [
+      {
+        "order": 0,
+        "path": "raw.tar.gz.part0000",
+        "storage_path": "raw.tar.gz.part0000.b64",
+        "bytes": 65536,
+        "sha256": "a25e809710980f3a706040da8b64e917219ddc1b7bc210fb8c10bd2c746c46fd",
+        "git_blob_sha1": "b083c83233ea9db5eb969cf3605b2e66901197e9",
+        "storage_git_blob_sha1": "6fa1ebc254a1c21bdef9bad33379a69829b70b47"
+      },
+      {
+        "order": 1,
+        "path": "raw.tar.gz.part0001",
+        "storage_path": "raw.tar.gz.part0001.b64",
+        "bytes": 65536,
+        "sha256": "d55447565a8d9ced7700e44a39f42ccf62154d4d469b8dd09ce05ec0b23b0c9c",
+        "git_blob_sha1": "abcdd0ea287943a3ca169f49768a171983cd0e3c",
+        "storage_git_blob_sha1": "c2bfbb1d6e1a1b31b38096e245782dd93f7d7e4a"
+      },
+      {
+        "order": 2,
+        "path": "raw.tar.gz.part0002",
+        "storage_path": "raw.tar.gz.part0002.b64",
+        "bytes": 1666,
+        "sha256": "2acb3b13baf878b1b22f90bd8939461340a807b723dfc4adad00a47df3be6214",
+        "git_blob_sha1": "946ebeada3ee2454cff303d8a85197c57f2ec857",
+        "storage_git_blob_sha1": "6659df777b348e3fd8ed7562a65a9dccfc8a3342"
+      }
+    ]
+  },
+  "manifest_sha256": "e70f01201c281d5d2d19c1fb9603bca812abbcee9afc7c124e0a0aac2f59fef3",
+  "files_including_manifest": 40,
+  "payload_files_hash_verified": 39,
+  "credential_values_included": false,
+  "storage_encoding": "base64 UTF-8 text per part; decode before concatenating",
+  "remote_reconstruction_verified": true,
+  "historical_archive_and_attempt01_unchanged": true,
+  "meaning": "New immutable complete-negative attempt. All163 revised items and exact new reasons retained restricted; no accepted checkpoint."
+}

@@ -25,3 +25,8 @@ The frozen preparation was followed by [root technical GO](https://github.com/xc
 Independent engineering/scientific agent reviews share the repository account and do not constitute independent human quality judgment.
 
 Originals, candidate contents, archived/new reasons, responses and private logs remain restricted. This public packet contains method, identities, counts and limits only. Original spans remain unknown. A later result cannot establish causal improvement, factual recall, all12/full609 capacity, graph or answer quality, QA/gold/HOLDOUT results, or stable-release readiness.
+
+
+## Separately authorized attempt02
+
+The later explicitly authorized fresh attempt02 completed with a negative final semantic-gate result. See [attempt02 evidence](attempt-02/README.md). The preparation snapshot and incomplete attempt01 above remain unchanged.

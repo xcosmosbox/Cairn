@@ -1,0 +1,48 @@
+{
+  "qualification": {
+    "complete_error": false,
+    "parsed_text_bytes": 592,
+    "parsed_text_sha256": "907cbe6e467cd451c976669c7ff12de8213459d1a34ad113b5bfd8c5fbb23513",
+    "json_top_keys": [
+      "idempotent",
+      "reason"
+    ],
+    "idempotent_present": true,
+    "idempotent_value": false,
+    "reason_nonblank": true,
+    "reason_sha256": "2f7432518c2de7898d69049fee84c7096079039221d1bf464e0beaec51a34b89",
+    "reason_bytes": 557,
+    "items": null
+  },
+  "revision": {
+    "complete_error": false,
+    "parsed_text_bytes": 68258,
+    "parsed_text_sha256": "17225893f692797e63bb0b51343ade7d6dbc653291f195a9ad0520e1b1fde614",
+    "json_top_keys": [
+      "items"
+    ],
+    "idempotent_present": false,
+    "idempotent_value": null,
+    "reason_nonblank": false,
+    "reason_sha256": null,
+    "reason_bytes": null,
+    "items": 163
+  },
+  "validation": {
+    "complete_error": false,
+    "parsed_text_bytes": 410,
+    "parsed_text_sha256": "3cc20f08d33451f4e8e76bb118bd0de5054bf6b15c1577a79cb48faa40c1f1ee",
+    "json_top_keys": [
+      "idempotent",
+      "reason"
+    ],
+    "idempotent_present": true,
+    "idempotent_value": false,
+    "reason_nonblank": true,
+    "reason_sha256": "4188a394eb8ec982eac02deaa8deafeeb5a60ef2412bfec721c726f633d57746",
+    "reason_bytes": 378,
+    "items": null
+  },
+  "format_gate_items": 163,
+  "accepted_checkpoint_exists": false
+}
