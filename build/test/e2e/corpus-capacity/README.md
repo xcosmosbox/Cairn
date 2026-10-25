@@ -469,4 +469,3 @@ fidelity, and the immutable archive before any separately admitted checkpoint
 adapter. Quotes witness occurrence, not entailment or exhaustive recall. The
 opaque diagnostic freeze is copied privately and never enters a prompt. This
 experiment proves neither quality nor capacity/causality/full609 admission.
-
