@@ -29,3 +29,13 @@ import "errors"
 // failed and the document must be re-annotated. It is always wrapped in a concrete
 // error; the state machine detects it via errors.Is.
 var ErrRollbackToAnnotate = errors.New("校验未通过，需回退到标注阶段重新标注")
+
+// SemanticRejection 仅表示已成功解析的显式否定及其具体理由，不能用调用/解析错误
+// 构造修订反馈。它仍保留原来的回退信号，供未使用修订的调用者识别。
+// SemanticRejection carries a verified explicit negative verdict, not an operational error.
+type SemanticRejection struct {
+	Reason string
+}
+
+func (e *SemanticRejection) Error() string { return e.Reason }
+func (e *SemanticRejection) Unwrap() error { return ErrRollbackToAnnotate }

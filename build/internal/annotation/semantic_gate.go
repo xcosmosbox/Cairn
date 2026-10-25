@@ -85,7 +85,12 @@ func (g *SemanticGate) Check(ctx context.Context, originalContent string, doc *d
 		}
 
 		if !verdict.Idempotent {
-			// 语义不幂等 → 回退标注。
+			// 只有显式 false + 具体理由才可驱动修订；缺失/null/空理由仍按原语义回退。
+			// Preserve existing rejection behavior without treating unverifiable data as critique.
+			if verdict.explicitReject && strings.TrimSpace(verdict.Reason) != "" {
+				return fmt.Errorf("semantic gate: %s 标注与原文语义不幂等: %w",
+					doc.FilePath, &SemanticRejection{Reason: verdict.Reason})
+			}
 			return fmt.Errorf("semantic gate: %s 标注与原文语义不幂等: %s: %w",
 				doc.FilePath, verdict.Reason, ErrRollbackToAnnotate)
 		}
@@ -155,8 +160,9 @@ const semanticSystemPrompt = `你是知识标注的语义核验专家。用户�
 // semanticVerdict 是语义门 LLM 返回 JSON 的结构。
 // semanticVerdict is the structure of the Gate B LLM JSON.
 type semanticVerdict struct {
-	Idempotent bool   `json:"idempotent"`
-	Reason     string `json:"reason"`
+	Idempotent     bool   `json:"idempotent"`
+	Reason         string `json:"reason"`
+	explicitReject bool
 }
 
 // parseSemanticResponse 解析核验 LLM 的 JSON 响应。JSON 非法 / 空响应 → 返回 error（触发原地重试）。
@@ -170,5 +176,14 @@ func parseSemanticResponse(text string) (*semanticVerdict, error) {
 	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
+	// 不改变旧 bool 的缺省接受/拒绝行为，只补充反馈资格。
+	// Track presence separately so missing/null false defaults never become semantic feedback.
+	var presence struct {
+		Idempotent *bool `json:"idempotent"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &presence); err != nil {
+		return nil, fmt.Errorf("unmarshal verdict presence: %w", err)
+	}
+	v.explicitReject = presence.Idempotent != nil && !*presence.Idempotent
 	return &v, nil
 }

@@ -24,11 +24,11 @@ import (
 	"log"
 	"strings"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
-	"github.com/xcosmosbox/cairn/core/parallel"
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/parallel"
 )
 
 // annotateSkip 是一篇被降级跳过的文档及其原因（结构化，供 per-doc C4 状态判定）。
@@ -133,8 +133,16 @@ func (a *annotator) annotateOne(ctx context.Context, skill, path, text string) (
 		return nil, fmt.Sprintf("%s: 块外新增为空（跳过）", path)
 	}
 	var lastReason string
+	var candidate *dktypes.AnnotatedDocument
+	var feedback *annotation.SemanticRejection
 	for attempt := 1; attempt <= a.maxRollbacks; attempt++ {
-		doc, err := a.llm.Annotate(ctx, skill, path, text)
+		var doc *dktypes.AnnotatedDocument
+		var err error
+		if feedback == nil {
+			doc, err = a.llm.Annotate(ctx, skill, path, text)
+		} else {
+			doc, err = a.llm.Revise(ctx, skill, path, text, candidate, feedback)
+		}
 		if err != nil {
 			lastReason = fmt.Sprintf("%s 标注失败: %v", path, err)
 			continue
@@ -149,6 +157,12 @@ func (a *annotator) annotateOne(ctx context.Context, skill, path, text string) (
 		}
 		// Gate B 核验「片段原文 ↔ 标注」语义幂等（原文 = C4Text，不是全档）。
 		if err := a.semanticGate.Check(ctx, text, cleaned); err != nil {
+			// 与全量一致：暂时失败保留最近的有效语义反馈，不保存历史候选。
+			// Same latest-only feedback state as the full pipeline, local to this C4 document.
+			var rejected *annotation.SemanticRejection
+			if errors.As(err, &rejected) {
+				candidate, feedback = cleaned, rejected
+			}
 			lastReason = fmt.Sprintf("%s Gate B 未通过: %v", path, err)
 			continue
 		}
