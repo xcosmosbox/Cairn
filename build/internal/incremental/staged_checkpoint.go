@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -308,8 +309,8 @@ func (s *stagedSession) consume(row stagedRecord) error {
 		if s.phase != "response" {
 			return bad()
 		}
-		if _, _, err := s.reconstructResponse(); err == nil {
-			return fmt.Errorf("staged mapping: valid response recorded as invalid")
+		if _, _, err := s.reconstructResponse(); !errors.Is(err, errStagedResponseSchema) {
+			return fmt.Errorf("staged mapping: invalid history lacks bound complete schema failure")
 		}
 		s.phase = "invalid"
 	case "accepted":
@@ -609,27 +610,9 @@ func (s *stagedSession) reconstructResponse() (stagedCatalogue, *alignLLMOutput,
 	if e != nil {
 		return zero, nil, e
 	}
-	batch, e := stagedSelectUnits(all, s.attempt.Call.Units)
+	batch, e := stagedPendingBatch(s.state, all, s.attempt.Call.Units)
 	if e != nil {
 		return zero, nil, e
-	}
-	done := map[string]bool{}
-	for _, id := range s.state.Done {
-		done[id] = true
-	}
-	var prefix []string
-	for _, u := range all {
-		if !done[u.ID] {
-			prefix = append(prefix, u.ID)
-		}
-	}
-	if len(batch) > len(prefix) || len(batch) < 1 {
-		return zero, nil, fmt.Errorf("invalid pending prefix")
-	}
-	for i, u := range batch {
-		if prefix[i] != u.ID {
-			return zero, nil, fmt.Errorf("noncanonical pending prefix")
-		}
 	}
 	db, e := storage.NewDB(storage.DBOptions{Path: ":memory:"})
 	if e != nil {
@@ -651,12 +634,12 @@ func (s *stagedSession) reconstructResponse() (stagedCatalogue, *alignLLMOutput,
 	if !reflectStagedCallEqual(plan.Call, s.attempt.Call) {
 		return zero, nil, fmt.Errorf("historical call mismatch")
 	}
+	if !stagedCompleteResponse(s.response, s.attempt.Binding) {
+		return zero, nil, ErrStagedMappingUncertain
+	}
 	out, groups, e := stagedValidateOutput(s.response.Response.Text, plan)
 	if e != nil {
-		return zero, nil, e
-	}
-	if s.response.Response.FinishReason != "stop" || s.response.Response.InputTokens < 0 || s.response.Response.OutputTokens < 0 {
-		return zero, nil, fmt.Errorf("incomplete historical response")
+		return zero, nil, errStagedResponseSchema
 	}
 	next, e := tmp.materializeBatch(context.Background(), plan, out, groups)
 	return next, out, e

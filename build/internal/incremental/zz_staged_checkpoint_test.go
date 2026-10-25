@@ -190,3 +190,56 @@ func TestStagedCheckpointRejectsForeignSeedTamperAndChangedRoots(t *testing.T) {
 		t.Fatal("concurrent stage owner accepted")
 	}
 }
+
+// 原本任意历史重建错误都会被当作 schema 失败，篡改请求仍可消耗第二次付费尝试。
+// Only a positively classified schema error after canonical-history validation permits repair.
+func TestStagedCheckpointInvalidHistoryCannotHideRequestTamper(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"source-request", "noncanonical-prefix", "parent", "incomplete-response"} {
+		t.Run(mode, func(t *testing.T) {
+			in := stagedTestInput(2)
+			f := &stagedFake{pins: in.Identity.Admission, invalid: 1}
+			dir := filepath.Join(t.TempDir(), "stage")
+			_, e := RunStagedMapping(context.Background(), in, StagedMappingOptions{StageDir: dir, Admitter: f, fault: func(point string) error {
+				if point == "after_invalid" {
+					return errors.New("persisted invalid response")
+				}
+				return nil
+			}})
+			if e == nil || f.dispatched != 1 {
+				t.Fatal("fixture did not persist one schema-invalid response")
+			}
+			var replacement StagedMappingWireBinding
+			stagedRewriteJournal(t, dir, func(row *stagedRecord) {
+				if row.Event.Kind == "prepared" {
+					p := row.Event.Prepared
+					switch mode {
+					case "source-request":
+						p.Call.Request.User = strings.Replace(p.Call.Request.User, "alpha name", "TAMPERED source", 1)
+					case "noncanonical-prefix":
+						p.Call.Units = p.Call.Units[1:]
+					case "parent":
+						p.Call.CatalogueSHA256 = stagedHash("foreign parent")
+					}
+					var wire map[string]any
+					_ = json.Unmarshal(p.Wire, &wire)
+					wire["messages"].([]any)[1].(map[string]any)["content"] = p.Call.Request.User
+					p.Wire, _ = json.Marshal(wire)
+					p.Binding.RequestSHA256 = stagedBytesHash(p.Wire)
+					replacement = p.Binding
+				}
+				if row.Event.Kind == "response" {
+					row.Event.Response.Binding = replacement
+					if mode == "incomplete-response" {
+						row.Event.Response.Response.FinishReason = "length"
+					}
+				}
+			})
+			before := f.dispatched
+			_, e = RunStagedMapping(context.Background(), in, StagedMappingOptions{StageDir: dir, Resume: true, Admitter: f})
+			if e == nil || f.dispatched != before {
+				t.Fatalf("forged invalid history retried: %v calls%d", e, f.dispatched)
+			}
+		})
+	}
+}

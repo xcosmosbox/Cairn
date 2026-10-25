@@ -263,12 +263,12 @@ func stagedValidateOutput(raw string, plan *stagedPlan) (*alignLLMOutput, map[st
 		return nil, nil, fmt.Errorf("invalid schema")
 	}
 	for _, d := range out.Decisions {
-		if !check(d.NodeName, d.Summary) {
+		if !check(d.NodeName, d.Summary) || ((d.Action == "attach" || d.Action == "new_subdomain") && strings.TrimSpace(d.Summary) == "") {
 			return nil, nil, fmt.Errorf("normalized field bound")
 		}
 	}
 	for _, g := range out.Groups {
-		if !check(g.NodeName, g.Summary) {
+		if !check(g.NodeName, g.Summary) || strings.TrimSpace(g.Summary) == "" {
 			return nil, nil, fmt.Errorf("normalized group bound")
 		}
 	}
@@ -287,7 +287,7 @@ func (s *stagedSession) finishResponse(ctx context.Context, all []stagedUnit) er
 	if p == nil || s.response == nil || p.Call.CatalogueSHA256 != stagedHash(s.state) {
 		return fmt.Errorf("staged mapping: response parent mismatch")
 	}
-	batch, e := stagedSelectUnits(all, p.Call.Units)
+	batch, e := stagedPendingBatch(s.state, all, p.Call.Units)
 	if e != nil {
 		return e
 	}
@@ -302,13 +302,10 @@ func (s *stagedSession) finishResponse(ctx context.Context, all []stagedUnit) er
 	if !reflectStagedCallEqual(plan.Call, p.Call) {
 		return fmt.Errorf("staged mapping: frozen request mismatch")
 	}
-	if s.response.Binding != p.Binding || s.response.ReceiptID == "" {
+	if !stagedCompleteResponse(s.response, p.Binding) {
 		return ErrStagedMappingUncertain
 	}
 	out, groups, e := stagedValidateOutput(s.response.Response.Text, plan)
-	if s.response.Response.FinishReason != "stop" || s.response.Response.InputTokens < 0 || s.response.Response.OutputTokens < 0 {
-		e = fmt.Errorf("incomplete response")
-	}
 	if e != nil {
 		if e = s.append(stagedEvent{Kind: "invalid"}); e != nil {
 			return e

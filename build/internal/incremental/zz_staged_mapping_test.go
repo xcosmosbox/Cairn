@@ -22,6 +22,7 @@ type stagedFake struct {
 	invalid              int
 	prepareFault         func(StagedMappingCall, *stagedFakeHandle) error
 	dispatchFault        bool
+	responseMutate       func(*StagedMappingDispatchResult)
 }
 type stagedFakeHandle struct {
 	f       *stagedFake
@@ -78,7 +79,11 @@ func (h *stagedFakeHandle) Dispatch(_ context.Context, b StagedMappingWireBindin
 		raw, _ := json.Marshal(out)
 		text = string(raw)
 	}
-	return StagedMappingDispatchResult{Binding: b, ReceiptID: fmt.Sprintf("fake-receipt-%d", f.dispatched), Response: llm.CompleteResponse{Text: text, InputTokens: 100, OutputTokens: 100, FinishReason: "stop"}}, nil
+	result := StagedMappingDispatchResult{Binding: b, ReceiptID: fmt.Sprintf("fake-receipt-%d", f.dispatched), Response: llm.CompleteResponse{Text: text, InputTokens: 100, OutputTokens: 100, FinishReason: "stop"}}
+	if f.responseMutate != nil {
+		f.responseMutate(&result)
+	}
+	return result, nil
 }
 
 func stagedTestInput(n int) StagedMappingInput {
@@ -358,5 +363,81 @@ func TestStagedMappingOutputByteBoundsCoverageAndExactKeys(t *testing.T) {
 	r, _ := stagedTestRun(t, in, f)
 	if r.Documents[0].Annotation.Items[0].Detail != "" {
 		t.Fatal("fabricated optional Detail")
+	}
+}
+
+// 旧校验在归一化前检查占位符，随后却允许空摘要触发正文回退，突破输出字段上限。
+// Reject placeholders after normalization rather than substituting source Content.
+func TestStagedMappingRejectsNormalizedEmptySummary(t *testing.T) {
+	t.Parallel()
+	in := stagedTestInput(1)
+	canonical, units, _ := stagedCanonicalInput(in)
+	s, e := openStagedSession(context.Background(), canonical, StagedMappingOptions{StageDir: filepath.Join(t.TempDir(), "stage")})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.close()
+	plan, e := s.preparePlan(context.Background(), units, 1, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	plan.Book.subByAlias["sd#1"] = &dktypes.Node{ID: subdomainNodeID("domain", "sub"), Label: dktypes.LabelSubdomain, Domain: "domain", Subdomain: "sub"}
+	for _, summary := range []string{"（暂无摘要）", "（暂无详述）"} {
+		for _, action := range []string{"attach", "new_subdomain", "fuse"} {
+			d := alignDecision{Unit: units[0].ID, Action: action, NodeName: "name", Summary: summary, Tag: "entity", Domain: "domain", Subdomain: "sub"}
+			out := alignLLMOutput{Decisions: []alignDecision{d}}
+			if action == "attach" {
+				out.Decisions[0].Target = "sd#1"
+			}
+			if action == "fuse" {
+				out.Decisions[0] = alignDecision{Unit: units[0].ID, Action: "fuse", Group: "G1"}
+				out.Groups = []alignGroup{{Group: "G1", NodeName: "name", Summary: summary, Tag: "entity", Domain: "domain", Subdomain: "sub"}}
+			}
+			raw, _ := json.Marshal(out)
+			if _, _, e = stagedValidateOutput(string(raw), plan); e == nil {
+				t.Fatalf("normalized placeholder accepted for %s/%s", action, summary)
+			}
+		}
+	}
+}
+
+// 完整的 stop + 确切绑定用量是 schema 修复的先决条件，不能把截断或缺失用量当作修复预算。
+// Every rejected completion remains in the journal, and resume must not dispatch again.
+func TestStagedMappingIncompleteOrUnboundUsageStopsWithoutRepair(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"non-stop", "zero-input", "mismatched-input", "zero-output", "excess-output"} {
+		t.Run(mode, func(t *testing.T) {
+			in := stagedTestInput(1)
+			f := &stagedFake{pins: in.Identity.Admission, responseMutate: func(r *StagedMappingDispatchResult) {
+				switch mode {
+				case "non-stop":
+					r.Response.FinishReason = "length"
+				case "zero-input":
+					r.Response.InputTokens = 0
+				case "mismatched-input":
+					r.Response.InputTokens = 101
+				case "zero-output":
+					r.Response.OutputTokens = 0
+				case "excess-output":
+					r.Response.OutputTokens = stagedMaxOutput + 1
+				}
+			}}
+			dir := filepath.Join(t.TempDir(), "stage")
+			_, e := RunStagedMapping(context.Background(), in, StagedMappingOptions{StageDir: dir, Admitter: f})
+			if !errors.Is(e, ErrStagedMappingUncertain) || f.dispatched != 1 {
+				t.Fatalf("completion repaired/accepted: %v calls%d", e, f.dispatched)
+			}
+			_, e = RunStagedMapping(context.Background(), in, StagedMappingOptions{StageDir: dir, Resume: true, Admitter: f})
+			if !errors.Is(e, ErrStagedMappingUncertain) || f.dispatched != 1 {
+				t.Fatalf("completion repaid on resume: %v calls%d", e, f.dispatched)
+			}
+			raw, e := os.ReadFile(filepath.Join(dir, "journal.jsonl"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if !strings.Contains(string(raw), `"Kind":"response"`) || strings.Contains(string(raw), `"Kind":"invalid"`) {
+				t.Fatal("incomplete completion lost evidence or became schema-invalid")
+			}
+		})
 	}
 }

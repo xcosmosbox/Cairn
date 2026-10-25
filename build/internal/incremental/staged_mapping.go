@@ -34,6 +34,10 @@ var ErrStagedMappingUncertain = errors.New("staged mapping: UNCERTAIN_CHECKPOINT
 // Only a pre-dispatch overflow can cause an ordered split.
 var ErrStagedMappingOverflow = errors.New("staged mapping: predispatch overflow")
 
+// 只有完整且身份已验证的响应能形成此分类；来源/基础设施错误不能冒充 schema 失败。
+// This private sentinel is evidence of a schema failure, never a generic replay error.
+var errStagedResponseSchema = errors.New("staged mapping: complete response schema invalid")
+
 // StagedMappingAdmissionIdentity 由调用方独立冻结，不能由待验证的回执自签。
 // Pins identify the future serializer/counter bridge; this package provides no live bridge.
 type StagedMappingAdmissionIdentity struct {
@@ -296,7 +300,7 @@ func RunStagedMapping(ctx context.Context, input StagedMappingInput, opts Staged
 			if s.attempt.Call.Attempt >= 2 {
 				return nil, fmt.Errorf("staged mapping: schema attempts exhausted")
 			}
-			batch, err = stagedSelectUnits(units, s.attempt.Call.Units)
+			batch, err = stagedPendingBatch(s.state, units, s.attempt.Call.Units)
 			if err != nil {
 				return nil, err
 			}
@@ -373,7 +377,7 @@ func RunStagedMapping(ctx context.Context, input StagedMappingInput, opts Staged
 				return nil, e
 			}
 			response, e := handle.Dispatch(ctx, binding)
-			if e != nil || response.Binding != binding || response.ReceiptID == "" {
+			if e != nil || response.Binding != binding || response.ReceiptID == "" || !stagedValidUTF8(reflect.ValueOf(response)) {
 				return nil, ErrStagedMappingUncertain
 			}
 			if e = s.append(stagedEvent{Kind: "response", Response: &response}); e != nil {
@@ -400,6 +404,32 @@ func stagedSelectUnits(all []stagedUnit, ids []string) ([]stagedUnit, error) {
 		out = append(out, u)
 	}
 	return out, nil
+}
+
+func stagedPendingBatch(state stagedCatalogue, all []stagedUnit, ids []string) ([]stagedUnit, error) {
+	done := map[string]bool{}
+	for _, id := range state.Done {
+		done[id] = true
+	}
+	var pending []stagedUnit
+	for _, u := range all {
+		if !done[u.ID] {
+			pending = append(pending, u)
+		}
+	}
+	if len(ids) < 1 || len(ids) > 32 || len(ids) > len(pending) {
+		return nil, fmt.Errorf("staged mapping: invalid pending prefix")
+	}
+	for i, id := range ids {
+		if pending[i].ID != id {
+			return nil, fmt.Errorf("staged mapping: noncanonical pending prefix")
+		}
+	}
+	return pending[:len(ids)], nil
+}
+
+func stagedCompleteResponse(r *StagedMappingDispatchResult, b StagedMappingWireBinding) bool {
+	return r != nil && r.Binding == b && r.ReceiptID != "" && r.Response.FinishReason == "stop" && r.Response.InputTokens > 0 && r.Response.InputTokens == b.InputTokens && r.Response.OutputTokens > 0 && r.Response.OutputTokens <= b.ReservedOutputTokens && r.Response.InputTokens <= b.ContextLimit-b.ReservedOutputTokens
 }
 
 func stagedValidateWire(call StagedMappingCall, wire []byte, b StagedMappingWireBinding, pins StagedMappingAdmissionIdentity) error {
