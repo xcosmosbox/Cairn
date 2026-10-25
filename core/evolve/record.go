@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite" // SQLite driver（与 core/storage 同源，纯 Go）
@@ -72,6 +73,76 @@ func DefaultDir(kgDBPath string) string {
 // docsAffectedCap 是 docs_affected 的去重文件路径上限（防爆宽）。
 const docsAffectedCap = 200
 
+// 同进程等待必须发生在SQLite连接/DDL/IMMEDIATE事务之前，而非消耗其有限busy等待。
+// SQLite still arbitrates cross-process writers; this registry only admits local Record owners.
+type recordOwner struct {
+	token chan struct{}
+	refs  int
+}
+
+var recordOwners = struct {
+	sync.Mutex
+	byDir map[string]*recordOwner
+}{}
+
+func canonicalRecordDir(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("evolve.Record: 解析演化目录失败: %w", err)
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return "", fmt.Errorf("evolve.Record: 建演化目录失败: %w", err)
+	}
+	canonical, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("evolve.Record: 解析演化目录别名失败: %w", err)
+	}
+	return filepath.Clean(canonical), nil
+}
+
+// 引用包含owner与所有waiter；取消与最后一次释放均回收条目，避免目录注册表永久增长。
+// Resolve an existing canonical directory before calling; a queued cancellation owns no DB/artifact.
+func acquireRecordOwner(ctx context.Context, dir string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	recordOwners.Lock()
+	if recordOwners.byDir == nil {
+		recordOwners.byDir = map[string]*recordOwner{}
+	}
+	owner := recordOwners.byDir[dir]
+	if owner == nil {
+		owner = &recordOwner{token: make(chan struct{}, 1)}
+		owner.token <- struct{}{}
+		recordOwners.byDir[dir] = owner
+	}
+	owner.refs++
+	recordOwners.Unlock()
+	drop := func() {
+		recordOwners.Lock()
+		owner.refs--
+		if owner.refs == 0 {
+			delete(recordOwners.byDir, dir)
+		}
+		recordOwners.Unlock()
+	}
+	select {
+	case <-ctx.Done():
+		drop()
+		return nil, ctx.Err()
+	case <-owner.token:
+		var once sync.Once
+		release := func() { once.Do(func() { owner.token <- struct{}{}; drop() }) }
+		// select可以同时看到token与取消，仍需在进入持久化代码前确认上下文。
+		// A cancellation racing successful acquisition must not open the DB or create a snapshot.
+		if err := ctx.Err(); err != nil {
+			release()
+			return nil, err
+		}
+		return release, nil
+	}
+}
+
 // Record 是演化层的旁路收尾入口。失败仅由调用方告警，绝不影响构建退出码（R-ev-1）。
 // 返回的 summary 供调用方直接打印到终端（即时性，零额外操作）。
 //
@@ -81,10 +152,24 @@ func Record(ctx context.Context, kgDBPath, evolutionDir, tool string) (summary s
 	if kgDBPath == "" || evolutionDir == "" {
 		return "", fmt.Errorf("evolve.Record: kgDBPath 与 evolutionDir 均不可为空")
 	}
-	absDir, err := filepath.Abs(evolutionDir)
-	if err != nil {
-		return "", fmt.Errorf("evolve.Record: 解析演化目录失败: %w", err)
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("evolve.Record: 等待目录owner失败: %w", err)
 	}
+	absDir, err := canonicalRecordDir(evolutionDir)
+	if err != nil {
+		return "", err
+	}
+	release, err := acquireRecordOwner(ctx, absDir)
+	if err != nil {
+		return "", fmt.Errorf("evolve.Record: 等待目录owner失败: %w", err)
+	}
+	defer release()
+	return recordOwned(ctx, kgDBPath, absDir, tool)
+}
+
+// 只允许已持有该目录owner的调用进入，释放必须晚于本函数所有事务/快照错误清理。
+// The caller retains ownership through this entire capture and its deferred cleanup; no Record replay.
+func recordOwned(ctx context.Context, kgDBPath, absDir, tool string) (summary string, err error) {
 	snapDir := filepath.Join(absDir, "snapshots")
 	if err := os.MkdirAll(snapDir, 0o755); err != nil {
 		return "", fmt.Errorf("evolve.Record: 建快照目录失败: %w", err)
