@@ -27,10 +27,10 @@ import (
 	"log"
 	"strings"
 
-	"github.com/xcosmosbox/cairn/core/dktypes"
-	"github.com/xcosmosbox/cairn/core/parallel"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dktypes"
+	"github.com/xcosmosbox/cairn/core/parallel"
 )
 
 // maxReflowRounds 是 I-6/I-7 单个 LLM 阶段的原地重试上限（与全量 relate 一致）。
@@ -374,7 +374,7 @@ func (r *reflower) recomputeRelations(ctx context.Context, dirty *DirtySet, ao *
 			nodeSet[n.ID] = true
 		}
 		var internal, cross []*dktypes.Edge
-		seenEdge := make(map[string]bool)
+		seenEdge := make(map[string]*dktypes.Edge)
 		readFailed := false
 		for _, n := range nodes {
 			edges, err := r.st.edges.GetOutgoing(ctx, n.ID, 0)
@@ -390,10 +390,15 @@ func (r *reflower) recomputeRelations(ctx context.Context, dirty *DirtySet, ao *
 					continue // 只要 6 枚举语义边（composes 层级边由 ingest 物化，不经此处）
 				}
 				edgeKey := e.SourceID + "\x00" + e.TargetID + "\x00" + string(e.Kind)
-				if seenEdge[edgeKey] {
+				if previous := seenEdge[edgeKey]; previous != nil {
+					// 旧库重复身份里人工行优先，不能因机器行先读到就丢掉 R8 标记。
+					// Storage separately preserves every original row of this identity.
+					if previous.Provenance != dktypes.ProvenanceHumanCurated && e.Provenance == dktypes.ProvenanceHumanCurated {
+						*previous = *e
+					}
 					continue
 				}
-				seenEdge[edgeKey] = true
+				seenEdge[edgeKey] = e
 				if nodeSet[e.TargetID] {
 					internal = append(internal, e)
 				} else {
@@ -437,21 +442,21 @@ func (r *reflower) recomputeRelations(ctx context.Context, dirty *DirtySet, ao *
 		// LLM 一次遗漏就等于静默丢失既有知识连接：无告警、不可回溯（对比节点真删
 		// 有「真删 N」、primary 删除有「清理 stale primary」日志）。
 		//
-		// 因此：两端都未被本轮触碰、且被 LLM 遗漏的现存内部边，由代码补回。
-		// 注意只补「遗漏」——若 LLM 返回了该边（即它确认保留），仍走原有路径，
-		// 由 I-8 做字段级合并（允许更新 description/confidence，同时沿用旧边的
-		// id/provenance/properties/created_at 等权威字段）。这样既堵住静默丢失，
-		// 又不牺牲 LLM 对既有边的描述改进能力。
+		// R8 优先于脏集裁量：人工边即使端点被触碰也必须整行保留；机器返回同一
+		// 身份不代表有权覆盖人工内容。先滤掉冲突生成项，再把原始人工边补回。
+		// Machine-only unrelated omissions keep the existing R9 protection; all
+		// human identities retain their original payload regardless of touched nodes.
 		//
 		// 删边应通过 rebalance 的显式 drop_edge patch 表达（可观测），而不是靠
 		// 重算时「少返回几条」隐式发生。
+		rels = excludeHumanEdgeReplacements(internal, rels)
 		missing := missingProtectedEdges(internal, touched, rels)
 		finalRels[key] = rels
 		// 补回的边以原始 *Edge 形态重插，保留全部列（避免 lossy-cast 成 Relation）。
 		kept := append([]*dktypes.Edge(nil), cross...)
 		keptEdges[key] = append(kept, missing...)
 		if n := len(missing); n > 0 {
-			log.Printf("[incremental-reflow] I-7 子域 %s: 补回 %d 条被 LLM 遗漏且与本轮无关的既有边（防静默丢失）", key, n)
+			log.Printf("[incremental-reflow] I-7 子域 %s: 保留 %d 条人工边或与本轮无关的遗漏边（R8/R9）", key, n)
 		}
 	}
 	return finalRels, keptEdges
@@ -492,14 +497,28 @@ func touchedNodeSet(dirty *DirtySet, ao *alignOutcome, descriptions map[string]s
 	return touched
 }
 
-// missingProtectedEdges 返回需要补回的现存内部边：两端都未被本轮触碰（与本轮变化
-// 无关）、且未出现在 LLM 的最终集合里（被遗漏）。
-//
-// 只要有一端被触碰，该边就与本轮变化相关，LLM 保有完整裁量权（含删除）。
-// 若 LLM 返回了该边，则不补回——交由 I-8 做字段级合并，保留 LLM 的描述更新。
-//
-// missingProtectedEdges returns existing intra-subdomain edges that are
-// unrelated to this run's changes and were omitted by the LLM's final set.
+// excludeHumanEdgeReplacements 不把机器返回的同身份结果当成人工编辑授权。
+// Drop generated collisions before publishing I-7's machine relation set.
+func excludeHumanEdgeReplacements(internal []*dktypes.Edge, rels []extract.Relation) []extract.Relation {
+	protected := make(map[string]bool)
+	for _, edge := range internal {
+		if edge != nil && edge.Provenance == dktypes.ProvenanceHumanCurated {
+			protected[edge.SourceID+"\x00"+edge.TargetID+"\x00"+string(edge.Kind)] = true
+		}
+	}
+	kept := rels[:0]
+	for _, rel := range rels {
+		if protected[rel.Source+"\x00"+rel.Target+"\x00"+rel.Kind] {
+			log.Printf("[incremental-reflow] R8 skip generated replacement of human edge %s --%s--> %s", rel.Source, rel.Kind, rel.Target)
+			continue
+		}
+		kept = append(kept, rel)
+	}
+	return kept
+}
+
+// missingProtectedEdges 补回整条人工边（不受 touched/returned 影响），以及未触碰的机器遗漏边。
+// Preserve every human row and the prior R9 machine-only omission policy.
 func missingProtectedEdges(internal []*dktypes.Edge, touched map[string]bool, rels []extract.Relation) []*dktypes.Edge {
 	if len(internal) == 0 {
 		return nil
@@ -510,7 +529,15 @@ func missingProtectedEdges(internal []*dktypes.Edge, touched map[string]bool, re
 	}
 	var out []*dktypes.Edge
 	for _, e := range internal {
-		if e == nil || touched[e.SourceID] || touched[e.TargetID] {
+		if e == nil {
+			continue
+		}
+		if e.Provenance == dktypes.ProvenanceHumanCurated {
+			out = append(out, e)
+			log.Printf("[incremental-reflow] R8 preserve human edge id=%d %s --%s--> %s", e.ID, e.SourceID, e.Kind, e.TargetID)
+			continue
+		}
+		if touched[e.SourceID] || touched[e.TargetID] {
 			continue // 与本轮变化相关 → LLM 裁量（含删除权）
 		}
 		if returned[e.SourceID+"\x00"+e.TargetID+"\x00"+string(e.Kind)] {

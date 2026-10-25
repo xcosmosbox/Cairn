@@ -14,6 +14,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/xcosmosbox/cairn/core/dktypes"
@@ -389,9 +390,12 @@ func (r *EdgeRepo) DeleteSemanticBySubdomain(ctx context.Context, domain, subdom
 // replacement with a missing endpoint is skipped, matching the incremental
 // ingest fail-safe of never creating dangling edges.  Existing rows with the
 // same authoritative identity (source, target, kind) are updated in place so
-// only the LLM-schema fields description/confidence change; id, created_at and
-// every non-LLM metadata field remain stable. Duplicate legacy rows collapse
-// to the oldest row.
+// only the LLM-schema fields description/confidence change for machine-only
+// identities. R8: if ANY old row of an identity is human_curated, preserve ALL
+// its old rows without UPDATE/DELETE, including legacy NULLs and duplicates.
+// Generated omission or collision never authorizes a human payload change.
+// Machine-only legacy duplicates still collapse to the oldest row. Explicit
+// manual InsertIfAbsent/DeleteBetween APIs retain their separate mutation contract.
 func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdomain string, replacements []*dktypes.Edge) error {
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
@@ -419,6 +423,9 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 	}
 	oldByKey := make(map[string]*dktypes.Edge)
 	oldIDsByKey := make(map[string][]int64)
+	// 必须在同一事务内看完所有旧行：不能因最早重复行是机器边而漏掉后续人工边。
+	// Snapshot provenance across every duplicate before deciding any mutation.
+	protectedKeys := make(map[string]bool)
 	for rows.Next() {
 		row := &dbEdge{}
 		if err := rows.Scan(
@@ -436,6 +443,9 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 			oldByKey[key] = edge
 		}
 		oldIDsByKey[key] = append(oldIDsByKey[key], edge.ID)
+		if edge.Provenance == dktypes.ProvenanceHumanCurated {
+			protectedKeys[key] = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -496,6 +506,10 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 		if len(ids) == 0 {
 			continue
 		}
+		if protectedKeys[key] {
+			log.Printf("[storage-edge] R8 preserve existing human identity %q rows=%v (generated_returned=%t)", key, ids, seen[key])
+			continue
+		}
 		if !seen[key] {
 			for _, id := range ids {
 				if _, err := tx.ExecContext(ctx, `DELETE FROM edges WHERE id = ?`, id); err != nil {
@@ -520,6 +534,9 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 	// the old set.
 	for _, edge := range prepared {
 		key := edgeIdentityKey(edge.SourceID, edge.TargetID, edge.Kind)
+		if protectedKeys[key] {
+			continue // R8：整行原样保留，不把机器描述藏在 human_curated 标志下。
+		}
 		if old := oldByKey[key]; old != nil {
 			// A kept edge is commonly passed through as an exact copy.  Avoiding
 			// a needless UPDATE also preserves the distinction between legacy SQL
