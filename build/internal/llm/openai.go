@@ -42,6 +42,12 @@ type OpenAICompatClient struct {
 // NewOpenAICompatClient 创建 OpenAI 兼容 Client 实例。
 // 复用现有 Config（Endpoint/Model/APIKeyEnv/Timeout/MaxRetries 均已够用）。
 func NewOpenAICompatClient(cfg Config) (*OpenAICompatClient, error) {
+	return NewOpenAICompatClientWithTransport(cfg, nil)
+}
+
+// NewOpenAICompatClientWithTransport 将同一生产客户端绑定到显式观察器，不修改全局transport。
+// Nil retains the original http.DefaultTransport behavior and all original configuration defaults.
+func NewOpenAICompatClientWithTransport(cfg Config, transport http.RoundTripper) (*OpenAICompatClient, error) {
 	apiKeyEnv := cfg.APIKeyEnv
 	if apiKeyEnv == "" {
 		apiKeyEnv = "CAIRN_LLM_API_KEY"
@@ -73,7 +79,7 @@ func NewOpenAICompatClient(cfg Config) (*OpenAICompatClient, error) {
 
 	return &OpenAICompatClient{
 		config:     cfg,
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: &http.Client{Timeout: timeout, Transport: transport},
 		endpoint:   endpoint,
 		apiKeyEnv:  apiKeyEnv,
 	}, nil
@@ -88,13 +94,18 @@ func (c *OpenAICompatClient) Complete(ctx context.Context, req CompleteRequest) 
 	})
 }
 
-func (c *OpenAICompatClient) doComplete(ctx context.Context, req CompleteRequest) (*CompleteResponse, error) {
+// RenderRequest 使用真实发送路径的唯一序列化实现；不读取凭据、不发HTTP，也不生成回执。
+// The returned body is fresh caller-owned storage; rendering does not authenticate or admit a call.
+func (c *OpenAICompatClient) RenderRequest(req CompleteRequest) (endpoint string, raw []byte, err error) {
+	if c == nil {
+		return "", nil, fmt.Errorf("openai_compatible: nil renderer")
+	}
 	maxTokens := pickInt(req.MaxTokens, c.config.MaxTokens, 4096)
 	if dkconfig.IsDeepSeekEndpoint(c.endpoint) && maxTokens > dkconfig.DeepSeekMaxOutputTokens {
-		return nil, fmt.Errorf("openai_compatible: max_tokens %d exceeds DeepSeek maximum %d", maxTokens, dkconfig.DeepSeekMaxOutputTokens)
+		return "", nil, fmt.Errorf("openai_compatible: max_tokens %d exceeds DeepSeek maximum %d", maxTokens, dkconfig.DeepSeekMaxOutputTokens)
 	}
 	if dkconfig.IsDeepSeekEndpoint(c.endpoint) && len(req.StopSequences) > 16 {
-		return nil, fmt.Errorf("openai_compatible: DeepSeek accepts at most 16 stop sequences")
+		return "", nil, fmt.Errorf("openai_compatible: DeepSeek accepts at most 16 stop sequences")
 	}
 	// 组装 OpenAI /chat/completions 请求体。
 	// system + user 两条消息；开启 JSON mode 与 thinking mode。
@@ -116,9 +127,17 @@ func (c *OpenAICompatClient) doComplete(ctx context.Context, req CompleteRequest
 
 	b, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("openai_compatible: marshal request: %w", err)
+		return "", nil, fmt.Errorf("openai_compatible: marshal request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.endpoint, bytes.NewReader(b))
+	return c.endpoint, b, nil
+}
+
+func (c *OpenAICompatClient) doComplete(ctx context.Context, req CompleteRequest) (*CompleteResponse, error) {
+	endpoint, b, err := c.RenderRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(b))
 	if err != nil {
 		return nil, fmt.Errorf("openai_compatible: build request: %w", err)
 	}

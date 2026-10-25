@@ -86,6 +86,7 @@ type callInfo struct {
 	Phase     string
 	SourceSHA string
 	ParentSHA string
+	staged    *stagedBridgePrepared
 }
 
 // 父证明仅用于新回执模式；零值保持历史与固定 R3 账本字节字段不变。
@@ -94,6 +95,9 @@ func (info *callInfo) addTraceIdentity(row map[string]any) {
 	info.addSeedIdentity(row)
 	if info.ParentSHA != "" {
 		row["parent_proof_sha256"] = info.ParentSHA
+	}
+	if info.staged != nil {
+		info.staged.addIdentity(row)
 	}
 }
 
@@ -145,6 +149,11 @@ func (c *boundedClient) Complete(ctx context.Context, req llm.CompleteRequest) (
 		return nil, fmt.Errorf("capacity: logical receipt failed")
 	}
 	response, err := c.next.Complete(context.WithValue(ctx, callKey{}, info), req)
+	if info.staged != nil {
+		if bindingErr := info.staged.complete(response, err); bindingErr != nil {
+			err = bindingErr
+		}
+	}
 	end := map[string]any{"event": "logical_end", "call_id": info.ID, "stage": info.Stage, "wire_attempts": info.Attempts.Load(), "complete_error": err != nil, "time_utc": now()}
 	info.addTraceIdentity(end)
 	if e := c.ledger.append(end); e != nil {
@@ -183,7 +192,7 @@ func stage(system string) string {
 
 func knownStageName(name string) bool {
 	switch name {
-	case "annotation", "semantic_gate", "extract", "repair", "file_slug", "describe", "relate", "backfill", "coverage", "cross_relation_verify":
+	case "annotation", "semantic_gate", "extract", "repair", "file_slug", "describe", "relate", "backfill", "coverage", "cross_relation_verify", "mapping", "description", "relation":
 		return true
 	}
 	return false
@@ -269,15 +278,29 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	if request.GetBody == nil {
 		return reject("request_not_replayable")
 	}
+	// GetBody不能证明实际Body；读取实际流并验证重放副本，再由同一校验buffer转发。
+	// Actual forwarded bytes, rather than an unrelated replay, are counted and admitted.
+	if request.Body == nil {
+		return reject("request_body")
+	}
+	raw, err := io.ReadAll(request.Body)
+	request.Body.Close()
+	if err != nil {
+		return reject("request_body")
+	}
 	body, err := request.GetBody()
 	if err != nil {
 		return reject("request_body")
 	}
-	raw, err := io.ReadAll(body)
+	replay, err := io.ReadAll(body)
 	body.Close()
 	if err != nil {
 		return reject("request_body")
 	}
+	if !bytes.Equal(raw, replay) {
+		return reject("actual_body_replay_mismatch")
+	}
+	request.Body = io.NopCloser(bytes.NewReader(raw))
 	row["request_sha256"], row["request_bytes"] = sha(raw), len(raw)
 	var parsed wireRequest
 	if json.Unmarshal(raw, &parsed) != nil || len(parsed.Messages) != 2 || parsed.Model != "deepseek-flash" || parsed.MaxTokens < 1 || parsed.MaxTokens > 393216 {
@@ -295,7 +318,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	if t.counter == nil {
 		return reject("tokenizer_unavailable")
 	}
-	count, err := t.counter.Count(request.Context(), raw)
+	count, err := t.counter.Count(request.Context(), append([]byte(nil), raw...))
 	if err != nil {
 		return reject("tokenizer_unverified")
 	}
@@ -307,7 +330,15 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		return reject("cancelled")
 	}
 	if t.seedPolicy != nil {
-		if err := t.seedPolicy.admit(info, parsed, raw, count); err != nil {
+		var admissionErr error
+		if exact, ok := t.seedPolicy.(interface {
+			admitRequest(*http.Request, *callInfo, wireRequest, []byte, tokenCount) error
+		}); ok {
+			admissionErr = exact.admitRequest(request, info, parsed, raw, count)
+		} else {
+			admissionErr = t.seedPolicy.admit(info, parsed, raw, count)
+		}
+		if admissionErr != nil {
 			return reject("seeded_phase_profile_or_wire_budget")
 		}
 	}
@@ -318,6 +349,9 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	// The durable request event defines admission. A concurrently failed call may
 	// cancel it afterwards; it remains in the ledger and is drained conservatively.
 	t.sent.Add(1)
+	request.Body = io.NopCloser(bytes.NewReader(raw))
+	request.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(raw)), nil }
+	request.ContentLength = int64(len(raw))
 	response, networkErr := t.next.RoundTrip(request)
 	outcome := map[string]any{"event": "response", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "time_utc": now(), "seconds": time.Since(start).Seconds(), "usage_status": "unknown"}
 	info.addTraceIdentity(outcome)
@@ -326,7 +360,8 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		if request.Context().Err() != nil {
 			outcome["cancelled"] = true
 		}
-		_ = t.ledger.append(outcome)
+		persistErr := t.ledger.append(outcome)
+		t.observeStaged(info, nil, outcome, persistErr)
 		if t.seedPolicy != nil && t.ledger.cancel != nil {
 			t.ledger.cancel()
 		}
@@ -426,8 +461,17 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	}
 	// Returning the original response preserves production parsing and retry policy.
 	// A failed outcome write cancels the shared run; audit cannot call it complete.
-	_ = t.ledger.append(outcome)
+	persistErr := t.ledger.append(outcome)
+	t.observeStaged(info, rawResponse, outcome, persistErr)
 	return response, nil
+}
+
+func (t *traceTransport) observeStaged(info *callInfo, raw []byte, outcome map[string]any, persistErr error) {
+	if observer, ok := t.seedPolicy.(interface {
+		observe(*callInfo, []byte, map[string]any, error)
+	}); ok {
+		observer.observe(info, raw, outcome, persistErr)
+	}
 }
 
 var uuidRE = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
@@ -447,7 +491,8 @@ func (r *replayedBody) Read(p []byte) (int, error) {
 func (*replayedBody) Close() error { return nil }
 
 func openLedger(path string, cancel context.CancelFunc) (*durableLedger, *os.File, error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	// The same locked descriptor supports the bridge's read-only whole-ledger inventory.
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return nil, nil, err
 	}
