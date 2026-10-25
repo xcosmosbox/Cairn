@@ -63,8 +63,11 @@ continuation both ended in explicit final semantic rejection. Larger item counts
 snapshot, #85 source is accepted; final acceptance of its negative execution packet
 is separate and still pending.
 Optional empty Detail in the pure API and compatibility with the existing final
-materializer still require an explicit integration decision. No default pipeline
-promotion or quality-equivalence claim is adopted here.
+materializer still require an explicit integration decision. The opt-in bounded
+requests reject canonical UUID-form business/source/display literals as unsupported
+input without masking or truncation; the original-source verifier retains its
+separate reversible UUID view. No default pipeline promotion or quality-equivalence
+claim is adopted here.
 
 The old SourceBackfill pilot stays disabled under #13. #11 full archive audit
 and #13 are requirements when relying on those historical controls, not automatic
