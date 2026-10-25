@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -192,5 +193,226 @@ func TestIndexedDriverKnownManifestAndInputFence(t *testing.T) {
 		if _, err := loadIndexedInputs("unread", "unread", path, bad); err == nil {
 			t.Fatal("manifest pin bypass")
 		}
+	}
+}
+
+// Regression probes preserved from independent review of27123/2985; no provider.
+func TestIndexedDriverRegressionAuditRejectsContradictoryObservedLedger(t *testing.T) {
+	in, generation := indexedFixture(t)
+	out, calls, err := indexedFixtureAttempt(t, generation, `{"idempotent":true}`, 100, 20)
+	if err != nil || calls != 2 {
+		t.Fatal("baseline", calls, err)
+	}
+	original, err := os.ReadFile(filepath.Join(out, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"response_json", "transport_error", "response_read_error", "total_tokens", "null-complete-error", "requested_model", "max_tokens", "response-docs"} {
+		t.Run(field, func(t *testing.T) {
+			lines := bytes.Split(bytes.TrimSuffix(original, []byte{'\n'}), []byte{'\n'})
+			pos := 2
+			if field == "null-complete-error" {
+				pos = 3
+			}
+			if field == "requested_model" || field == "max_tokens" {
+				pos = 1
+			}
+			var row map[string]any
+			_ = json.Unmarshal(lines[pos], &row)
+			switch field {
+			case "response_json":
+				row[field] = false
+			case "transport_error", "response_read_error":
+				row[field] = true
+			case "total_tokens":
+				row[field] = 999
+			case "null-complete-error":
+				row["complete_error"] = nil
+			case "requested_model":
+				row[field] = "other-model"
+			case "max_tokens":
+				row[field] = 17
+			case "response-docs":
+				row["document_ids"] = []string{"wrong-document"}
+			}
+			lines[pos], _ = json.Marshal(row)
+			if e := os.WriteFile(filepath.Join(out, "requests.jsonl"), append(bytes.Join(lines, []byte{'\n'}), '\n'), 0600); e != nil {
+				t.Fatal(e)
+			}
+			if e := indexedAudit(out, in, "fixture-plan", &indexedFixtureCounter{}); e == nil {
+				t.Fatal("contradictory ledger accepted as replay-verified provisional")
+			}
+		})
+	}
+}
+
+func TestIndexedDriverRegressionPostForwardIdentityDriftStopsBeforeGateB(t *testing.T) {
+	for _, field := range []string{"stage", "call", "document", "documents", "documents-inplace", "source", "phase"} {
+		t.Run(field, func(t *testing.T) {
+			t.Setenv("CAIRN_LLM_API_KEY", "synthetic-review-key")
+			in, generation := indexedFixture(t)
+			counter := &indexedFixtureCounter{}
+			out := filepath.Join(t.TempDir(), "attempt")
+			if e := indexedPreflight(context.Background(), in, out, "fixture-plan", counter); e != nil {
+				t.Fatal(e)
+			}
+			calls := 0
+			old := http.DefaultTransport
+			defer func() { http.DefaultTransport = old }()
+			http.DefaultTransport = seededRenderTransport(func(r *http.Request) (*http.Response, error) {
+				calls++
+				_, _ = io.ReadAll(r.Body)
+				if calls == 1 {
+					info := r.Context().Value(callKey{}).(*callInfo)
+					switch field {
+					case "stage":
+						info.Stage = "semantic_gate"
+					case "call":
+						info.ID = 99
+					case "document":
+						info.Document = "wrong-document"
+					case "documents":
+						info.Documents = []string{"wrong-document"}
+					case "documents-inplace":
+						info.Documents[0] = "wrong-document"
+					case "source":
+						info.SourceSHA = sha([]byte("wrong"))
+					case "phase":
+						info.Phase = "validation"
+					}
+					return indexedFakeResponse(t, generation, 100, 20), nil
+				}
+				return indexedFakeResponse(t, `{"idempotent":true}`, 100, 5), nil
+			})
+			err := indexedRun(context.Background(), in, out, "fixture-plan", counter)
+			if err == nil || calls != 1 {
+				t.Fatal("identity drift paid GateB or returned success", field, calls, err)
+			}
+			if _, err := os.Stat(filepath.Join(out, "generation-http-response.private.json")); err != nil {
+				t.Fatal("actual first response lost on identity drift", err)
+			}
+		})
+	}
+}
+
+func TestIndexedDriverRegressionExactEvidenceAliasesAndNulls(t *testing.T) {
+	in, generation := indexedFixture(t)
+	out, calls, err := indexedFixtureAttempt(t, generation, `{"idempotent":true}`, 100, 20)
+	if err != nil || calls != 2 {
+		t.Fatal("baseline", calls, err)
+	}
+	ledgerPath := filepath.Join(out, "requests.jsonl")
+	original, err := os.ReadFile(ledgerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedPath := filepath.Join(out, "generation-response.private.json")
+	savedOriginal, err := os.ReadFile(savedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"cancelled", "null-error-flag", "response-json-alias", "mode-alias", "model-alias", "max-alias", "count-alias", "saved-error-null"} {
+		t.Run(kind, func(t *testing.T) {
+			if err := os.WriteFile(ledgerPath, original, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(savedPath, savedOriginal, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "saved-error-null" {
+				var saved map[string]any
+				_ = json.Unmarshal(savedOriginal, &saved)
+				saved["complete_error"] = nil
+				b, _ := json.Marshal(saved)
+				if err := os.WriteFile(savedPath, b, 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				lines := bytes.Split(bytes.TrimSuffix(original, []byte{'\n'}), []byte{'\n'})
+				pos := 2
+				if kind == "model-alias" || kind == "max-alias" || kind == "count-alias" {
+					pos = 1
+				}
+				var row map[string]any
+				_ = json.Unmarshal(lines[pos], &row)
+				switch kind {
+				case "cancelled":
+					row["cancelled"] = true
+				case "null-error-flag":
+					row["transport_error"] = nil
+				case "response-json-alias":
+					row["Response_Json"] = false
+				case "mode-alias":
+					row["OPERATION_MODE"] = row["operation_mode"]
+					delete(row, "operation_mode")
+				case "model-alias":
+					row["Requested_Model"] = "other"
+				case "max-alias":
+					row["MAX_TOKENS"] = 17
+				case "count-alias":
+					row["token_count"].(map[string]any)["Input_Tokens"] = 101
+				}
+				lines[pos], _ = json.Marshal(row)
+				if err := os.WriteFile(ledgerPath, append(bytes.Join(lines, []byte{'\n'}), '\n'), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := indexedAudit(out, in, "fixture-plan", &indexedFixtureCounter{}); err == nil {
+				t.Fatal("contradictory exact evidence accepted", kind)
+			}
+		})
+	}
+}
+
+// Regression probes preserved from independent review of27123/2985; no provider.
+func TestIndexedDriverRegressionPreparedBindingCannotCoherentlyReplaceFrozenFirstWire(t *testing.T) {
+	for _, kind := range []string{"wire", "count"} {
+		t.Run(kind, func(t *testing.T) {
+			in, _ := indexedFixture(t)
+			counter := &indexedFixtureCounter{}
+			out := filepath.Join(t.TempDir(), "attempt")
+			if e := indexedPreflight(context.Background(), in, out, "fixture-plan", counter); e != nil {
+				t.Fatal(e)
+			}
+			pre, _, e := readIndexedPreflight(out, in, "fixture-plan")
+			if e != nil {
+				t.Fatal(e)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			policy := &indexedWirePolicy{in: &in, pre: pre, counter: counter, out: out, cancel: cancel}
+			request, _ := in.helper.Request()
+			binding, e := policy.prepare(ctx, "generation", request)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if kind == "wire" {
+				request.System += " replaced after preparation"
+				binding.request = request
+				binding.wire, e = indexedRender(request)
+				if e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				binding.count.Input++
+			}
+			info := &callInfo{ID: 1}
+			if e := binding.bind(request, info); e != nil {
+				return
+			}
+			info.Attempts.Store(1)
+			req, e := http.NewRequestWithContext(context.WithValue(ctx, seededBindingKey{}, binding), "POST", indexedClientConfig().Endpoint, bytes.NewReader(binding.wire))
+			if e != nil {
+				t.Fatal(e)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			var parsed wireRequest
+			if json.Unmarshal(binding.wire, &parsed) != nil {
+				t.Fatal("badfixture")
+			}
+			if e := policy.admitRequest(req, info, parsed, binding.wire, binding.count); e == nil {
+				t.Fatal("coherently changed prepared capability admitted despite frozen preflight", kind)
+			}
+		})
 	}
 }

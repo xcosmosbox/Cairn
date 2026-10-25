@@ -206,7 +206,7 @@ func readIndexedPreflight(out string, in indexedInputs, planSHA string) (indexed
 	var pre indexedPreflightRecord
 	raw, err := receiptRead(out, "indexed-preflight.json")
 	binary, berr := indexedBinarySHA()
-	if err != nil || berr != nil || decodeStrict(raw, &pre) != nil || pre.Format != "cairn-indexed-preflight/v1" || pre.Mode != indexedMode || pre.SourceRole != in.spec.SourceRole || pre.PlanSHA != planSHA || pre.OriginalSHA != in.spec.OriginalSHA || pre.DiagnosticsSHA != in.spec.DiagnosticsSHA || pre.Helper != in.helper.Identity() || pre.Binary != binary || pre.Driver != driverSourceDigest() || pre.Production != indexedProductionDigest() || pre.Counter != in.spec.Counter || pre.ModelCalls != 0 || !pre.Counter.matches(pre.Generation.Count) {
+	if err != nil || berr != nil || decodeStrict(raw, &pre) != nil || !stagedBridgeSameJSON(raw, pre) || pre.Format != "cairn-indexed-preflight/v1" || pre.Mode != indexedMode || pre.SourceRole != in.spec.SourceRole || pre.PlanSHA != planSHA || pre.OriginalSHA != in.spec.OriginalSHA || pre.DiagnosticsSHA != in.spec.DiagnosticsSHA || pre.Helper != in.helper.Identity() || pre.Binary != binary || pre.Driver != driverSourceDigest() || pre.Production != indexedProductionDigest() || pre.Counter != in.spec.Counter || pre.ModelCalls != 0 || !pre.Counter.matches(pre.Generation.Count) {
 		return pre, raw, fmt.Errorf("indexed: preflight source/binary/runtime/recipe mismatch")
 	}
 	req, _ := in.helper.Request()
@@ -241,6 +241,12 @@ func (b *indexedBinding) bind(req llm.CompleteRequest, info *callInfo) error {
 	if b == nil || b.owner == nil || !reflect.DeepEqual(req, b.request) || b.owner.in == nil {
 		return fmt.Errorf("indexed: missing or changed private source binding")
 	}
+	p := b.owner
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.active != b || p.err != nil || p.boundInfo != nil || info.ID < 1 || indexedBindingDigest(b) != p.preparedSeal {
+		return fmt.Errorf("indexed: private logical call already bound or invalid")
+	}
 	info.Mode, info.Phase = indexedMode, b.phase
 	info.Stage = "annotation"
 	if b.phase == "validation" {
@@ -249,6 +255,8 @@ func (b *indexedBinding) bind(req llm.CompleteRequest, info *callInfo) error {
 		return fmt.Errorf("indexed: unknown phase")
 	}
 	info.Document, info.Documents, info.SourceSHA = b.owner.in.spec.Document, []string{b.owner.in.spec.Document}, b.owner.in.spec.OriginalSHA
+	info.ParentSHA = ""
+	p.boundInfo, p.boundIdentity = info, indexedIdentityOf(info)
 	return nil
 }
 
@@ -256,19 +264,53 @@ type indexedObserved struct {
 	binding  *indexedBinding
 	response *llm.CompleteResponse
 	observed bool
+	info     *callInfo
+	identity indexedCallIdentity
+}
+
+type indexedCallIdentity struct {
+	ID                                           int64
+	Stage, Mode, Phase, Document, Source, Parent string
+	Documents                                    []string
+}
+
+func indexedIdentityOf(info *callInfo) indexedCallIdentity {
+	return indexedCallIdentity{info.ID, info.Stage, info.Mode, info.Phase, info.Document, info.SourceSHA, info.ParentSHA, append([]string(nil), info.Documents...)}
+}
+
+func (row indexedObserved) identityIntact() bool {
+	return row.info != nil && row.info.Attempts.Load() == 1 && reflect.DeepEqual(indexedIdentityOf(row.info), row.identity)
 }
 
 type indexedWirePolicy struct {
-	mu         sync.Mutex
-	in         *indexedInputs
-	pre        indexedPreflightRecord
-	counter    tokenCounter
-	out        string
-	cancel     context.CancelFunc
-	err        error
-	active     *indexedBinding
-	rows       []indexedObserved
-	validation *llm.CompleteRequest
+	mu            sync.Mutex
+	in            *indexedInputs
+	pre           indexedPreflightRecord
+	counter       tokenCounter
+	out           string
+	cancel        context.CancelFunc
+	err           error
+	active        *indexedBinding
+	rows          []indexedObserved
+	validation    *llm.CompleteRequest
+	boundInfo     *callInfo
+	boundIdentity indexedCallIdentity
+	preparedSeal  string
+}
+
+// 独立保存在 policy 内的期望值不能随返回的 binding 一起被改写。
+// The context object's copied wire/count is not its own authority at dispatch.
+func indexedBindingDigest(b *indexedBinding) string {
+	raw, err := json.Marshal(struct {
+		Phase   string
+		Request llm.CompleteRequest
+		WireSHA string
+		Count   tokenCount
+	}{b.phase, b.request, sha(b.wire), b.count})
+	if err != nil {
+		return ""
+	}
+	return sha(raw)
 }
 
 func (p *indexedWirePolicy) stop(err error) {
@@ -292,7 +334,7 @@ func (p *indexedWirePolicy) prepare(ctx context.Context, phase string, req llm.C
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.err != nil || p.active != nil || len(p.rows) >= 2 || (len(p.rows) == 0 && phase != "generation") || (len(p.rows) == 1 && (phase != "validation" || !p.rows[0].observed || p.rows[0].response == nil || p.validation == nil || !reflect.DeepEqual(req, *p.validation))) {
+	if p.err != nil || p.active != nil || len(p.rows) >= 2 || (len(p.rows) == 0 && phase != "generation") || (len(p.rows) == 1 && (phase != "validation" || !p.rows[0].observed || !p.rows[0].identityIntact() || p.rows[0].response == nil || p.validation == nil || !reflect.DeepEqual(req, *p.validation))) {
 		return nil, fmt.Errorf("indexed: wrong phase, prior failure or two-call budget")
 	}
 	if len(p.rows) == 0 && (sha(wire) != p.pre.Generation.RequestSHA || count != p.pre.Generation.Count) {
@@ -300,6 +342,8 @@ func (p *indexedWirePolicy) prepare(ctx context.Context, phase string, req llm.C
 	}
 	b := &indexedBinding{owner: p, phase: phase, request: stagedBridgeCopyRequest(req), wire: append([]byte(nil), wire...), count: count}
 	p.active = b
+	p.preparedSeal = indexedBindingDigest(b)
+	p.boundInfo, p.boundIdentity = nil, indexedCallIdentity{}
 	return b, nil
 }
 
@@ -308,7 +352,7 @@ func (p *indexedWirePolicy) prepare(ctx context.Context, phase string, req llm.C
 func (p *indexedWirePolicy) authorizeValidation() (*annotation.SourceIndexedCandidate, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.err != nil || p.active != nil || len(p.rows) != 1 || !p.rows[0].observed || p.rows[0].response == nil || p.validation != nil {
+	if p.err != nil || p.active != nil || len(p.rows) != 1 || !p.rows[0].observed || !p.rows[0].identityIntact() || p.rows[0].response == nil || p.validation != nil {
 		return nil, fmt.Errorf("indexed: generation observation not complete")
 	}
 	candidate, err := p.in.helper.Validate(p.rows[0].response)
@@ -335,7 +379,11 @@ func (p *indexedWirePolicy) admitRequest(request *http.Request, info *callInfo, 
 	defer p.mu.Unlock()
 	b, ok := request.Context().Value(seededBindingKey{}).(*indexedBinding)
 	actual, err := counterSeedIdentity(p.counter)
-	if !ok || b == nil || b != p.active || b.owner != p || p.err != nil || len(p.rows) >= 2 || err != nil || actual != p.pre.Counter || info.Mode != indexedMode || info.Phase != b.phase || info.Document != p.in.spec.Document || !reflect.DeepEqual(info.Documents, []string{p.in.spec.Document}) || info.SourceSHA != p.in.spec.OriginalSHA || info.ParentSHA != "" || info.Attempts.Load() != 1 || request.URL.String() != dkconfig.DeepSeekEndpoint || request.Method != http.MethodPost || request.Header.Get("Content-Type") != "application/json" || request.ContentLength != int64(len(wire)) || !bytes.Equal(wire, b.wire) || count != b.count || parsed.Model != dkconfig.DeepSeekFlashModel || parsed.MaxTokens != 65536 {
+	wantStage := "annotation"
+	if b != nil && b.phase == "validation" {
+		wantStage = "semantic_gate"
+	}
+	if !ok || b == nil || b != p.active || b.owner != p || indexedBindingDigest(b) != p.preparedSeal || p.err != nil || len(p.rows) >= 2 || err != nil || actual != p.pre.Counter || info != p.boundInfo || !reflect.DeepEqual(indexedIdentityOf(info), p.boundIdentity) || info.ID < 1 || info.Stage != wantStage || info.Mode != indexedMode || info.Phase != b.phase || info.Document != p.in.spec.Document || !reflect.DeepEqual(info.Documents, []string{p.in.spec.Document}) || info.SourceSHA != p.in.spec.OriginalSHA || info.ParentSHA != "" || info.Attempts.Load() != 1 || request.URL.String() != dkconfig.DeepSeekEndpoint || request.Method != http.MethodPost || request.Header.Get("Content-Type") != "application/json" || request.ContentLength != int64(len(wire)) || !bytes.Equal(wire, b.wire) || count != b.count || parsed.Model != dkconfig.DeepSeekFlashModel || parsed.MaxTokens != 65536 || (len(p.rows) == 1 && !p.rows[0].identityIntact()) {
 		p.stop(fmt.Errorf("indexed: actual request/source/profile/runtime binding changed"))
 		return p.err
 	}
@@ -343,14 +391,14 @@ func (p *indexedWirePolicy) admitRequest(request *http.Request, info *callInfo, 
 		p.stop(fmt.Errorf("indexed: duplicate actual wire or phase"))
 		return p.err
 	}
-	p.rows = append(p.rows, indexedObserved{binding: b})
+	p.rows = append(p.rows, indexedObserved{binding: b, info: info, identity: indexedIdentityOf(info)})
 	return nil
 }
 
 func (p *indexedWirePolicy) observe(info *callInfo, raw []byte, outcome map[string]any, persistErr error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.rows) == 0 || p.active == nil || p.rows[len(p.rows)-1].binding != p.active || info.Phase != p.active.phase {
+	if len(p.rows) == 0 || p.active == nil || p.rows[len(p.rows)-1].binding != p.active {
 		p.stop(fmt.Errorf("indexed: unbound actual response"))
 		return
 	}
@@ -361,10 +409,10 @@ func (p *indexedWirePolicy) observe(info *callInfo, raw []byte, outcome map[stri
 	}
 	// 在判断内容/usage 前保留实际帧，不记录认证头或凭据。
 	// Preserve the actual response body before rejecting uncertain or invalid evidence.
-	saveErr := writeBytesNew(filepath.Join(p.out, info.Phase+"-http-response.private.json"), raw)
-	response, parseErr := stagedBridgeResponseEvidence(raw, row.binding.count.Input)
+	saveErr := writeBytesNew(filepath.Join(p.out, row.identity.Phase+"-http-response.private.json"), raw)
+	response, parseErr := indexedResponseEvidence(raw, row.binding.count.Input)
 	row.observed, row.response = true, response
-	if persistErr != nil || saveErr != nil || parseErr != nil || outcome["http_status"] != 200 || outcome["transport_error"] == true || outcome["response_read_error"] == true {
+	if persistErr != nil || saveErr != nil || parseErr != nil || indexedBindingDigest(row.binding) != p.preparedSeal || !row.identityIntact() || row.info != info || outcome["http_status"] != 200 || outcome["transport_error"] == true || outcome["response_read_error"] == true {
 		p.stop(fmt.Errorf("indexed: actual response/usage/ledger evidence incomplete"))
 	}
 }
@@ -403,7 +451,7 @@ func (c *indexedRecordingClient) Complete(ctx context.Context, req llm.CompleteR
 	response, completeErr := c.next.Complete(context.WithValue(ctx, seededBindingKey{}, binding), req)
 	c.policy.mu.Lock()
 	if completeErr == nil {
-		if c.policy.err != nil || len(c.policy.rows) == 0 || c.policy.rows[len(c.policy.rows)-1].binding != binding || !c.policy.rows[len(c.policy.rows)-1].observed || response == nil || !reflect.DeepEqual(response, c.policy.rows[len(c.policy.rows)-1].response) {
+		if c.policy.err != nil || len(c.policy.rows) == 0 || c.policy.rows[len(c.policy.rows)-1].binding != binding || !c.policy.rows[len(c.policy.rows)-1].observed || !c.policy.rows[len(c.policy.rows)-1].identityIntact() || response == nil || !reflect.DeepEqual(response, c.policy.rows[len(c.policy.rows)-1].response) {
 			completeErr = fmt.Errorf("indexed: completion differs from durable actual response")
 		}
 	}
@@ -577,6 +625,58 @@ type indexedTraceRow struct {
 	CompleteError bool   `json:"complete_error"`
 	WireAttempts  int    `json:"wire_attempts"`
 	RawSHA        string `json:"response_sha256"`
+	fields        map[string]json.RawMessage
+}
+
+func indexedEvidenceFields(fields map[string]json.RawMessage, expected map[string]any) bool {
+	for key := range fields {
+		for canonical := range expected {
+			if strings.EqualFold(key, canonical) && key != canonical {
+				return false
+			}
+		}
+	}
+	for key, want := range expected {
+		raw, ok := fields[key]
+		if !ok || !stagedBridgeSameJSON(raw, want) {
+			return false
+		}
+	}
+	return true
+}
+
+// 共享生产响应证据校验后，再要求关键键精确拼写，防止 Go 大小写兼容掩盖歧义。
+// Live and offline validation share these exact provider-field rules.
+func indexedResponseEvidence(raw []byte, input int) (*llm.CompleteResponse, error) {
+	response, err := stagedBridgeResponseEvidence(raw, input)
+	if err != nil {
+		return response, err
+	}
+	bad := func() (*llm.CompleteResponse, error) {
+		return response, fmt.Errorf("indexed: ambiguous critical provider fields")
+	}
+	var top, choice, message, usage map[string]json.RawMessage
+	var choices []json.RawMessage
+	if json.Unmarshal(raw, &top) != nil || json.Unmarshal(top["choices"], &choices) != nil || len(choices) != 1 || json.Unmarshal(choices[0], &choice) != nil || json.Unmarshal(choice["message"], &message) != nil || json.Unmarshal(top["usage"], &usage) != nil {
+		return bad()
+	}
+	for _, group := range []struct {
+		fields map[string]json.RawMessage
+		keys   []string
+	}{{top, []string{"model", "choices", "usage"}}, {choice, []string{"finish_reason", "message"}}, {message, []string{"content"}}, {usage, []string{"prompt_tokens", "completion_tokens", "total_tokens"}}} {
+		for key := range group.fields {
+			for _, canonical := range group.keys {
+				if strings.EqualFold(key, canonical) && key != canonical {
+					return bad()
+				}
+			}
+		}
+	}
+	var model string
+	if json.Unmarshal(top["model"], &model) != nil || (model != "deepseek-flash" && model != "deepseek-v4.1-flash-1017") || !indexedEvidenceFields(choice, map[string]any{"finish_reason": "stop"}) || !indexedEvidenceFields(message, map[string]any{"content": response.Text}) || !indexedEvidenceFields(usage, map[string]any{"prompt_tokens": response.InputTokens, "completion_tokens": response.OutputTokens}) {
+		return bad()
+	}
+	return response, nil
 }
 
 // 重放客户端只读一次私有快照，所有请求仍由真实 builder/renderer 重建并重新计数。
@@ -613,15 +713,42 @@ func (c *indexedReplayClient) Complete(ctx context.Context, req llm.CompleteRequ
 	if err != nil || countErr != nil || identity != c.pre.Counter || !identity.matches(count) || requestRow.Count != count || requestRow.RequestSHA != sha(wire) || requestRow.SystemSHA != sha([]byte(req.System)) || requestRow.UserSHA != sha([]byte(req.User)) || (phase == "generation" && (count != c.pre.Generation.Count || sha(wire) != c.pre.Generation.RequestSHA)) {
 		return bad()
 	}
+	if !indexedEvidenceFields(requestRow.fields, map[string]any{"admitted": true, "provider_attempt": 1, "http_attempt": requestRow.Call, "request_sha256": sha(wire), "request_bytes": len(wire), "requested_model": "deepseek-flash", "max_tokens": 65536, "thinking": map[string]string{"type": "enabled"}, "response_format": map[string]string{"type": "json_object"}, "token_count": count, "system_sha256": sha([]byte(req.System)), "system_bytes": len(req.System), "system_codepoints": utf8.RuneCountInString(req.System), "user_sha256": sha([]byte(req.User)), "user_bytes": len(req.User), "user_codepoints": utf8.RuneCountInString(req.User)}) {
+		return bad()
+	}
 	metadata := seededRequestMetadata(req, wire, count)
 	metadata["phase"], metadata["source_role"], metadata["original_sha256"], metadata["helper_identity"] = phase, c.in.spec.SourceRole, c.in.spec.OriginalSHA, c.in.helper.Identity()
 	if !stagedBridgeSameJSON(c.files[phase+"-request-capture.json"], metadata) {
 		return bad()
 	}
 	raw := c.files[phase+"-http-response.private.json"]
-	actual, err := stagedBridgeResponseEvidence(raw, count.Input)
+	actual, err := indexedResponseEvidence(raw, count.Input)
 	var saved indexedSavedResponse
 	if err != nil || decodeStrict(c.files[phase+"-response.private.json"], &saved) != nil || saved.CompleteError || saved.Response == nil || !reflect.DeepEqual(saved.Response, actual) || responseRow.RawSHA != sha(raw) || responseRow.ContentSHA != sha([]byte(actual.Text)) || responseRow.Status != 200 || responseRow.Finish != "stop" || !responseRow.ModelOK || (responseRow.Model != "deepseek-flash" && responseRow.Model != "deepseek-v4.1-flash-1017") || responseRow.Input != actual.InputTokens || responseRow.Output != actual.OutputTokens || responseRow.LocalInput != count.Input || responseRow.Delta == nil || *responseRow.Delta != 0 || responseRow.Usage != "reported" {
+		return bad()
+	}
+	if !stagedBridgeSameJSON(c.files[phase+"-response.private.json"], indexedSavedResponse{actual, false}) {
+		return bad()
+	}
+	var envelope struct {
+		Model string                     `json:"model"`
+		Usage map[string]json.RawMessage `json:"usage"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil || !indexedEvidenceFields(responseRow.fields, map[string]any{"http_attempt": responseRow.Call, "provider_attempt": 1, "http_status": 200, "response_json": true, "response_sha256": sha(raw), "response_bytes": len(raw), "returned_model": envelope.Model, "returned_model_sha256": sha([]byte(envelope.Model)), "model_identity_expected": true, "final_content_sha256": sha([]byte(actual.Text)), "finish_reason": "stop", "usage_status": "reported", "input_tokens": actual.InputTokens, "output_tokens": actual.OutputTokens, "local_input_tokens": count.Input, "provider_minus_local_input_tokens": 0}) {
+		return bad()
+	}
+	for _, flag := range []string{"transport_error", "response_read_error", "cancelled"} {
+		if value, ok := responseRow.fields[flag]; ok && !stagedBridgeSameJSON(value, false) {
+			return bad()
+		}
+	}
+	total, hasTotal := envelope.Usage["total_tokens"]
+	ledgerTotal, hasLedgerTotal := responseRow.fields["total_tokens"]
+	if hasTotal && !bytes.Equal(bytes.TrimSpace(total), []byte("null")) {
+		if !hasLedgerTotal || !stagedBridgeSameJSON(ledgerTotal, actual.InputTokens+actual.OutputTokens) {
+			return bad()
+		}
+	} else if hasLedgerTotal {
 		return bad()
 	}
 	return saved.Response, nil
@@ -646,11 +773,11 @@ func indexedAudit(out string, in indexedInputs, planSHA string, counter tokenCou
 		return raw
 	}
 	var start indexedStart
-	if decodeStrict(read("indexed-run-start.json"), &start) != nil || start.Format != "cairn-indexed-run/v1" || start.Mode != indexedMode || start.SourceRole != in.spec.SourceRole || start.PlanSHA != planSHA || start.PreflightSHA != sha(preRaw) || start.OriginalSHA != in.spec.OriginalSHA || start.DiagnosticsSHA != in.spec.DiagnosticsSHA || start.Helper != in.helper.Identity() || start.Binary != pre.Binary || start.Driver != pre.Driver || start.Production != pre.Production || start.Counter != pre.Counter || start.MaxWires != 2 || start.PerCallWires != 1 || start.StartedAt == "" {
+	if decodeStrict(read("indexed-run-start.json"), &start) != nil || !stagedBridgeSameJSON(read("indexed-run-start.json"), start) || start.Format != "cairn-indexed-run/v1" || start.Mode != indexedMode || start.SourceRole != in.spec.SourceRole || start.PlanSHA != planSHA || start.PreflightSHA != sha(preRaw) || start.OriginalSHA != in.spec.OriginalSHA || start.DiagnosticsSHA != in.spec.DiagnosticsSHA || start.Helper != in.helper.Identity() || start.Binary != pre.Binary || start.Driver != pre.Driver || start.Production != pre.Production || start.Counter != pre.Counter || start.MaxWires != 2 || start.PerCallWires != 1 || start.StartedAt == "" {
 		failures = append(failures, "run start binding")
 	}
 	var finish indexedFinish
-	if decodeStrict(read("indexed-run-finish.json"), &finish) != nil || finish.Format != "cairn-indexed-finish/v1" || finish.Mode != indexedMode || finish.SourceRole != in.spec.SourceRole || !finish.LedgerOK || finish.MissingUsage != 0 || finish.FinishedAt == "" {
+	if decodeStrict(read("indexed-run-finish.json"), &finish) != nil || !stagedBridgeSameJSON(read("indexed-run-finish.json"), finish) || finish.Format != "cairn-indexed-finish/v1" || finish.Mode != indexedMode || finish.SourceRole != in.spec.SourceRole || !finish.LedgerOK || finish.MissingUsage != 0 || finish.FinishedAt == "" {
 		failures = append(failures, "run finish binding")
 	}
 	ledger := read("requests.jsonl")
@@ -663,6 +790,9 @@ func indexedAudit(out string, in indexedInputs, planSHA string, counter tokenCou
 		var row indexedTraceRow
 		if stagedBridgeUniqueJSON(scanner.Bytes()) != nil || json.Unmarshal(scanner.Bytes(), &row) != nil {
 			failures = append(failures, "malformed/ambiguous ledger row")
+		}
+		if json.Unmarshal(scanner.Bytes(), &row.fields) != nil {
+			failures = append(failures, "ledger object required")
 		}
 		rows = append(rows, row)
 	}
@@ -683,9 +813,31 @@ func indexedAudit(out string, in indexedInputs, planSHA string, counter tokenCou
 		if call > 2 || row.Event != []string{"logical_start", "request", "response", "logical_end"}[i%4] || row.Call != int64(call) || row.Mode != indexedMode || row.Phase != phase || row.Stage != stage || row.Source != in.spec.OriginalSHA || row.Parent != "" {
 			failures = append(failures, "exact source/phase/event order")
 		}
+		if !indexedEvidenceFields(row.fields, map[string]any{"event": []string{"logical_start", "request", "response", "logical_end"}[i%4], "call_id": call, "operation_mode": indexedMode, "phase": phase, "stage": stage, "original_sha256": in.spec.OriginalSHA}) {
+			failures = append(failures, "exact typed ledger identity fields")
+		}
+		if parent, ok := row.fields["parent_proof_sha256"]; ok && !stagedBridgeSameJSON(parent, "") {
+			failures = append(failures, "no historical parent in source-only mode")
+		}
+		for key := range row.fields {
+			for _, canonical := range []string{"parent_proof_sha256", "document_id", "document_ids"} {
+				if strings.EqualFold(key, canonical) && key != canonical {
+					failures = append(failures, "case-fold identity alias")
+				}
+			}
+		}
 		if i%4 == 0 || i%4 == 1 {
 			if row.Document != in.spec.Document || !reflect.DeepEqual(row.Documents, []string{in.spec.Document}) {
 				failures = append(failures, "single original document binding")
+			}
+			if !indexedEvidenceFields(row.fields, map[string]any{"document_id": in.spec.Document, "document_ids": []string{in.spec.Document}}) {
+				failures = append(failures, "exact typed original document fields")
+			}
+		} else {
+			for key, want := range map[string]any{"document_id": in.spec.Document, "document_ids": []string{in.spec.Document}} {
+				if value, ok := row.fields[key]; ok && !stagedBridgeSameJSON(value, want) {
+					failures = append(failures, "contradictory optional outcome document")
+				}
 			}
 		}
 		if i%4 == 1 && (!row.Admitted || row.Attempt != int64(call) || row.Provider != 1 || !pre.Counter.matches(row.Count)) {
@@ -700,6 +852,9 @@ func indexedAudit(out string, in indexedInputs, planSHA string, counter tokenCou
 		}
 		if i%4 == 3 && (row.CompleteError || row.WireAttempts != 1) {
 			failures = append(failures, "logical completion")
+		}
+		if i%4 == 3 && !indexedEvidenceFields(row.fields, map[string]any{"complete_error": false, "wire_attempts": 1}) {
+			failures = append(failures, "exact boolean logical completion required")
 		}
 	}
 	if finish.InputTokens != totalIn || finish.OutputTokens != totalOut {
