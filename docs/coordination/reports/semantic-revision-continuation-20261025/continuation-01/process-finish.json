@@ -1,0 +1,11 @@
+{
+  "format": "cairn-receipt-actual-process-finish/v1",
+  "root_exact_go_and_runtime_report_ack": "https://github.com/xcosmosbox/Cairn/issues/85#issuecomment-6397649783",
+  "process_start_sha256": "7107e4a24fb9bdbc076cd9e443d5f74929c3d76e3298e539ea15d3a7cb80cbdf",
+  "finished_at_utc": "2026-10-25T12:34:14.291389+00:00",
+  "exit_code": 1,
+  "stdout_bytes": 0,
+  "stderr_bytes": 1258,
+  "frozen_source_clean_after": true,
+  "frozen_binary_sha256": "b1817f75a249d26a987b298f698dc4943994533195fc8a8931c220b87673d012"
+}

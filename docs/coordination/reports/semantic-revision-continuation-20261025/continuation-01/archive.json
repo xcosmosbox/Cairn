@@ -1,0 +1,51 @@
+{
+  "repository": "xcosmosbox/kd_manifeat",
+  "immutable_commit": "3e77cbac1ffa5d70e74eed4376f01b623ea7ec55",
+  "prefix": "semantic-revision-continuation-20261025/attempt-01",
+  "archive": {
+    "path": "receipt-continuation01-final-gate-fail.tar.gz",
+    "bytes": 246252,
+    "sha256": "ae87563ef568fef809105430896596d1ccdeea3ebc6957828740b3a8103ea1cf",
+    "compression": "gzip;tar;fixedmtime0",
+    "parts": [
+      {
+        "order": 0,
+        "path": "raw.tar.gz.part0000",
+        "storage_path": "raw.tar.gz.part0000.b64",
+        "bytes": 65536,
+        "sha256": "a01c6410dc451433ce97d4118d1f0b1405f149f3eabec5b45558feba0efd1003",
+        "storage_git_blob_sha1": "756ed75dbeb45643962204cb3ab35d9a2e821f47"
+      },
+      {
+        "order": 1,
+        "path": "raw.tar.gz.part0001",
+        "storage_path": "raw.tar.gz.part0001.b64",
+        "bytes": 65536,
+        "sha256": "c5a20e24c7ed1e0268a756d25dc655c89ef98e78533561e763205c5cc4db7196",
+        "storage_git_blob_sha1": "532f0931ef42415083a707b0cac09bd111098106"
+      },
+      {
+        "order": 2,
+        "path": "raw.tar.gz.part0002",
+        "storage_path": "raw.tar.gz.part0002.b64",
+        "bytes": 65536,
+        "sha256": "61a34b2fd5b57bd1711ebfe9ee298ea749f8551f88ebfcf6198023cf5e1de0cc",
+        "storage_git_blob_sha1": "b312a10958d72b031f33cff7a76fef448c39de4e"
+      },
+      {
+        "order": 3,
+        "path": "raw.tar.gz.part0003",
+        "storage_path": "raw.tar.gz.part0003.b64",
+        "bytes": 49644,
+        "sha256": "cd4f2eca656a292fe5154861990461efdcffe36ac6eba202ad053475015681e8",
+        "storage_git_blob_sha1": "612f146ab1a7f2a69da9f0a7f064f8a3544221b9"
+      }
+    ]
+  },
+  "manifest_sha256": "161a7e8a42522bea183d45828282b753c44e51d27f4c18b1d369708a5bee8199",
+  "outer_payloads": 38,
+  "outer_safe_members": 39,
+  "nested_parent_sha256": "e916091a731b4811ca07f8cacf615bbeee604089ceee91966212f46fb5d3319a",
+  "credentials_included": false,
+  "payloads": "Restricted full source, exact163parent, exact193revision, unedited machine critiques, parsed observed responses, parent archive, traces, audit and offline evidence. No API key value."
+}

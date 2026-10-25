@@ -1,0 +1,47 @@
+{
+  "format": "cairn-receipt-full-gates/v1",
+  "source_commit": "312db741c77f0f2ce0ce7e8538abf682431465ad",
+  "source_tree": "bb36a02f7b8c68d7034f1c0d839ac79d3c7d8d78",
+  "base": "862865eb625b49b3c014c34397bcab81ad4cf46b",
+  "root_gate_slot_go": "https://github.com/xcosmosbox/Cairn/issues/85#issuecomment-6397434003",
+  "go_version": "go version go1.27.3 linux/amd64",
+  "go_executable_sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+  "started_at_utc": "2026-10-25T12:08:48.078058+00:00",
+  "checks": [
+    {
+      "name": "race",
+      "argv": [
+        "/workspace/scratch/c1bb49a45412/cairn-toolchain-1.27.3/go/bin/go",
+        "test",
+        "-race",
+        "-count=1",
+        "./..."
+      ],
+      "started_at_utc": "2026-10-25T12:08:48.079141+00:00",
+      "log_path": "/workspace/scratch/c1bb49a45412/receipt85-runtime/race-312db74.log",
+      "pid": 14,
+      "exit_code": 0,
+      "finished_at_utc": "2026-10-25T12:10:19.340636+00:00",
+      "log_bytes": 3547,
+      "log_sha256": "1b1af43b5f40ef6986edff0ade16fae39de435d2b4713022a7c52017f0c460d1"
+    },
+    {
+      "name": "verify",
+      "argv": [
+        "make",
+        "verify"
+      ],
+      "started_at_utc": "2026-10-25T12:10:19.349439+00:00",
+      "log_path": "/workspace/scratch/c1bb49a45412/receipt85-runtime/verify-312db74.log",
+      "pid": 3866,
+      "exit_code": 0,
+      "finished_at_utc": "2026-10-25T12:10:41.805607+00:00",
+      "log_bytes": 434,
+      "log_sha256": "26e94f1d499ae33f40cfdafe520248c89bff32c1e8e84b2d1b6ffb474d1424a4"
+    }
+  ],
+  "api_key_unset": true,
+  "model_calls": 0,
+  "finished_at_utc": "2026-10-25T12:10:41.807027+00:00",
+  "source_clean_after": true
+}

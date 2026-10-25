@@ -1,0 +1,16 @@
+{
+  "format": "cairn-restricted-remote-reconstruction/v1",
+  "verified_at_utc": "2026-10-25T12:50:35.196275+00:00",
+  "repository": "xcosmosbox/kd_manifeat",
+  "immutable_commit": "3e77cbac1ffa5d70e74eed4376f01b623ea7ec55",
+  "prefix": "semantic-revision-continuation-20261025/attempt-01",
+  "archive_sha256": "ae87563ef568fef809105430896596d1ccdeea3ebc6957828740b3a8103ea1cf",
+  "archive_bytes": 246252,
+  "remote_ascii_parts": 4,
+  "outer_safe_members": 39,
+  "outer_payload_hashes_verified": 38,
+  "nested_parent_safe_members": 40,
+  "nested_parent_payload_hashes_verified": 39,
+  "nested_parent_sha256": "e916091a731b4811ca07f8cacf615bbeee604089ceee91966212f46fb5d3319a",
+  "pass": true
+}

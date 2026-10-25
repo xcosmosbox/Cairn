@@ -1,0 +1,25 @@
+{
+  "format": "cairn-receipt-compile/v1",
+  "source_commit": "576cee51c68b92146faa3394e922cfed14e1f0d5",
+  "source_tree": "bb36a02f7b8c68d7034f1c0d839ac79d3c7d8d78",
+  "clean_before": true,
+  "clean_after": true,
+  "working_directory": "/workspace/scratch/c1bb49a45412/cairn-receipt-freeze85",
+  "argv": [
+    "/workspace/scratch/c1bb49a45412/cairn-toolchain-1.27.3/go/bin/go",
+    "build",
+    "-mod=readonly",
+    "-o",
+    "/workspace/scratch/c1bb49a45412/receipt85-runtime/cairn-capacity-576cee5",
+    "./build/test/e2e/corpus-capacity"
+  ],
+  "started_at_utc": "2026-10-25T12:21:08.942922+00:00",
+  "finished_at_utc": "2026-10-25T12:21:14.314758+00:00",
+  "exit_code": 0,
+  "go_version": "go version go1.27.3 linux/amd64",
+  "go_executable_sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+  "go_archive_sha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
+  "model_calls": 0,
+  "binary_sha256": "b1817f75a249d26a987b298f698dc4943994533195fc8a8931c220b87673d012",
+  "go_version_m": "/workspace/scratch/c1bb49a45412/receipt85-runtime/cairn-capacity-576cee5: go1.27.3\n\tpath\tgithub.com/xcosmosbox/cairn/build/test/e2e/corpus-capacity\n\tmod\tgithub.com/xcosmosbox/cairn\tv0.0.0-20261025121735-576cee51c68b\t\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgolang.org/x/sys\tv0.22.0\th1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=\n\tdep\tgopkg.in/yaml.v3\tv3.0.1\th1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=\n\tdep\tmodernc.org/libc\tv1.55.3\th1:AzcW1mhlPNrRtjS5sS+eW2ISCgSOLLNyFzRh/V3Qj/U=\n\tdep\tmodernc.org/mathutil\tv1.6.0\th1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=\n\tdep\tmodernc.org/memory\tv1.8.0\th1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=\n\tdep\tmodernc.org/sqlite\tv1.30.1\th1:YFhPVfu2iIgUf9kuA1CR7iiHdcEEsI2i+yjRYHscyxk=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tDefaultGODEBUG=containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,gotestjsonbuildtext=1,httpcookiemaxnum=0,httpservecontentkeepheaders=1,httpservecontentmaxranges=1,multipathtcp=0,randseednop=0,rsa1024min=0,tlsmlkem=0,tlssecpmlkem=0,tlssha1=1,tracebacklabels=0,updatemaxprocs=0,urlmaxqueryparams=0,urlstrictcolons=0,winreadlinkvolume=0,winsymlink=0,x509negativeserial=1,x509rsacrt=0,x509sha256skid=0,x509sslcertoverrideplatform=0,x509usepolicies=0\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=576cee51c68b92146faa3394e922cfed14e1f0d5\n\tbuild\tvcs.time=2026-10-25T12:17:35Z\n\tbuild\tvcs.modified=false\n"
+}
