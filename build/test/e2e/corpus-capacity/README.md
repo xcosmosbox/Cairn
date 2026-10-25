@@ -432,3 +432,41 @@ cannot be hidden by a parsed true verdict. No AssignIDs/04 adapter or constructi
 follows. Historical #63 remains FAIL11/12, attempt01 UNKNOWN and attempt02 final
 semantic FAIL. No item-count-caused benefit, recall, quality, causal effect,
 all12/full609, QA/gold/HOLDOUT or release claim follows.
+# Opt-in indexed-source experiment (#99)
+
+`indexed-preflight`, `indexed-run`, and `indexed-audit` are a separate source-only
+experiment. They require `--indexed-original`, `--indexed-diagnostics`,
+`--indexed-manifest` and its independently reviewed `--indexed-manifest-sha256`,
+the existing pinned token runtime flags, and a fresh `--out`. The exact manifest
+is the finite `knownIndexedPlan()` schema, not a historical seed/receipt manifest.
+Only `indexed-run` accepts (and requires) `--allow-paid`; implementation acceptance
+does not grant live admission. Audit is offline but recounts both production wires.
+
+The known public original is authenticated independently, with source role
+`annotation_input_original`; it is never invented as an existing annotation member.
+The accepted pure helper supplies the complete unchanged original and exact block
+index, without candidate, critique or diagnostics. One generation response must
+pass its strict witness/coverage validation and the same current GateA before one
+unchanged full-original GateB. Total maximum: two actual wires, one per call,
+concurrency1,65536 output reserve,600s/request and1800s attempt. There is no
+qualification, repair, retry, canary or third call. Invalid/missing usage,
+uncertain delivery, changed profile/source/runtime, or persistence errors stop.
+
+The first actual generation wire/count is fixed at zero-key/zero-HTTP preflight.
+GateB is unknown until the real strict candidate exists; its full request is
+reconstructed by the current production gate, rendered by the same production
+`RenderRequest`, counted, and checked against the actual forwarded Body. Private
+CompleteRequest, exact wire bytes, raw HTTP response and parsed response are
+retained for each phase along with the complete durable ledger. Offline audit
+reconstructs both builders, verifies raw/parsed/trace bindings, and officially
+recounts the complete actual wires. Failed/incomplete attempts retain evidence.
+
+Even complete delivery, strict audit and GateB=true produce only
+`PROVISIONAL_GATEB_PASS_REQUIRES_ROOT_REVIEW`. `accepted` stays false, no accepted
+checkpoint is written, and AssignIDs04 is never called. Root must review ALL
+`no_annotation` rows, separate private A12/B2/C3 source-local diagnostics and
+fidelity, and the immutable archive before any separately admitted checkpoint
+adapter. Quotes witness occurrence, not entailment or exhaustive recall. The
+opaque diagnostic freeze is copied privately and never enters a prompt. This
+experiment proves neither quality nor capacity/causality/full609 admission.
+
