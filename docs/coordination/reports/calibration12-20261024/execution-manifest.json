@@ -1,0 +1,57 @@
+{
+  "format": "cairn-calibration12-admission-freeze/v1",
+  "source_commit": "1f49dc0af50bc4619ae8b2a888f6589351f7a144",
+  "source_tree": "6b75632af16c00f25066f43e4e8264d931ae45ee",
+  "git_status_porcelain": "",
+  "executable_sha256": "08751f0fed7d819b2b0aa579590f11b5400799e6d94fcac7c8aefba6d35062ef",
+  "compiler": {
+    "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+    "receipt_sha256": "e9216ddeda68d749615e46c688b724a69d06a772cb6247316df2f59b320c27fb",
+    "version": "go1.27.3 linux/amd64"
+  },
+  "preflight_sha256": "72ebeadf0a5d2106c17a706a0bcc7bdf9b4d61f0a0dfbfdd5a393431d697fe3f",
+  "selection_sha256": "e36722a07a47cdd2891295b4507520d4b4bd8c414a7bcd8bad290e59e81c23de",
+  "protocol_sha256": "9b5511c490f9cef84f0035fecb2e085f08509a5aaf37e64c17e456f6dca86901",
+  "runtime_overlay_sha256": "9c13285e84c3785e1a9d9930cecf1fdfa8c309a22f7fbf28c923067564a862d2",
+  "token_adapter_sha256": "6ae23dc721898eaad4f950f45e39bcd0716821bfc6ab1c5a6cec31e24ae622cc",
+  "token_python_sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7",
+  "token_runtime_receipt_sha256": "aa40c9f634b47d46cf3a1cc873e581024a5818f5b84cb2942dcaa16986d11ee5",
+  "capacity_driver_source_digest": "sha256:24d287d5ea659b29dc37c80ac8615bf265fae78a0d590d8734c1299fa6a148f6",
+  "production_source_digest": "sha256:67953bd36ed4d1888e079bb0900fe1d6f0fe74177cbd95f214b0b9b5ba73e7a9",
+  "requested_model": "deepseek-flash",
+  "endpoint": "https://api.deepseek.com/chat/completions",
+  "response_format": {
+    "type": "json_object"
+  },
+  "thinking": {
+    "type": "enabled"
+  },
+  "reasoning_effort": "omitted; documented provider default high",
+  "sampling_overrides": "none",
+  "profile": {
+    "max_tokens": 65536,
+    "request_timeout_seconds": 600,
+    "stage_timeout_seconds": 5400,
+    "run_timeout_seconds": 5400,
+    "logical_concurrency": 8,
+    "http_max_retries": 3,
+    "annotation_attempts": 3,
+    "annotation_rounds": 3,
+    "max_rollbacks": 3,
+    "minimum_confidence": 0.7,
+    "cross_evidence_bytes": 1048576,
+    "minimum_aggregate_actual_incidence": 0.95,
+    "all_12_nonempty": true,
+    "all_claimed_bindings_valid": true,
+    "whole_run_retries": 0
+  },
+  "no_QA_gold_HOLDOUT_full609_canary": true,
+  "model_calls_at_freeze": 0,
+  "official_renderer_wire_context_plus_reserved_output_limit": 1000000,
+  "private_artifact_repository": "xcosmosbox/kd_manifeat",
+  "token_native_wheel_caveat": "official native wheel pinned, not rebuilt from source",
+  "historical_admission_freeze_sha256": "743fcb0892faee070d1607ed5e7cbb7b249437cdd531c6049a45eb28e68be5d3",
+  "recovery_report_base_commit": "a1a016f92cd2883675ed54f9f6afcbefa4a823d4",
+  "historical_binary_and_standalone_compiler_tokenizer_receipts": "pins retained in archived freeze/run/ledger; original binaries and standalone receipts are not in this archive; not rebuilt or independently rerendered during recovery",
+  "counter_id": "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41"
+}
