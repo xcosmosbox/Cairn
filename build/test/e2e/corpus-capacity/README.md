@@ -332,3 +332,94 @@ candidate. No IDs/04 are assigned here. A future separately accepted checkpoint
 adapter must use existing AssignIDs semantics; a failure creates no accepted04.
 The accepted checkpoint is explicitly provisional until a matching seed-audit
 PASS; a parsed gate pass during a transport/counter/ledger failure is unusable.
+
+## Known negative-parent receipt continuation (task #85)
+
+`receipt-preflight`, `receipt-run`, and `receipt-audit` are separate opt-in modes.
+They do not modify the fixed-R3 loader, its three-call policy, production prompts,
+or historical capacity defaults. This implementation grants no live admission.
+Source acceptance, exact zero-key preflight/freeze and a separate root technical
+GO are required before an actual model request. Existing specific user DeepSeek
+paid/network/public-source and machine-feedback disclosure authorization persists.
+
+Only the complete negative #73 attempt02 is eligible: private archive commit
+`2da71d37dfda6db29a25445283f205b90d873334`, ledger
+`d5a06026a0c51bea166c0bf3dbb8dc445ee8cf71714c0dd62a90b4d13e7ff51d`,
+cleaned163-item candidate
+`01abf76117282c668a413d890f561733323565ba0687ed7d2ef63226be543d5c`,
+final response file
+`09cf12e276f2d6e3ec77572b46837fefb5bea9261b1b511670cc0cb274b912ad`,
+and exact current typed reason
+`4188a394eb8ec982eac02deaa8deafeeb5a60ef2412bfec721c726f633d57746`.
+The complete71332-byte original wrapper remains authoritative. Original spans
+remain unknown; no graph IDs are introduced.
+
+The new strict JSON manifest is independently pinned, and all its values must
+equal `knownReceiptPlan()` in the reviewed source. Its snake-case fields include
+format/mode, parent archive/manifest/ledger/start/finish/binary/driver identities,
+production source digest, parent plan/preflight, document/skill/path,
+original/seed/candidate/final-response/typed-reason hashes and lengths/item counts,
+the complete counter identity, and fixed budgets. Caller-supplied self-consistent
+hashes cannot select another parent or reason. The format is
+`cairn-parent-receipt-plan/v1`, mode `parent163-revision-validation/v1`, and budgets
+are output65536, HTTP600s, overall1800s, at most TWO actual wires, ONE per call.
+No extra manifest fields or capacity timing overrides are admitted.
+
+`--parent-root` is a separately restored read-only archive root containing
+`manifest.json`, `run/`, `evidence/`, `fixed-inputs/` and `runtime/`. First verify
+the immutable transport archive and all members as documented by its manifest.
+The adapter rechecks the independent manifest SHA and every declared regular
+member; traversal, duplicate members, escaping links and missing/changed files
+are rejected. It then independently proves the parent sequence
+qualification→revision→validation with exactly3admissions/3outcomes, expected
+model, HTTP200/stop, reported usage, exact local/provider token equality and
+capture/observed-content bindings. All three requests and saved responses are
+replayed through unchanged production builders/parsers, including the initial
+typed false, revision/nonempty FormatGate and final typed false. The original
+candidate, cleaned bytes and both reasons must reproduce exactly. The parent's
+acceptance-only seed-audit FAIL is expected and is neither an integrity proof nor
+permission to accept its candidate. Incomplete attempt01, passing/untyped/blank
+or foreign parents, manual critique/candidate substitution and changed production
+semantics are rejected. No new qualification model call occurs.
+
+After a separately reviewed strict manifest is prepared, free preflight uses:
+
+```sh
+cairn-capacity --mode receipt-preflight --parent-root /private/restored-attempt02 \
+  --receipt-manifest /private/receipt-plan.json --receipt-manifest-sha256 PLAN_SHA \
+  --token-python PINNED_PYTHON --token-python-sha256 PYTHON_SHA \
+  --token-runtime-receipt PINNED_RECEIPT --token-runtime-sha256 RECEIPT_SHA \
+  --out /private/fresh-continuation
+```
+
+The output directory itself must be fresh. Preflight captures and counts the
+ACTUAL production Revise request using the complete original, exact163 candidate
+and unedited final typed reason; the existing production serializer is captured
+offline with zero provider calls. Binary, compiled driver/production digests,
+manifest, parent proof and full counter identity are frozen. Actual run rechecks
+and recounts the identical first wire before dispatch. The final GateB request
+depends on the new nonempty replacement and remains unknown until its own actual
+per-wire guard. No truncation, manual diagnostic checklist or brand correction is
+added to the machine critique; unchanged production source-precedence rules apply.
+
+Only a separate root frozen GO may use `receipt-run --allow-paid` with the same
+arguments and nonempty environment key. It executes production Revise→unchanged
+nonempty FormatGate→current GateB, concurrency1, inner-attempt1, no qualification,
+wire/outer retry, canary, alternative transport, pipeline or third revision.
+The existing client, durable ledger and official counter remain the single call
+path. Its separate two-phase admission policy requires explicit parent/document/
+full-original identity on every request and outcome; paths in fallible feedback
+never determine document attribution. Failures, missing usage and unknown
+attempts stay retained rather than becoming acceptance.
+
+`receipt-audit` is offline and binds private parsed content to observed wire
+hashes, usage, source/parent, production capture/replay and current run/preflight
+receipts. It reports `integrity_pass` separately from `accepted`: a complete
+typed-negative two-call run may have valid integrity but is never accepted. Its
+exit remains nonzero without a completely audited passing candidate. Passing
+GateB produces a checkpoint explicitly `provisional_until_receipt_audit_pass`;
+the checkpoint alone is unusable, and a transport/model/counter/persistence error
+cannot be hidden by a parsed true verdict. No AssignIDs/04 adapter or construction
+follows. Historical #63 remains FAIL11/12, attempt01 UNKNOWN and attempt02 final
+semantic FAIL. No item-count-caused benefit, recall, quality, causal effect,
+all12/full609, QA/gold/HOLDOUT or release claim follows.

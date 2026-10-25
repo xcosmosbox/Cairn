@@ -85,6 +85,16 @@ type callInfo struct {
 	Mode      string
 	Phase     string
 	SourceSHA string
+	ParentSHA string
+}
+
+// 父证明仅用于新回执模式；零值保持历史与固定 R3 账本字节字段不变。
+// A new parent identity is additive; nil policy and old seeded bindings retain their fields.
+func (info *callInfo) addTraceIdentity(row map[string]any) {
+	info.addSeedIdentity(row)
+	if info.ParentSHA != "" {
+		row["parent_proof_sha256"] = info.ParentSHA
+	}
 }
 
 type boundedClient struct {
@@ -118,7 +128,9 @@ func (c *boundedClient) Complete(ctx context.Context, req llm.CompleteRequest) (
 		}
 	}
 	info := &callInfo{ID: c.sequence.Add(1)}
-	if binding, ok := ctx.Value(seededBindingKey{}).(seededCallBinding); ok {
+	if binding, ok := ctx.Value(seededBindingKey{}).(interface {
+		bind(llm.CompleteRequest, *callInfo) error
+	}); ok {
 		// 修订 JSON 中的路径可能只出现在不可信意见中；只用已验证的原文绑定。
 		// Seeded calls use explicit original-bound identity, never prompt regex guesses.
 		if err := binding.bind(req, info); err != nil {
@@ -128,13 +140,13 @@ func (c *boundedClient) Complete(ctx context.Context, req llm.CompleteRequest) (
 		info.Stage, info.Document, info.Documents = stage(req.System), documentIdentity(req.User), documentIdentities(req.User)
 	}
 	start := map[string]any{"event": "logical_start", "call_id": info.ID, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now()}
-	info.addSeedIdentity(start)
+	info.addTraceIdentity(start)
 	if err := c.ledger.append(start); err != nil {
 		return nil, fmt.Errorf("capacity: logical receipt failed")
 	}
 	response, err := c.next.Complete(context.WithValue(ctx, callKey{}, info), req)
 	end := map[string]any{"event": "logical_end", "call_id": info.ID, "stage": info.Stage, "wire_attempts": info.Attempts.Load(), "complete_error": err != nil, "time_utc": now()}
-	info.addSeedIdentity(end)
+	info.addTraceIdentity(end)
 	if e := c.ledger.append(end); e != nil {
 		return response, fmt.Errorf("capacity: completion receipt failed")
 	}
@@ -228,7 +240,9 @@ type traceTransport struct {
 	input          atomic.Int64
 	output         atomic.Int64
 	identityFailed atomic.Bool
-	seedPolicy     *seededWirePolicy // nil preserves the historical capacity profile.
+	seedPolicy     interface {
+		admit(*callInfo, wireRequest, []byte, tokenCount) error
+	} // nil preserves the historical capacity profile.
 }
 
 func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -240,7 +254,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	}
 	attempt := info.Attempts.Add(1)
 	row := map[string]any{"event": "request", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now(), "admitted": false}
-	info.addSeedIdentity(row)
+	info.addTraceIdentity(row)
 	reject := func(class string) (*http.Response, error) {
 		row["rejection"] = class
 		_ = t.ledger.append(row)
@@ -306,7 +320,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	t.sent.Add(1)
 	response, networkErr := t.next.RoundTrip(request)
 	outcome := map[string]any{"event": "response", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "time_utc": now(), "seconds": time.Since(start).Seconds(), "usage_status": "unknown"}
-	info.addSeedIdentity(outcome)
+	info.addTraceIdentity(outcome)
 	if networkErr != nil || response == nil {
 		outcome["transport_error"] = true
 		if request.Context().Err() != nil {
