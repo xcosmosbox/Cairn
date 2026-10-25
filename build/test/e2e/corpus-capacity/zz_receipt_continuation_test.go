@@ -532,7 +532,16 @@ func TestReceiptWireCapsPersistenceAndBadModel(t *testing.T) {
 			}
 			ledger := &durableLedger{file: m, cancel: cancel}
 			sent := 0
-			observer := &traceTransport{ledger: ledger, counter: fittingCounter(), seedPolicy: &receiptWirePolicy{Document: parent.in.Document, SourceSHA: parent.in.SourceSHA, ParentSHA: parent.proofSHA, Counter: parent.plan.Counter}, next: transportFunc(func(*http.Request) (*http.Response, error) {
+			first, err := captureSeedRevision(parent.in, parent.feedback)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, err := renderSeedWire(ctx, first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count, _ := fittingCounter().Count(ctx, wire)
+			observer := &traceTransport{ledger: ledger, counter: fittingCounter(), seedPolicy: &receiptWirePolicy{Document: parent.in.Document, SourceSHA: parent.in.SourceSHA, ParentSHA: parent.proofSHA, Counter: parent.plan.Counter, FirstWireSHA: sha(wire), FirstCount: count}, next: transportFunc(func(*http.Request) (*http.Response, error) {
 				sent++
 				return &http.Response{StatusCode: 429, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":"synthetic"}`))}, nil
 			})}
@@ -541,7 +550,7 @@ func TestReceiptWireCapsPersistenceAndBadModel(t *testing.T) {
 			defer func() { http.DefaultTransport = previous }()
 			client, _ := llm.NewOpenAICompatClient(llm.Config{Endpoint: "https://api.deepseek.com/chat/completions", APIKeyEnv: "CAIRN_TEST_UNUSED", Model: "deepseek-flash", MaxTokens: seededMaxTokens, MaxRetries: 1})
 			e := &receiptExecutor{parent: parent, next: &boundedClient{next: client, sem: make(chan struct{}, 1), ledger: ledger}}
-			_, err := e.execute(ctx)
+			_, err = e.execute(ctx)
 			want := 1
 			if responseFailure == "ledger" {
 				want = 0
@@ -588,7 +597,7 @@ func TestReceiptPolicyRejectsQualificationRetryOverridesAndThirdWire(t *testing.
 	var req wireRequest
 	_ = json.Unmarshal(raw, &req)
 	count, _ := fittingCounter().Count(context.Background(), raw)
-	p := &receiptWirePolicy{Document: parent.in.Document, SourceSHA: parent.in.SourceSHA, ParentSHA: parent.proofSHA, Counter: parent.plan.Counter}
+	p := &receiptWirePolicy{Document: parent.in.Document, SourceSHA: parent.in.SourceSHA, ParentSHA: parent.proofSHA, Counter: parent.plan.Counter, FirstWireSHA: sha(raw), FirstCount: count}
 	info := &callInfo{Mode: receiptMode, Phase: "qualification", SourceSHA: parent.in.SourceSHA, Document: parent.in.Document, Documents: []string{parent.in.Document}, ParentSHA: parent.proofSHA}
 	info.Attempts.Store(1)
 	if p.admit(info, req, raw, count) == nil {
@@ -609,6 +618,9 @@ func TestReceiptPolicyRejectsQualificationRetryOverridesAndThirdWire(t *testing.
 		t.Fatal("foreign parent admitted")
 	}
 	info.ParentSHA = parent.proofSHA
+	if p.admit(info, req, append(append([]byte{}, raw...), ' '), count) == nil {
+		t.Fatal("first actual bytes drifted from frozen preflight")
+	}
 	override := append(append([]byte{}, raw[:len(raw)-1]...), []byte(`,"temperature":0}`)...)
 	if p.admit(info, req, override, count) == nil {
 		t.Fatal("profile override admitted")
@@ -621,5 +633,153 @@ func TestReceiptPolicyRejectsQualificationRetryOverridesAndThirdWire(t *testing.
 	}
 	if p.admit(info, req, raw, count) == nil {
 		t.Fatal("third wire admitted")
+	}
+}
+
+type receiptDriftingCounter struct {
+	seedTestCounter
+	calls int
+}
+
+func (c *receiptDriftingCounter) Count(ctx context.Context, raw []byte) (tokenCount, error) {
+	n, err := c.seedTestCounter.Count(ctx, raw)
+	c.calls++
+	if c.calls >= 3 {
+		n.Input++
+	}
+	return n, err
+}
+
+// 首次预检及 run 重计都通过后，真实发送前的相同身份计数漂移仍应为零 wire。
+// The transport must reject a last-moment count drift, not merely fail the post-paid audit.
+func TestReceiptFirstTransportAdmissionMatchesFrozenCount(t *testing.T) {
+	_, _, parent := receiptParentFixture(t)
+	c := &receiptDriftingCounter{seedTestCounter: seedTestCounter{identity: parent.plan.Counter}}
+	out := filepath.Join(t.TempDir(), "fresh")
+	if err := receiptPreflight(context.Background(), parent, out, "plan", c); err != nil {
+		t.Fatal(err)
+	}
+	sent := 0
+	previous := http.DefaultTransport
+	http.DefaultTransport = transportFunc(func(*http.Request) (*http.Response, error) { sent++; return seedHTTPResponse(seededRevisedJSON), nil })
+	err := receiptRun(context.Background(), parent, out, "plan", c)
+	http.DefaultTransport = previous
+	if err == nil || sent != 0 || c.calls != 3 {
+		t.Fatalf("changed count dispatched or retried: sent%d calls%d err%v", sent, c.calls, err)
+	}
+	counts, _ := auditTrace(filepath.Join(out, "requests.jsonl"))
+	if counts["admitted_attempts"] != 0 || counts["rejected_attempts"] != 1 {
+		t.Fatal("rejected drift not retained exactly once")
+	}
+}
+
+// Reviewer probes on b009 accepted zero/over-reserve usage and spent validation
+// after invalid revision input. The actual response must persist, then stop immediately.
+func TestReceiptImpossibleUsageStopsBeforeAnotherWire(t *testing.T) {
+	_, _, parent := receiptParentFixture(t)
+	for _, tt := range []struct {
+		name, field string
+		value       any
+		missing     bool
+	}{
+		{"zero input", "prompt_tokens", 0, false}, {"mismatched input", "prompt_tokens", 101, false},
+		{"negative input", "prompt_tokens", -1, false}, {"missing input", "prompt_tokens", nil, true},
+		{"zero output", "completion_tokens", 0, false}, {"excess output", "completion_tokens", seededMaxTokens + 1, false},
+		{"negative output", "completion_tokens", -1, false}, {"missing output", "completion_tokens", nil, true},
+	} {
+		for _, phase := range []int{0, 1} {
+			t.Run(fmt.Sprintf("%s-phase%d", tt.name, phase), func(t *testing.T) {
+				out := filepath.Join(t.TempDir(), "fresh")
+				counter := seedTestCounter{identity: parent.plan.Counter}
+				if err := receiptPreflight(context.Background(), parent, out, "plan", counter); err != nil {
+					t.Fatal(err)
+				}
+				sent := 0
+				previous := http.DefaultTransport
+				http.DefaultTransport = transportFunc(func(*http.Request) (*http.Response, error) {
+					index := sent
+					sent++
+					text := seededRevisedJSON
+					if index == 1 {
+						text = `{"idempotent":true}`
+					}
+					response := seedHTTPResponse(text)
+					if index == phase {
+						raw, _ := io.ReadAll(response.Body)
+						var body map[string]any
+						_ = json.Unmarshal(raw, &body)
+						usage := body["usage"].(map[string]any)
+						if tt.missing {
+							delete(usage, tt.field)
+						} else {
+							usage[tt.field] = tt.value
+						}
+						delete(usage, "total_tokens")
+						changed, _ := json.Marshal(body)
+						response.Body = io.NopCloser(strings.NewReader(string(changed)))
+					}
+					return response, nil
+				})
+				err := receiptRun(context.Background(), parent, out, "plan", counter)
+				http.DefaultTransport = previous
+				if err == nil || sent != phase+1 {
+					t.Fatalf("bad usage accepted or spent later wire: err%v sent%d", err, sent)
+				}
+				name := "revision"
+				if phase == 1 {
+					name = "validation"
+				}
+				var saved struct {
+					Response      *llm.CompleteResponse `json:"response"`
+					CompleteError bool                  `json:"complete_error"`
+				}
+				if readJSON(filepath.Join(out, name+"-response.private.json"), &saved) != nil || saved.Response == nil || !saved.CompleteError {
+					t.Fatal("actual bad-usage response/error lost")
+				}
+				if _, err := os.Stat(filepath.Join(out, "accepted-checkpoint.json")); !os.IsNotExist(err) {
+					t.Fatal("bad usage created accepted checkpoint")
+				}
+			})
+		}
+	}
+}
+
+// Resigning matching response/ledger/finish totals cannot turn impossible usage
+// into accepted proof, even when the production text parser still returns true.
+func TestReceiptOfflineAuditRejectsCoherentOutOfBudgetUsage(t *testing.T) {
+	_, _, parent := receiptParentFixture(t)
+	for _, output := range []int{0, seededMaxTokens + 1} {
+		t.Run(fmt.Sprint(output), func(t *testing.T) {
+			out, err, _ := receiptFakeRun(t, parent, `{"idempotent":true}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, phase := range []string{"revision", "validation"} {
+				receiptChangeJSON(t, filepath.Join(out, phase+"-response.private.json"), func(v map[string]any) { v["response"].(map[string]any)["output_tokens"] = output })
+			}
+			path := filepath.Join(out, "requests.jsonl")
+			raw, _ := os.ReadFile(path)
+			var changed []byte
+			for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+				var row map[string]any
+				_ = json.Unmarshal([]byte(line), &row)
+				if row["event"] == "response" {
+					row["output_tokens"] = output
+					row["total_tokens"] = 100 + output
+				}
+				one, _ := json.Marshal(row)
+				changed = append(changed, append(one, '\n')...)
+			}
+			receiptPut(t, path, changed)
+			receiptChangeJSON(t, filepath.Join(out, "receipt-run-finish.json"), func(v map[string]any) { v["reported_output_tokens"] = 2 * output })
+			if receiptAudit(out, parent, "fixture-receipt-plan") == nil {
+				t.Fatal("impossible coherent usage accepted")
+			}
+			names, _ := filepath.Glob(filepath.Join(out, "receipt-audit-*.json"))
+			var last map[string]any
+			if readJSON(names[len(names)-1], &last) != nil || last["integrity_pass"] != false || last["accepted"] != false {
+				t.Fatal("bad-usage audit did not reject integrity/acceptance")
+			}
+		})
 	}
 }

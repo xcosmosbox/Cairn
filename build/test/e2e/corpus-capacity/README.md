@@ -397,7 +397,10 @@ ACTUAL production Revise request using the complete original, exact163 candidate
 and unedited final typed reason; the existing production serializer is captured
 offline with zero provider calls. Binary, compiled driver/production digests,
 manifest, parent proof and full counter identity are frozen. Actual run rechecks
-and recounts the identical first wire before dispatch. The final GateB request
+and recounts the identical first wire before dispatch.
+The first transport admission also requires the exact frozen request SHA and
+full token receipt; even same-identity counter or byte drift cancels before a wire.
+The final GateB request
 depends on the new nonempty replacement and remains unknown until its own actual
 per-wire guard. No truncation, manual diagnostic checklist or brand correction is
 added to the machine critique; unchanged production source-precedence rules apply.
@@ -411,6 +414,12 @@ path. Its separate two-phase admission policy requires explicit parent/document/
 full-original identity on every request and outcome; paths in fallible feedback
 never determine document attribution. Failures, missing usage and unknown
 attempts stay retained rather than becoming acceptance.
+Every nonempty stop response requires positive input equal to the admitted
+official count and positive completion tokens at most65536. The new recording
+boundary first retains the actual response/ledger, then cancels and returns an
+execution error on invalid or missing usage; an unauditable revision cannot
+spend the final validation wire. The offline parent/current trace checks enforce
+the same bounds, including coherently rewritten response/ledger/finish totals.
 
 `receipt-audit` is offline and binds private parsed content to observed wire
 hashes, usage, source/parent, production capture/replay and current run/preflight

@@ -435,7 +435,7 @@ func inspectReceiptTraceWithReader(raw []byte, mode, parent string, in seededInp
 		}
 		if row.Event == "response" {
 			responses++
-			if row.Provider != 1 || row.Status != 200 || row.Finish != "stop" || row.Delta == nil || *row.Delta != 0 || row.Usage != "reported" || !row.ModelOK || (row.Model != "deepseek-flash" && row.Model != "deepseek-v4.1-flash-1017") || row.Input != inputs[row.Call] || row.LocalInput != row.Input || row.Output < 0 {
+			if row.Provider != 1 || row.Status != 200 || row.Finish != "stop" || row.Delta == nil || *row.Delta != 0 || row.Usage != "reported" || !row.ModelOK || (row.Model != "deepseek-flash" && row.Model != "deepseek-v4.1-flash-1017") || row.Input <= 0 || row.Input != inputs[row.Call] || row.LocalInput != row.Input || row.Output <= 0 || row.Output > seededMaxTokens {
 				failures = append(failures, "observed provider/usage/counter outcome")
 			}
 			var saved struct {
@@ -494,15 +494,41 @@ type receiptWirePolicy struct {
 	mu                             sync.Mutex
 	Document, SourceSHA, ParentSHA string
 	Counter                        seededCounterIdentity
+	FirstWireSHA                   string
+	FirstCount                     tokenCount
+	cancel                         context.CancelFunc
+	receipts                       map[string]receiptAdmission
 	admitted                       int
 }
 
-func (p *receiptWirePolicy) admit(info *callInfo, req wireRequest, raw []byte, count tokenCount) error {
+type receiptAdmission struct {
+	Count   tokenCount
+	WireSHA string
+}
+
+func (p *receiptWirePolicy) admittedReceipt(phase string) (receiptAdmission, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	r, ok := p.receipts[phase]
+	return r, ok
+}
+
+func (p *receiptWirePolicy) admit(info *callInfo, req wireRequest, raw []byte, count tokenCount) (admissionErr error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	defer func() {
+		if admissionErr != nil && p.cancel != nil {
+			p.cancel()
+		}
+	}()
 	phases := []string{"revision", "validation"}
 	if !p.Counter.matches(count) || p.admitted >= 2 || info.Phase != phases[p.admitted] || info.Mode != receiptMode || info.ParentSHA != p.ParentSHA || p.ParentSHA == "" || info.Document != p.Document || len(info.Documents) != 1 || info.Documents[0] != p.Document || info.SourceSHA != p.SourceSHA || info.Attempts.Load() != 1 || req.MaxTokens != seededMaxTokens || req.Model != "deepseek-flash" || req.Thinking.Type != "enabled" || req.ResponseFormat.Type != "json_object" {
 		return fmt.Errorf("receipt: phase/profile/two-wire budget")
+	}
+	// 即使配置身份相同，预检与发送间的计数/字节漂移也必须在付费 wire 前停止。
+	// Bind the first actual transport admission to the exact frozen preflight receipt.
+	if p.admitted == 0 && (p.FirstWireSHA == "" || sha(raw) != p.FirstWireSHA || count != p.FirstCount) {
+		return fmt.Errorf("receipt: first wire/counter changed before admission")
 	}
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil || len(fields) != 5 {
@@ -513,6 +539,10 @@ func (p *receiptWirePolicy) admit(info *callInfo, req wireRequest, raw []byte, c
 			return fmt.Errorf("receipt: missing profile field")
 		}
 	}
+	if p.receipts == nil {
+		p.receipts = map[string]receiptAdmission{}
+	}
+	p.receipts[info.Phase] = receiptAdmission{Count: count, WireSHA: sha(raw)}
 	p.admitted++
 	return nil
 }
@@ -521,6 +551,7 @@ type receiptRecordingClient struct {
 	next   llm.Client
 	out    string
 	cancel context.CancelFunc
+	policy *receiptWirePolicy
 }
 
 func (c *receiptRecordingClient) ProviderName() string { return c.next.ProviderName() }
@@ -543,9 +574,25 @@ func (c *receiptRecordingClient) Complete(ctx context.Context, req llm.CompleteR
 		return nil, fmt.Errorf("receipt: capture persistence failed")
 	}
 	response, completeErr := c.next.Complete(ctx, req)
+	invalidUsage := false
+	// 先保留真实响应；usage 不可能或不匹配已准入的官方计数时，不再花最终验证 wire。
+	// Reject impossible/missing usage at this boundary, before another production call.
+	if completeErr == nil {
+		admission, admitted := receiptAdmission{}, false
+		if c.policy != nil {
+			admission, admitted = c.policy.admittedReceipt(b.Phase)
+		}
+		if !admitted || admission.WireSHA != sha(wire) || response == nil || response.InputTokens <= 0 || response.InputTokens != admission.Count.Input || response.OutputTokens <= 0 || response.OutputTokens > seededMaxTokens || response.FinishReason != "stop" {
+			completeErr = fmt.Errorf("receipt: response usage/finish differs from admitted budget")
+			invalidUsage = true
+		}
+	}
 	if err = writeNew(filepath.Join(c.out, b.Phase+"-response.private.json"), map[string]any{"response": response, "complete_error": completeErr != nil}); err != nil {
 		c.cancel()
 		return response, fmt.Errorf("receipt: response persistence failed")
+	}
+	if invalidUsage {
+		c.cancel()
 	}
 	return response, completeErr
 }
@@ -761,7 +808,8 @@ func receiptRun(ctx context.Context, parent receiptParent, out, planSHA string, 
 	}
 	defer file.Close()
 	previous := http.DefaultTransport
-	observer := &traceTransport{next: previous, ledger: ledger, counter: counter, seedPolicy: &receiptWirePolicy{Document: parent.in.Document, SourceSHA: parent.in.SourceSHA, ParentSHA: parent.proofSHA, Counter: identity}}
+	policy := &receiptWirePolicy{Document: parent.in.Document, SourceSHA: parent.in.SourceSHA, ParentSHA: parent.proofSHA, Counter: identity, FirstWireSHA: pre.Revision.RequestSHA, FirstCount: pre.Revision.Count, cancel: cancel}
+	observer := &traceTransport{next: previous, ledger: ledger, counter: counter, seedPolicy: policy}
 	http.DefaultTransport = observer
 	defer func() { http.DefaultTransport = previous }()
 	client, err := llm.NewOpenAICompatClient(llm.Config{Provider: "openai_compatible", APIKeyEnv: "CAIRN_LLM_API_KEY", Model: dkconfig.DeepSeekFlashModel, Endpoint: dkconfig.DeepSeekEndpoint, MaxTokens: seededMaxTokens, Timeout: "600s", MaxRetries: 1})
@@ -769,7 +817,7 @@ func receiptRun(ctx context.Context, parent receiptParent, out, planSHA string, 
 		return err
 	}
 	bounded := &boundedClient{next: client, sem: make(chan struct{}, 1), ledger: ledger}
-	recorded := &receiptRecordingClient{next: bounded, out: out, cancel: cancel}
+	recorded := &receiptRecordingClient{next: bounded, out: out, cancel: cancel, policy: policy}
 	executor := &receiptExecutor{parent: parent, next: recorded, out: out}
 	status, runErr := executor.execute(ctx)
 	receiptErr := writeNew(filepath.Join(out, "receipt-run-finish.json"), map[string]any{"format": "cairn-receipt-finish/v1", "mode": receiptMode, "parent_proof_sha256": parent.proofSHA, "finished_at": now(), "status": status, "execution_error": runErr != nil, "phases": executor.phases, "logical_calls": bounded.sequence.Load(), "actual_wires": observer.sent.Load(), "http_responses": observer.responses.Load(), "reported_input_tokens": observer.input.Load(), "reported_output_tokens": observer.output.Load(), "responses_without_usage": observer.missingUsage.Load(), "ledger_ok": ledger.failure() == nil, "original_spans": "unknown"})
