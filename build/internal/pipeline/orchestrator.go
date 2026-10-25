@@ -469,9 +469,17 @@ func toWritebackMemberSources(m map[string][]ingest.MemberSource) map[string][]w
 // when the rollback budget is exhausted.
 func (o *Orchestrator) processDocument(ctx context.Context, skill, path, content string) (*dktypes.AnnotatedDocument, string) {
 	var lastReason string
+	var candidate *dktypes.AnnotatedDocument
+	var feedback *annotation.SemanticRejection
 	for attempt := 1; attempt <= o.maxRollbacks; attempt++ {
 		// 标注（LLMAnnotator 内部对调用/JSON 失败做原地重试）。
-		doc, err := o.annotator.Annotate(ctx, skill, path, content)
+		var doc *dktypes.AnnotatedDocument
+		var err error
+		if feedback == nil {
+			doc, err = o.annotator.Annotate(ctx, skill, path, content)
+		} else {
+			doc, err = o.annotator.Revise(ctx, skill, path, content, candidate, feedback)
+		}
 		if err != nil {
 			lastReason = fmt.Sprintf("标注失败: %v", err)
 			log.Printf("[pipeline] %s 第 %d/%d 轮标注失败，回退重试: %v", path, attempt, o.maxRollbacks, err)
@@ -495,6 +503,12 @@ func (o *Orchestrator) processDocument(ctx context.Context, skill, path, content
 
 		// Gate B：LLM 语义幂等核验（内部对调用/JSON 失败原地重试；不幂等 / 无法核验则回退）。
 		if err := o.semanticGate.Check(ctx, content, cleaned); err != nil {
+			// 暂时无法标注/核验不能抹掉已取得的具体意见；只有新的语义拒绝才替换它。
+			// Keep the last valid critique through transient failures, never aggregate history.
+			var rejected *annotation.SemanticRejection
+			if errors.As(err, &rejected) {
+				candidate, feedback = cleaned, rejected
+			}
 			lastReason = fmt.Sprintf("Gate B 未通过: %v", err)
 			o.dumpJSON(fmt.Sprintf("03_gate_b/%s/%s_r%d_fail.json", sanitizeDir(skill), sanitizeFilename(path), attempt),
 				map[string]any{"passed": false, "reason": err.Error()})
