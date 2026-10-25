@@ -1,0 +1,4 @@
+Script error:
+write_stdin failed: Unified exec process failed: This action was rejected due to unacceptable risk.
+Reason: The command sends private archived experiment inputs and derived content to the untrusted DeepSeek API using a credential; the user's broad experiment authorization does not specifically authorize disclosure of this sensitive payload to that destination.
+Do not bypass this rejection through a workaround or indirect execution. Continue with a safer alternative, or carry out checks to prove that the action is authorized or low risk before trying again. Complete unaffected work without asking for confirmation. Report anything that remains blocked, clarify why it was blocked by auto-review, inform the user of the risk and ask for approval.

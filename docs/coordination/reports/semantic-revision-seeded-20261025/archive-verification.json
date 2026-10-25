@@ -1,0 +1,16 @@
+{
+  "format": "cairn-seeded-remote-archive-verification/v1",
+  "verified_at_utc": "2026-10-25T10:33:20.257176+00:00",
+  "repository": "xcosmosbox/kd_manifeat",
+  "commit": "ca7372d1d22501d81f7571bfe60b63cbae814bcf",
+  "prefix": "semantic-revision-seeded-20261025/attempt-01-platform-blocked",
+  "archive_bytes": 51592,
+  "archive_sha256": "8486a79dd7165ac886438caccd91bb53983059abfd75ce2ba6ca9a0cd06bdc31",
+  "parts": 1,
+  "storage": "base64 UTF-8 text decoded to raw part; raw binary part also retained",
+  "manifest_file_count": 27,
+  "all_file_hashes_match": true,
+  "provider_outcome": "unknown",
+  "billing": "unknown",
+  "credential_values_included": false
+}

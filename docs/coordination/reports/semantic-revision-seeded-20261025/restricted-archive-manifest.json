@@ -1,0 +1,44 @@
+{
+  "format": "cairn-seeded-restricted-archive-manifest/v1",
+  "repository": "xcosmosbox/kd_manifeat",
+  "visibility": "private",
+  "commit": "ca7372d1d22501d81f7571bfe60b63cbae814bcf",
+  "prefix": "semantic-revision-seeded-20261025/attempt-01-platform-blocked",
+  "archive": {
+    "path": "seeded-attempt01-platform-blocked.tar.gz",
+    "bytes": 51592,
+    "sha256": "8486a79dd7165ac886438caccd91bb53983059abfd75ce2ba6ca9a0cd06bdc31",
+    "compression": "gzip;tar;fixedmtime0",
+    "parts": [
+      {
+        "order": 0,
+        "path": "raw.tar.gz.part0000",
+        "bytes": 51592,
+        "sha256": "8486a79dd7165ac886438caccd91bb53983059abfd75ce2ba6ca9a0cd06bdc31",
+        "git_blob_sha1": "5760c9fd918037539a0300df9123e47c35b92bdf"
+      }
+    ]
+  },
+  "manifest_sha256": "30bdbd041b04101eb3e5a1f6a1876eb10a034628337286cad07dbeda53ca27b2",
+  "file_count_including_manifest": 28,
+  "credential_values_included": false,
+  "storage_encoding": "raw binary part retained; corresponding .b64 UTF-8 text part decoded before concatenation for connector readback",
+  "remote_reconstruction_verified": true,
+  "manifest_payload_files_checked": 27,
+  "origin_category_proof_sha256": "3760ec2ebdae6eb4b2367be2fb56b1f2b06e1907fc256a985dcd4af5b08600fd",
+  "historical_archive_unchanged": true,
+  "meaning": "New immutable incomplete-attempt archive; no replacement of historical63 evidence; no synthesized outcome or finish.",
+  "supplementary_evidence_commit": "552c31b642c87a0c0ce22e2d3895c42e7225f79f",
+  "supplementary_evidence": [
+    {
+      "path": "platform-rejection-verbatim.txt",
+      "sha256": "da546405dbdf4493354b194cf9c055e1b537ae2bd2a74d6b0b3c55556f9d61ee",
+      "remote_exact_bytes_verified": true
+    },
+    {
+      "path": "actual-request-metadata.json",
+      "sha256": "e2d37aff44e2eceed399b75e25b92f6c3dda06e0f0633d2ca1b74941c92293b9",
+      "remote_exact_bytes_verified": true
+    }
+  ]
+}
