@@ -190,3 +190,34 @@ The auditor now compares the complete eligible validated semantic projection wit
 both final candidate and DB inventories. A rejected-only identity cannot persist;
 an independently accepted duplicate or legitimate validated local edge can justify
 that same identity. Original v1/profile/roster evidence remains unchanged.
+
+### Full-rebuild local contradiction verification (report policy v2)
+
+The legacy `cross_relation_verify` stage and `05e_cross_relation_report.json`
+filename also cover **new same-subdomain `contradicts` candidates** under
+`validation_policy: cross-subdomain-and-local-contradicts/v2`. Each decision records
+`scope` (`cross_subdomain` or `same_subdomain`) and `kind`, checked against the
+pre-verifier graph. The auditor includes both kinds of scope in the candidate
+denominator, reports counts by scope/kind/disposition, verifies accepted original
+quotes and all five same-context contradiction predicates, and checks the complete
+validated/candidate/DB projection. A rejected local contradiction cannot remain in
+the validated graph, final candidate or DB without independently accepted support
+for that identity. Other same-subdomain relation kinds retain their prior behavior;
+cross-subdomain contradictions are verified once. This is full-rebuild verification
+of generated candidates, not a contradiction-discovery or semantic-accuracy claim.
+
+Missing `validation_policy` in a historical report, or explicit
+`cross-subdomain/v1`, is interpreted and labeled **historical cross-only v1**.
+Those immutable packets are readable without rewriting them, but their zero cross
+candidate count gives no evidence about local contradictions. Unknown policies fail
+the audit. Future source/runtime freezes must state their actual policy; historical
+v1 results cannot establish v2 coverage or admit a new run. Existing runtime profiles,
+offline receipts, roster and failed #63 evidence have not been replaced by this change.
+
+Incremental I-7 can generate new local relations but has no authoritative frozen
+original neighborhood at that call site; it is **not covered** by this correction.
+Existing human-curated edges are not inputs to the full-build candidate verifier.
+The no-op incremental compatibility test proves only preservation of an already
+materialized curated edge in that scenario. It does not prove dirty-subdomain/new-edge
+verification or a general preservation guarantee. See
+[ADR0006](../../../../docs/decisions/0006-local-contradiction-verification.md).

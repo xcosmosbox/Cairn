@@ -12,6 +12,9 @@ import (
 )
 
 type crossAuditReport struct {
+	ValidationPolicy           string            `json:"validation_policy"`
+	ScopeCounts                map[string]int    `json:"per_scope"`
+	KindCounts                 map[string]int    `json:"per_kind"`
 	Candidates                 int               `json:"candidates"`
 	Counts                     map[string]int    `json:"per_disposition"`
 	Supported                  int               `json:"model_supported_candidates"`
@@ -98,12 +101,18 @@ func restoreAuditScopes(result *extract.Result) bool {
 	return valid
 }
 func actualCrossKeys(result *extract.Result) map[string]int {
+	return actualVerifiedKeys(result, extract.CrossRelationPolicyV1)
+}
+
+// 旧证据只枚举跨域候选；v2 必须把本域矛盾纳入前后图的同一分母。
+// Enumerate by the recorded policy, never retroactively credit legacy local edges.
+func actualVerifiedKeys(result *extract.Result, policy string) map[string]int {
 	local, _ := indexAuditNodes(result)
 	r := map[string]int{}
 	for _, d := range result.Domains {
 		for _, s := range d.Subdomains {
 			for _, rel := range s.Relations {
-				if len(local[scopeKey(d.Slug, s.Slug, rel.Source)]) != 1 || len(local[scopeKey(d.Slug, s.Slug, rel.Target)]) != 1 {
+				if auditRelationScope(local, d.Slug, s.Slug, rel) == extract.CrossRelationScopeCross || policy == extract.CrossRelationPolicyV2 && rel.Kind == "contradicts" {
 					r[relationKey(d.Slug, s.Slug, rel)]++
 				}
 			}
@@ -112,10 +121,17 @@ func actualCrossKeys(result *extract.Result) map[string]int {
 	return r
 }
 
+func auditRelationScope(local map[string][]scopedNode, domain, subdomain string, rel extract.Relation) string {
+	if len(local[scopeKey(domain, subdomain, rel.Source)]) == 1 && len(local[scopeKey(domain, subdomain, rel.Target)]) == 1 {
+		return extract.CrossRelationScopeLocal
+	}
+	return extract.CrossRelationScopeCross
+}
+
 // auditCrossArtifacts 对 accepted 的原文/成员/最终边做独立机械核对；安全拒绝只记质量问题，不能获支持信用。
 // auditCrossArtifacts distinguishes fail-closed rejection from invalid accepted data and unresolved execution.
 func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.AnnotatedDocument, candidate *extract.Result, limit int, buildReport *extract.CrossRelationReport, dbEdges, dbNodes map[string]bool) *crossAuditReport {
-	r := &crossAuditReport{Counts: map[string]int{}, Artifacts: map[string]string{}, Outcomes: []map[string]any{}, Meaning: "semantic support/rejection is model-judged; original source/quote/member/edge binding is mechanically verified; aggregate readiness does not grant full609 or paid admission"}
+	r := &crossAuditReport{Counts: map[string]int{}, ScopeCounts: map[string]int{extract.CrossRelationScopeCross: 0, extract.CrossRelationScopeLocal: 0}, KindCounts: map[string]int{}, Artifacts: map[string]string{}, Outcomes: []map[string]any{}, Meaning: "semantic support/rejection is model-judged; original source/quote/member/edge binding is mechanically verified; aggregate readiness does not grant full609 or paid admission"}
 	for _, status := range []string{"accepted", "rejected_semantic", "rejected_evidence", "rejected_endpoint", "rejected_relation", "insufficient_evidence", "execution_error", "invalid_verdict"} {
 		r.Counts[status] = 0
 	}
@@ -138,6 +154,19 @@ func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.Annota
 		}
 	}
 	if len(r.Errors) > 0 {
+		return r
+	}
+	r.ValidationPolicy = report.ValidationPolicy
+	if r.ValidationPolicy == "" {
+		r.ValidationPolicy = extract.CrossRelationPolicyV1
+	}
+	switch r.ValidationPolicy {
+	case extract.CrossRelationPolicyV1:
+		r.Meaning += "; historical cross-only v1: same-subdomain contradictions were not verified and receive no local-verification credit"
+	case extract.CrossRelationPolicyV2:
+		r.Meaning += "; full-rebuild v2 verifies cross candidates plus same-subdomain contradicts; incremental new edges remain uncovered"
+	default:
+		fail("unknown relation-verifier validation policy")
 		return r
 	}
 	stageBytes, stageErr := json.Marshal(report)
@@ -194,7 +223,7 @@ func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.Annota
 	if !restoreAuditScopes(&before) || !restoreAuditScopes(&after) {
 		fail("persisted graph scope names missing")
 	}
-	expected, accepted := actualCrossKeys(&before), map[string]int{}
+	expected, accepted := actualVerifiedKeys(&before, r.ValidationPolicy), map[string]int{}
 	local, global := indexAuditNodes(&before)
 	finalNodes := map[string]bool{}
 	finalEdges := map[string]bool{}
@@ -211,6 +240,10 @@ func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.Annota
 		}
 	}
 	for i, decision := range report.Decisions {
+		scope := auditRelationScope(local, decision.OwnerDomain, decision.OwnerSubdomain, decision.Relation)
+		if r.ValidationPolicy == extract.CrossRelationPolicyV2 && (decision.Scope != scope || decision.Kind != decision.Relation.Kind) {
+			fail("v2 candidate scope or kind differs from pre-verifier graph")
+		}
 		key := relationKey(decision.OwnerDomain, decision.OwnerSubdomain, decision.Relation)
 		if expected[key] < 1 {
 			fail("unexpected or duplicate cross-candidate outcome")
@@ -218,7 +251,9 @@ func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.Annota
 			expected[key]--
 		}
 		r.Counts[decision.Disposition]++
-		r.Outcomes = append(r.Outcomes, map[string]any{"candidate_index": i, "disposition": decision.Disposition, "reason_sha256": sha([]byte(decision.Reason)), "source_documents": len(decision.Sources), "evidence_bytes": decision.EvidenceBytes, "quoted_originals": len(decision.Evidence)})
+		r.ScopeCounts[scope]++
+		r.KindCounts[decision.Relation.Kind]++
+		r.Outcomes = append(r.Outcomes, map[string]any{"candidate_index": i, "scope": scope, "kind": decision.Relation.Kind, "disposition": decision.Disposition, "reason_sha256": sha([]byte(decision.Reason)), "source_documents": len(decision.Sources), "evidence_bytes": decision.EvidenceBytes, "quoted_originals": len(decision.Evidence)})
 		switch decision.Disposition {
 		case "rejected_semantic", "rejected_evidence", "rejected_endpoint", "rejected_relation":
 			r.SafeRejected++
@@ -325,7 +360,7 @@ func auditCrossArtifacts(out string, selected *selection, docs []*dktypes.Annota
 	if report.Accepted != r.Supported {
 		fail("cross-verifier accepted count mismatch")
 	}
-	if !reflect.DeepEqual(accepted, actualCrossKeys(&after)) {
+	if !reflect.DeepEqual(accepted, actualVerifiedKeys(&after, r.ValidationPolicy)) {
 		fail("validated graph differs from accepted candidate multiset")
 	}
 	for _, reason := range auditSemanticProjection(&after, candidate, dbEdges, dbNodes) {
