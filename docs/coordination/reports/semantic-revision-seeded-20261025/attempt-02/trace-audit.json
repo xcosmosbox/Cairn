@@ -1,0 +1,21 @@
+{
+  "counts": {
+    "admitted_attempts": 3,
+    "attempt_outcomes": 3,
+    "logical_calls": 3,
+    "stage:annotation:admitted_attempts": 1,
+    "stage:annotation:attempt_outcomes": 1,
+    "stage:annotation:logical_calls": 1,
+    "stage:semantic_gate:admitted_attempts": 2,
+    "stage:semantic_gate:attempt_outcomes": 2,
+    "stage:semantic_gate:logical_calls": 2
+  },
+  "created_at": "2026-10-25T10:54:50.681430489Z",
+  "errors": null,
+  "format": "cairn-capacity-trace-forensics/v1",
+  "ledger_bytes": 9218,
+  "ledger_read_ok": true,
+  "ledger_sha256": "d5a06026a0c51bea166c0bf3dbb8dc445ee8cf71714c0dd62a90b4d13e7ff51d",
+  "snapshot_semantics": "counts/hash/bytes bind one read snapshot; a concurrently advancing run may admit later requests outside this prefix",
+  "source_graph_and_quality": "not_checked; trace-only forensic evidence"
+}

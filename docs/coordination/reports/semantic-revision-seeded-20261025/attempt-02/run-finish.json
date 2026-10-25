@@ -1,0 +1,21 @@
+{
+  "actual_wires": 3,
+  "execution_error": true,
+  "finished_at": "2026-10-25T10:53:30.389589065Z",
+  "format": "cairn-seeded-finish/v1",
+  "historical63_outcome": "FAIL; unchanged",
+  "http_responses": 3,
+  "ledger_ok": true,
+  "logical_calls": 3,
+  "mode": "fixed-r3-qualification-revision-validation/v1",
+  "original_spans": "unknown",
+  "phases": [
+    "qualification",
+    "revision",
+    "validation"
+  ],
+  "reported_input_tokens": 84412,
+  "reported_output_tokens": 50921,
+  "responses_without_usage": 0,
+  "status": "FAIL_final_gate"
+}

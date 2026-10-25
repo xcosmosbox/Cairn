@@ -1,0 +1,51 @@
+{
+  "actual_revision_and_final_gate_wire": "unknown until new typed qualification and new candidate; per-wire guard mandatory",
+  "archived_reason_use": "provenance_only; not typed feedback",
+  "archived_rejection_sha256": "c2d503378f06c25940c2e698dd00b78763fafeb582d7de9a00734e73a018b735",
+  "binary_sha256": "b2b9d86dca7d3f68538a401d21ad55d381ec5b270cc23a24ec21a3919b0afa86",
+  "candidate_sha256": "7b7a3d15e711f0857d3899c981e79b17eb7f47a5a7b694ec59d1e983e63de34a",
+  "counter_identity": {
+    "python_sha256": "fa67443527ed9647f760d807e2a38f26340757123e643c4639cf273ed15d5ea7",
+    "adapter_sha256": "6ae23dc721898eaad4f950f45e39bcd0716821bfc6ab1c5a6cec31e24ae622cc",
+    "runtime_receipt_sha256": "014e3ce5e3227119f5ef3b4ac1e8f9dc3e044926cc3914aa0966edece419a6ec",
+    "counter_id": "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41"
+  },
+  "driver_source_digest": "sha256:332a841147ae76e89fa2faccb33dfe48a81386fd206171843b8beb384c3d5666",
+  "format": "cairn-seeded-preflight/v1",
+  "max_actual_wires": 3,
+  "mode": "fixed-r3-qualification-revision-validation/v1",
+  "model_calls": 0,
+  "original_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+  "original_spans": "unknown; no new stored span claim",
+  "plan_sha256": "a1103d1d30d6a98586c069d4e3db1a4f7832b1da4b44db3a144ceedb1f49bf4b",
+  "production_source_digest": "sha256:ee7c8905ac0e0736a45245cd1082e1f46c7d60faf15422f8ffc54ac6282bcdf9",
+  "qualification": {
+    "request_bytes": 101843,
+    "request_sha256": "f5f9516980e54e30929e95e809c82d5e0dc6210a3b5cc9aa55f472ed72eb33ea",
+    "system_sha256": "928e1cb159d985af00889b335bf0f565f70ac1ec042c0485957757b7180fd48f",
+    "token_count": {
+      "input_tokens": 23869,
+      "reserved_output_tokens": 65536,
+      "context_limit": 1000000,
+      "counter_id": "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41",
+      "runtime_receipt_sha256": "014e3ce5e3227119f5ef3b4ac1e8f9dc3e044926cc3914aa0966edece419a6ec"
+    },
+    "user_sha256": "f4b42effbb06402ec6b593764d5c30ea11210668793aded0ea71fee042ebd5f9"
+  },
+  "revision_builder_synthetic_critique_only": {
+    "decoded_critique_sha256": "12477bf97ee20211fc1fc918e36de788370c54c86127a1666bad66b9aa3adab0",
+    "decoded_original_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+    "projected_candidate_json_sha256": "b903f0b8443ffdf6b0cd548b82b5016420d238f5bcdab8a60f26475ea53b4622",
+    "request_bytes": 102649,
+    "request_sha256": "df5c271ac059aef51f539eb82dd7b5e07c23d6b6e2597479d763f0e5c4c87cd2",
+    "system_sha256": "0bf3f6d31cc58fe439f1791efce063311a540ec2d768b5f162755e8dfe3a4395",
+    "token_count": {
+      "input_tokens": 23806,
+      "reserved_output_tokens": 65536,
+      "context_limit": 1000000,
+      "counter_id": "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41",
+      "runtime_receipt_sha256": "014e3ce5e3227119f5ef3b4ac1e8f9dc3e044926cc3914aa0966edece419a6ec"
+    },
+    "user_sha256": "222b1c9d2cc1a2a0cd9efa8700e9e7817c0fde54da4e97a26cf5238dd1884568"
+  }
+}

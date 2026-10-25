@@ -1,0 +1,38 @@
+{
+  "archived_rejection_sha256": "c2d503378f06c25940c2e698dd00b78763fafeb582d7de9a00734e73a018b735",
+  "candidate_sha256": "7b7a3d15e711f0857d3899c981e79b17eb7f47a5a7b694ec59d1e983e63de34a",
+  "counts": {
+    "admitted_attempts": 3,
+    "attempt_outcomes": 3,
+    "logical_calls": 3,
+    "stage:annotation:admitted_attempts": 1,
+    "stage:annotation:attempt_outcomes": 1,
+    "stage:annotation:logical_calls": 1,
+    "stage:semantic_gate:admitted_attempts": 2,
+    "stage:semantic_gate:attempt_outcomes": 2,
+    "stage:semantic_gate:logical_calls": 2
+  },
+  "errors": [
+    "finish receipt missing or failed",
+    "seeded outcome not accepted",
+    "private typed-response replay mismatch",
+    "accepted checkpoint identity missing or mismatched"
+  ],
+  "format": "cairn-seeded-audit/v1",
+  "historical63_outcome": "FAIL; unchanged",
+  "ledger_bytes": 9218,
+  "ledger_sha256": "d5a06026a0c51bea166c0bf3dbb8dc445ee8cf71714c0dd62a90b4d13e7ff51d",
+  "mode": "fixed-r3-qualification-revision-validation/v1",
+  "original_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+  "pass": false,
+  "private_replay_file_sha256": {
+    "qualification-request-capture.json": "dcde0f997c5799021d0a8d1dff933ff1fcb9fabd21967c932132b242624a7867",
+    "qualification-response.private.json": "9e3d3f77e1e9a1ba2c5cf5dcf02c01c31325a842aa9ec9ebb2ad97e368f4c7af",
+    "revision-request-capture.json": "f5bb6f45591d608dddb6f9171b0db877509f43d3f6e45399303060ab1240bdd1",
+    "revision-response.private.json": "0e658accba9a6d365472e22369a96d918ddc546144895c988fdb3c343d5b04bb",
+    "validation-request-capture.json": "98616ac1e3dd5ca25c1b8bee06ea18983d5a829f73c5b31ef839740afb827a5c",
+    "validation-response.private.json": "09cf12e276f2d6e3ec77572b46837fefb5bea9261b1b511670cc0cb274b912ad"
+  },
+  "quality_capacity_causal_effect": "not established",
+  "status": "FAIL_final_gate"
+}
