@@ -221,3 +221,114 @@ The no-op incremental compatibility test proves only preservation of an already
 materialized curated edge in that scenario. It does not prove dirty-subdomain/new-edge
 verification or a general preservation guarantee. See
 [ADR0006](../../../../docs/decisions/0006-local-contradiction-verification.md).
+
+## Fixed-R3 seeded qualification/revision driver (task #73)
+
+Separate `seed-preflight`, `seed-run`, and `seed-audit` modes test the production
+revision API without invoking the full pipeline. This is a NEW experiment, not a
+fourth #63 round or paid control repeat. #63 remains FAIL. This implementation and
+free tests grant no live admission; root must freeze/review/admit separately.
+
+Inputs are fixed to LAST R3 GateA's57items from private archive commit
+`1a44fa27db4221778da3986efa5f4414c6f27611`, source
+`6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b`.
+The complete71332B original wrapper is authoritative, exactly as historical
+`os.ReadFile` supplied it. Original/candidate/rejection hashes and sizes are
+checked; body-only substitution, R2 selection and candidate union are unavailable.
+Original spans remain unknown. The old rejection is wrapped prose: because the
+old parser defaulted absent flags to false, it cannot prove current typed false.
+It is provenance only, never cast into a new `SemanticRejection`.
+
+1. Current GateB qualifies fixed R3/full original. Explicit typed false plus NEW
+   nonblank reason permits revision. A pass STOPS as
+   `QUALIFICATION_PASS_no_revision_effect`, a stochastic recheck without revision
+   effect. Untyped rejection, transport/parse failure or unknown result stopsFAIL.
+2. Production Revise uses THAT new typed reason, same full original and fixed R3.
+   Candidate/critique remain fallible data under #64 projection/alias rules.
+3. Unchanged FormatGate(default100runes) must yield a NONEMPTY replacement, then
+   current GateB checks it against the same full original. No pipeline follows.
+
+Hard cap: THREE actual wires total, ONE per call, concurrency1, annotation/gate
+inner-attempt1, no outer retry/canary/alternate candidate. Production HTTP
+`MaxRetries:1` permits an additional retry in that library; the stricter transport
+wire cap prevents its dispatch, and bad outcomes cancel before the retry loop.
+Historical capacity modes retain their previous settings and nil seed policy.
+
+A separate plan has this exact schema; it never replaces the capacity overlay:
+
+```json
+{
+  "format": "cairn-seeded-revision-plan/v1",
+  "mode": "fixed-r3-qualification-revision-validation/v1",
+  "archive_commit": "1a44fa27db4221778da3986efa5f4414c6f27611",
+  "document_id": "6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b",
+  "original_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+  "candidate_sha256": "7b7a3d15e711f0857d3899c981e79b17eb7f47a5a7b694ec59d1e983e63de34a",
+  "archived_rejection_sha256": "c2d503378f06c25940c2e698dd00b78763fafeb582d7de9a00734e73a018b735",
+  "max_tokens": 65536,
+  "request_timeout_seconds": 600,
+  "run_timeout_seconds": 1800,
+  "max_actual_wires": 3,
+  "max_wires_per_call": 1
+}
+```
+
+Use a fresh output directory and pinned official runtime:
+
+```sh
+cairn-capacity --mode seed-preflight --seed-input-root /private/restored/raw/attempt-01 \
+  --seed-manifest /private/new-plan.json --seed-manifest-sha256 PLAN_SHA \
+  --token-python PINNED_PYTHON --token-python-sha256 PYTHON_SHA \
+  --token-runtime-receipt PINNED_RECEIPT --token-runtime-sha256 RECEIPT_SHA \
+  --out /private/new-seeded-attempt
+```
+
+Seed modes forbid overrides of capacity timing defaults; the separate plan fixes
+HTTP600s/overall1800s. Free preflight captures the production qualification builder
+and real client serialization with an in-memory transport: zero network/model
+access and no model-key lookup. It also counts a SYNTHETIC-critique revision-builder
+probe, not a future live request or semantic verdict. Actual revision depends on
+NEW typed qualification feedback; final GateB depends on the cleaned replacement.
+Each actual request uses production builders, capture hashes and the official
+per-wire counter. Overflow stops; no truncation. Only separate frozen rootGO may
+use `seed-run --allow-paid` with the same identity arguments and environment key.
+
+Preflight binds binary/plan/compiled-driver/production digests. Exclusive start,
+finish, capture and ledger files preserve failures. Explicit phase/document/SHA
+attribution binds decoded revision `original` to the frozen source; GateB must
+match its production capture using that same original. It never guesses identity
+from a path inside critique/candidate. Capture hashes include projected candidate
+and critique, system/user and exact wire. Optional policy on the existing trace
+transport enforces phase order, output65536, official model, JSON/thinking and no
+extra sampling overrides; there is no alternate live transport.
+
+Private `*-response.private.json` retains content parsed by the gates. Observed
+wire final-content hashes bind those saved bytes to the response. Offline
+`seed-audit` reconciles exact phase/wire/usage/source identities, capture/actual
+wire hashes and parsed-content/usage hashes, then replays saved content through
+production parsers/gates. A finish string alone cannot prove typed qualification.
+Pass-at-qualification uses exactly1call; a completed revision path uses exactly3.
+Missing usage, counter delta, non-stop/error, unknown attempts or persistence
+failure prevent acceptance. No charge is invented for unknown usage.
+
+Source/model payloads, candidate/revised documents, typed reason and private logs
+remain restricted. Public reports contain sanitized method/counts/hashes/negative
+results only. No seeded result establishes causal improvement, factual recall,
+full12/full609 capacity, graph/answer quality, QA/HOLDOUT or stable readiness.
+
+The counter freeze includes Python executable SHA, adapter SHA, runtime receipt
+SHA and official counter ID. `seed-run` rejects a different/missing configuration
+before the first wire, rerenders/recounts the identical qualification request and
+compares it with preflight. Each wire's token receipt must match that identity;
+standalone audit compares every request with start/preflight. A coincidentally
+equal token count cannot authorize changing runtime. A nonempty environment key
+is required before seeded dispatch, matching normal capacity admission.
+
+A current qualification or final GateB pass retains
+`accepted-cleaned.private.json` plus `accepted-checkpoint.json`, bound to the
+actual pass response, full-original hash, skill/path, accepted bytes and complete
+run/runtime/counter identity receipt. Offline audit reproduces that accepted
+candidate. No IDs/04 are assigned here. A future separately accepted checkpoint
+adapter must use existing AssignIDs semantics; a failure creates no accepted04.
+The accepted checkpoint is explicitly provisional until a matching seed-audit
+PASS; a parsed gate pass during a transport/counter/ledger failure is unusable.

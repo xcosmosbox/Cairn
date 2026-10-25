@@ -15,7 +15,7 @@ import (
 
 // Bind the compiled instrumentation itself as well as the production SourceDigest.
 //
-//go:embed main.go prepare.go counter.go trace.go audit.go runtime.go cross_audit.go
+//go:embed main.go prepare.go counter.go trace.go audit.go runtime.go cross_audit.go seeded_revision.go
 var driverSources embed.FS
 
 func driverSourceDigest() string {

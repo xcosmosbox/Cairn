@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,7 +36,10 @@ func main() {
 func run() error {
 	overlay := flag.String("runtime-overlay", filepath.Join(rootPath(), "e2e/benchmarks/multihop_public/capacity/runtime-cross-relations-v1.json"), "new immutable reviewed runtime overlay")
 	overlaySHA := flag.String("runtime-overlay-sha256", "", "exact reviewed runtime overlay SHA256 required for preflight/run")
-	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit or trace-audit; no whole-run retry")
+	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit, trace-audit, seed-preflight, seed-run or seed-audit; no whole-run retry")
+	seedRoot := flag.String("seed-input-root", "", "read-only restored historical attempt root for fixed R3")
+	seedPlan := flag.String("seed-manifest", "", "new fixed-R3 experiment plan; never the historical capacity overlay")
+	seedPlanSHA := flag.String("seed-manifest-sha256", "", "exact independently reviewed seeded plan identity")
 	corpus := flag.String("corpus", "", "exact frozen corpus.json; no QA input")
 	out := flag.String("out", "", "new prepare output, or prepared directory for preflight/run/audit")
 	selectionSHA := flag.String("selection-sha256", "", "reviewed exact selection.json SHA256 required after preparation")
@@ -51,6 +55,37 @@ func run() error {
 	flag.Parse()
 	if *out == "" || flag.NArg() != 0 {
 		return fmt.Errorf("output required and positional arguments forbidden")
+	}
+	if strings.HasPrefix(*mode, "seed-") {
+		if *maxTokens != seededMaxTokens || *requestTimeout != 600*time.Second || *stageTimeout != 90*time.Minute || *runTimeout != 90*time.Minute {
+			return fmt.Errorf("seeded: capacity flag overrides forbidden; the separate plan fixes its bounded timeout")
+		}
+		in, _, err := loadSeededInputs(*seedRoot, *seedPlan, *seedPlanSHA)
+		if err != nil {
+			return err
+		}
+		if *mode == "seed-audit" {
+			if *allowPaid {
+				return fmt.Errorf("seeded: audit is offline")
+			}
+			return seedAudit(*out, in)
+		}
+		if *mode != "seed-preflight" && *mode != "seed-run" {
+			return fmt.Errorf("seeded: unknown mode")
+		}
+		if (*mode == "seed-preflight" && *allowPaid) || (*mode == "seed-run" && !*allowPaid) {
+			return fmt.Errorf("seeded: mode/admission mismatch")
+		}
+		adapter := filepath.Join(rootPath(), "e2e/benchmarks/multihop_public/capacity/token_count.py")
+		adapterBytes, err := os.ReadFile(adapter)
+		if err != nil {
+			return err
+		}
+		counter := externalCounter{Python: *python, PythonSHA: *pythonSHA, Adapter: adapter, AdapterSHA: sha(adapterBytes), Receipt: *runtimeReceipt, ReceiptSHA: *runtimeSHA}
+		if *mode == "seed-preflight" {
+			return seedPreflight(context.Background(), in, *out, *seedPlanSHA, counter)
+		}
+		return seededRun(context.Background(), in, *out, *seedPlanSHA, counter)
 	}
 	if *mode == "trace-audit" {
 		_, failures, err := writeTraceAudit(*out)
