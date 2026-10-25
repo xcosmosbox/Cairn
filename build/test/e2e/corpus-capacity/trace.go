@@ -82,6 +82,9 @@ type callInfo struct {
 	Document  string
 	Documents []string
 	Attempts  atomic.Int64
+	Mode      string
+	Phase     string
+	SourceSHA string
 }
 
 type boundedClient struct {
@@ -114,12 +117,25 @@ func (c *boundedClient) Complete(ctx context.Context, req llm.CompleteRequest) (
 			break
 		}
 	}
-	info := &callInfo{ID: c.sequence.Add(1), Stage: stage(req.System), Document: documentIdentity(req.User), Documents: documentIdentities(req.User)}
-	if err := c.ledger.append(map[string]any{"event": "logical_start", "call_id": info.ID, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now()}); err != nil {
+	info := &callInfo{ID: c.sequence.Add(1)}
+	if binding, ok := ctx.Value(seededBindingKey{}).(seededCallBinding); ok {
+		// 修订 JSON 中的路径可能只出现在不可信意见中；只用已验证的原文绑定。
+		// Seeded calls use explicit original-bound identity, never prompt regex guesses.
+		if err := binding.bind(req, info); err != nil {
+			return nil, err
+		}
+	} else {
+		info.Stage, info.Document, info.Documents = stage(req.System), documentIdentity(req.User), documentIdentities(req.User)
+	}
+	start := map[string]any{"event": "logical_start", "call_id": info.ID, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now()}
+	info.addSeedIdentity(start)
+	if err := c.ledger.append(start); err != nil {
 		return nil, fmt.Errorf("capacity: logical receipt failed")
 	}
 	response, err := c.next.Complete(context.WithValue(ctx, callKey{}, info), req)
-	if e := c.ledger.append(map[string]any{"event": "logical_end", "call_id": info.ID, "stage": info.Stage, "wire_attempts": info.Attempts.Load(), "complete_error": err != nil, "time_utc": now()}); e != nil {
+	end := map[string]any{"event": "logical_end", "call_id": info.ID, "stage": info.Stage, "wire_attempts": info.Attempts.Load(), "complete_error": err != nil, "time_utc": now()}
+	info.addSeedIdentity(end)
+	if e := c.ledger.append(end); e != nil {
 		return response, fmt.Errorf("capacity: completion receipt failed")
 	}
 	return response, err
@@ -212,6 +228,7 @@ type traceTransport struct {
 	input          atomic.Int64
 	output         atomic.Int64
 	identityFailed atomic.Bool
+	seedPolicy     *seededWirePolicy // nil preserves the historical capacity profile.
 }
 
 func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -223,6 +240,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	}
 	attempt := info.Attempts.Add(1)
 	row := map[string]any{"event": "request", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "document_id": info.Document, "document_ids": info.Documents, "time_utc": now(), "admitted": false}
+	info.addSeedIdentity(row)
 	reject := func(class string) (*http.Response, error) {
 		row["rejection"] = class
 		_ = t.ledger.append(row)
@@ -274,6 +292,11 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	if request.Context().Err() != nil {
 		return reject("cancelled")
 	}
+	if t.seedPolicy != nil {
+		if err := t.seedPolicy.admit(info, parsed, raw); err != nil {
+			return reject("seeded_phase_profile_or_wire_budget")
+		}
+	}
 	row["admitted"] = true
 	if err = t.ledger.append(row); err != nil {
 		return nil, fmt.Errorf("capacity: predispatch receipt failed")
@@ -283,12 +306,16 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	t.sent.Add(1)
 	response, networkErr := t.next.RoundTrip(request)
 	outcome := map[string]any{"event": "response", "http_attempt": id, "call_id": info.ID, "provider_attempt": attempt, "stage": info.Stage, "time_utc": now(), "seconds": time.Since(start).Seconds(), "usage_status": "unknown"}
+	info.addSeedIdentity(outcome)
 	if networkErr != nil || response == nil {
 		outcome["transport_error"] = true
 		if request.Context().Err() != nil {
 			outcome["cancelled"] = true
 		}
 		_ = t.ledger.append(outcome)
+		if t.seedPolicy != nil && t.ledger.cancel != nil {
+			t.ledger.cancel()
+		}
 		if networkErr == nil {
 			networkErr = errors.New("capacity: nil HTTP response")
 		}
@@ -316,7 +343,10 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		Model   string      `json:"model"`
 		Created json.Number `json:"created"`
 		Choices []struct {
-			Finish string `json:"finish_reason"`
+			Finish  string `json:"finish_reason"`
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
 		} `json:"choices"`
 		Usage *struct {
 			Input  *int64 `json:"prompt_tokens"`
@@ -349,6 +379,9 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 			}
 		}
 		if len(parsedResponse.Choices) > 0 {
+			if t.seedPolicy != nil {
+				outcome["final_content_sha256"] = sha([]byte(parsedResponse.Choices[0].Message.Content))
+			}
 			switch finish := parsedResponse.Choices[0].Finish; finish {
 			case "stop", "length", "content_filter", "tool_calls", "insufficient_system_resource":
 				outcome["finish_reason"] = finish
@@ -371,6 +404,11 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 	}
 	if outcome["usage_status"] == "unknown" {
 		t.missingUsage.Add(1)
+	}
+	// 单次资格/修订/验证都没有付费重试；异常先取消，再保留原响应供原客户端解析。
+	// A failed seeded outcome cancels before the production client's retry loop.
+	if t.seedPolicy != nil && (readErr != nil || response.StatusCode != 200 || outcome["finish_reason"] != "stop" || outcome["usage_status"] != "reported" || outcome["model_identity_expected"] != true) && t.ledger.cancel != nil {
+		t.ledger.cancel()
 	}
 	// Returning the original response preserves production parsing and retry policy.
 	// A failed outcome write cancels the shared run; audit cannot call it complete.
