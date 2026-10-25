@@ -441,3 +441,52 @@ func TestStagedMappingIncompleteOrUnboundUsageStopsWithoutRepair(t *testing.T) {
 		})
 	}
 }
+
+// 只有端点使用 alias 仍会让来源业务 UUID 泄漏；完整正文不能被遮盖或截断来假装满足 R1。
+// UUID-bearing literals in any rendered field are an explicit unsupported-input boundary.
+func TestStagedMappingUUIDLiteralAdmissionFence(t *testing.T) {
+	t.Parallel()
+	for _, literal := range []string{"12345678-1234-1234-1234-123456789abc", "12345678-1234-1234-1234-123456789ABC", "aBcDeF01-aBcD-eF01-aBcD-eF0123456789"} {
+		for _, field := range []string{"name", "content", "detail", "member-id", "doc-id", "skill", "path", "span-quote"} {
+			t.Run(field+literal, func(t *testing.T) {
+				in := stagedTestInput(1)
+				item := &in.Documents[0].Annotation.Items[0]
+				switch field {
+				case "name":
+					item.Name = "business " + literal
+				case "content":
+					item.Content = "alpha " + literal
+				case "detail":
+					item.Detail = strings.Repeat("complete source ", 20) + literal
+				case "member-id":
+					item.ID = "ordinary-04-" + literal
+				case "doc-id":
+					in.Documents[0].Root.DocID = literal
+				case "skill":
+					in.Documents[0].Root.Skill = literal
+					in.Documents[0].Annotation.Skill = literal
+				case "path":
+					in.Documents[0].Root.FilePath = "references/" + literal + ".md"
+					in.Documents[0].Annotation.FilePath = in.Documents[0].Root.FilePath
+				case "span-quote":
+					item.SourceSpan.Quote = literal
+				}
+				in.Roster[0] = in.Documents[0].Root
+				stagedRepin(&in)
+				original, _ := json.Marshal(in)
+				f := &stagedFake{pins: in.Identity.Admission}
+				_, e := RunStagedMapping(context.Background(), in, StagedMappingOptions{StageDir: filepath.Join(t.TempDir(), "stage"), Admitter: f})
+				if e == nil || !strings.Contains(e.Error(), "R1") || f.prepared != 0 || f.dispatched != 0 {
+					t.Fatalf("UUID reached admission: %v prepare%d dispatch%d", e, f.prepared, f.dispatched)
+				}
+				after, _ := json.Marshal(in)
+				if string(original) != string(after) {
+					t.Fatal("UUID fence rewrote frozen source")
+				}
+			})
+		}
+	}
+	if e := stagedRequireUUIDFree(llm.CompleteRequest{System: "prefix 12345678-1234-1234-1234-123456789abc suffix", User: "ordinary-04-id"}); e == nil {
+		t.Fatal("system-message fence bypassed")
+	}
+}

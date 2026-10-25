@@ -190,3 +190,42 @@ func TestStagedRecallMissingOrAmbiguousAncestorFails(t *testing.T) {
 		})
 	}
 }
+
+func TestStagedRecallFullCandidateUUIDLiteralFence(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"summary", "name"} {
+		t.Run(field, func(t *testing.T) {
+			in := stagedTestInput(1)
+			canonical, units, _ := stagedCanonicalInput(in)
+			s, e := openStagedSession(context.Background(), canonical, StagedMappingOptions{StageDir: filepath.Join(t.TempDir(), "stage")})
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer s.close()
+			stagedSeedCatalogue(t, s, 1)
+			literal := "12345678-1234-1234-1234-123456789ABC"
+			for i := range s.state.Nodes {
+				if s.state.Nodes[i].Label == dktypes.LabelEntity {
+					if field == "summary" {
+						s.state.Nodes[i].Summary = strings.Repeat("alpha full summary ", 20) + literal
+					} else {
+						s.state.Nodes[i].Name = "alpha candidate " + literal
+					}
+				}
+			}
+			// Build a fresh owned projection so the full candidate text participates in FTS/rendering.
+			if _, e = s.db.Conn().Exec(`DELETE FROM nodes_fts`); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.db.Conn().Exec(`DELETE FROM nodes`); e != nil {
+				t.Fatal(e)
+			}
+			if e = s.project(context.Background()); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.preparePlan(context.Background(), units, 1, ""); e == nil || !strings.Contains(e.Error(), "R1") {
+				t.Fatal("full candidate UUID was truncated, masked or admitted")
+			}
+		})
+	}
+}

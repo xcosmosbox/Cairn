@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -17,6 +18,17 @@ type stagedPlan struct {
 	Book    *aliasBook
 	Units   []*alignUnit
 	Sources map[string][]*alignUnit
+}
+
+// 与既有 sourceUUIDPattern 使用同一大小写无关的 8-4-4-4-12 字面量边界。
+// Full-source preservation cannot silently mask a business UUID to satisfy R1.
+var stagedRenderedUUIDPattern = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+
+func stagedRequireUUIDFree(req llm.CompleteRequest) error {
+	if stagedRenderedUUIDPattern.MatchString(req.System) || stagedRenderedUUIDPattern.MatchString(req.User) {
+		return fmt.Errorf("staged mapping: unsupported UUID-bearing rendered input (R1)")
+	}
+	return nil
 }
 
 // stagedRecallQuery 只投影首个规范来源；原内容不被截断或清洗。
@@ -220,7 +232,13 @@ func (s *stagedSession) preparePlan(ctx context.Context, batch []stagedUnit, att
 		Parent string
 		Units  []string
 	}{parent, ids})
-	return &stagedPlan{StagedMappingCall{BatchID: key, CatalogueSHA256: parent, Attempt: attempt, Units: ids, Request: llm.CompleteRequest{System: system, User: string(raw), MaxTokens: stagedMaxOutput}}, book, flat, sources}, nil
+	call := StagedMappingCall{BatchID: key, CatalogueSHA256: parent, Attempt: attempt, Units: ids, Request: llm.CompleteRequest{System: system, User: string(raw), MaxTokens: stagedMaxOutput}}
+	// 检查最终完整渲染而非挑选字段；来源、候选摘要和元数据都不能绕过 UUID 零 prompt。
+	// Fail before Prepare, without truncating, masking, skipping or splitting the offending payload.
+	if e := stagedRequireUUIDFree(call.Request); e != nil {
+		return nil, e
+	}
+	return &stagedPlan{call, book, flat, sources}, nil
 }
 
 func stagedEncodedWithin(v any, limit int) bool {
