@@ -176,9 +176,11 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 		// Build the complete replacement set first.  The storage operation below
 		// validates endpoints and performs delete/update/insert under one SQL
 		// transaction, so a failure halfway through cannot publish a partial set.
-		// For an identity already in the old internal set, storage treats only the
-		// LLM-schema fields description/confidence as updates and preserves the
-		// complete non-LLM metadata plus id/created_at from the old Edge snapshot.
+		// R8：storage 在同一事务内以旧 provenance 为准；任何既有人工身份均整行
+		// 保留，机器返回同身份或遗漏都不是修改/删除授权。仅 machine-only 身份
+		// 接受 description/confidence 更新，仍保留旧的其余字段。
+		// Storage protects complete human payloads from the authoritative old
+		// snapshot, even if a caller bypasses I-7's generated-collision filter.
 		var replacement []*dktypes.Edge
 		for _, rel := range relations {
 			conf := rel.Confidence
