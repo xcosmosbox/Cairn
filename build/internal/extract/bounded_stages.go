@@ -115,6 +115,40 @@ type BoundedStageWork struct {
 	task, lo, hi int
 }
 
+// BoundedStageDescriptor 仅为调用方认证来源覆盖提供私有元数据，不参与任何模型prompt。
+// A copied descriptor identifies the current leaf; it is not proof of delivery or source authenticity.
+type BoundedStageDescriptor struct {
+	ID      string
+	Stage   string
+	NodeIDs []string
+	Pairs   []BoundedPair
+}
+
+// Descriptor 对当前leaf逐次复制所有切片，不暴露计划的可变内部引用。
+// Relation nodes are the canonical unique endpoint union of this leaf's pairs only.
+func (w BoundedStageWork) Descriptor() BoundedStageDescriptor {
+	if !w.valid() {
+		return BoundedStageDescriptor{}
+	}
+	d := BoundedStageDescriptor{ID: w.ID(), Stage: w.plan.stage}
+	task := w.plan.tasks[w.task]
+	if w.plan.stage == boundedDescription {
+		d.NodeIDs = append([]string(nil), task.nodes[w.lo:w.hi]...)
+	} else {
+		d.Pairs = append([]BoundedPair(nil), task.pairs[w.lo:w.hi]...)
+		ids := map[string]bool{}
+		for _, pair := range d.Pairs {
+			ids[pair.First] = true
+			ids[pair.Second] = true
+		}
+		for id := range ids {
+			d.NodeIDs = append(d.NodeIDs, id)
+		}
+		sort.Strings(d.NodeIDs)
+	}
+	return d
+}
+
 // BoundedStageDelta 仅由严格Validate生成，并绑定工作区间；不表示模型或admission已发生。
 // Private copied contents cannot be repurposed for a different plan or work interval.
 type BoundedStageDelta struct {

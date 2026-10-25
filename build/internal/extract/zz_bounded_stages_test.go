@@ -15,7 +15,82 @@ import (
 	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
-func boundedTestID(name string) string  { return uuid.NewSHA1(uuid.Nil, []byte(name)).String() }
+func boundedTestID(name string) string { return uuid.NewSHA1(uuid.Nil, []byte(name)).String() }
+
+// Descriptor只能提供当前叶的认证覆盖元数据，不能改写计划或污染模型prompt。
+func TestBoundedStageDescriptorCopiesCurrentLeafAndPreservesPlan(t *testing.T) {
+	t.Parallel()
+	for _, relation := range []bool{false, true} {
+		input := boundedTestInput(t, 8, 1, 2)
+		plan := boundedTestPlan(t, input, relation)
+		parent := plan.Works()[0]
+		request, _ := parent.Request(1)
+		root := plan.id
+		descriptor := parent.Descriptor()
+		if descriptor.ID != parent.ID() || descriptor.Stage != plan.stage || len(descriptor.NodeIDs) == 0 {
+			t.Fatal("leaf metadata incomplete")
+		}
+		for _, id := range descriptor.NodeIDs {
+			if strings.Contains(request.User, id) {
+				t.Fatal("descriptor UUID appended to prompt")
+			}
+		}
+		children, err := parent.Split()
+		if err != nil {
+			t.Fatal(err)
+		}
+		seenNodes := map[string]bool{}
+		seenPairs := map[BoundedPair]bool{}
+		for _, child := range children {
+			d := child.Descriptor()
+			if d.ID == descriptor.ID || d.ID != child.ID() {
+				t.Fatal("split identity not current leaf")
+			}
+			for _, id := range d.NodeIDs {
+				seenNodes[id] = true
+			}
+			for _, pair := range d.Pairs {
+				if seenPairs[pair] {
+					t.Fatal("split pair overlap")
+				}
+				seenPairs[pair] = true
+			}
+			if len(d.NodeIDs) > 0 {
+				d.NodeIDs[0] = "mutated"
+			}
+			if len(d.Pairs) > 0 {
+				d.Pairs[0].First = "mutated"
+			}
+			again := child.Descriptor()
+			for _, id := range again.NodeIDs {
+				if id == "mutated" {
+					t.Fatal("descriptor node aliases plan")
+				}
+			}
+			for _, pair := range again.Pairs {
+				if pair.First == "mutated" {
+					t.Fatal("descriptor pair aliases plan")
+				}
+			}
+		}
+		for _, id := range descriptor.NodeIDs {
+			if !seenNodes[id] {
+				t.Fatal("split node coverage incomplete")
+			}
+		}
+		if relation && len(seenPairs) != len(descriptor.Pairs) {
+			t.Fatal("split pair coverage incomplete")
+		}
+		after, _ := parent.Request(1)
+		if plan.id != root || !reflect.DeepEqual(request, after) {
+			t.Fatal("metadata accessor changed request/plan")
+		}
+	}
+	if !reflect.DeepEqual((BoundedStageWork{}).Descriptor(), BoundedStageDescriptor{}) {
+		t.Fatal("invalid work manufactured descriptor")
+	}
+}
+
 func boundedTestPin(name string) string { return boundedHash([]byte(name)) }
 func boundedTestMaterialBytes(n boundedNode) int {
 	var projection []map[string]string
