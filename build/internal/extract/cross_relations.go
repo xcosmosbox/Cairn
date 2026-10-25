@@ -3,10 +3,13 @@ package extract
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -112,12 +115,13 @@ type CrossRelationReport struct {
 }
 
 type crossTask struct {
-	scope          endpointScope
-	sd             *Subdomain
-	index          int
-	relation       Relation
-	source, target endpointRef
-	ss, ts         string
+	domainIndex, subdomainIndex int
+	scope                       endpointScope
+	sd                          *Subdomain
+	index                       int
+	relation                    Relation
+	source, target              endpointRef
+	ss, ts                      string
 }
 
 type sourceKey struct{ skill, path string }
@@ -227,23 +231,97 @@ func crossEndpoint(ref endpointRef) CrossEndpoint {
 	return CrossEndpoint{Domain: ref.scope.domain, Subdomain: ref.scope.subdomain, Alias: ref.node.ID, Name: ref.node.Name, Members: append([]string(nil), ref.node.Members...)}
 }
 
-// ValidateCrossRelations 验证全量构建新生成的跨域候选与本域 contradicts，跨域矛盾只验证一次。
-// 每候选使用两端 members 贡献的完整原文文档；超容量/缺来源明确不足，不取摘要或截断兜底。
-// 既有/人工边不传入此全量提取入口；增量新边尚未接入，不能宣称已覆盖。
-// ValidateCrossRelations verifies fresh full-build cross candidates and local contradictions.
-func (e *Extractor) ValidateCrossRelations(ctx context.Context, res *Result, docs []*dktypes.AnnotatedDocument, originals []FrozenSource, opts CrossRelationOptions) *CrossRelationReport {
+// CrossRelationPlanIdentity 是内部纯验证配方的完整身份，不是提供商 wire 准入。
+// SourcesSHA256 binds ordered complete annotations and frozen originals, including bytes/ownership.
+// These roots bind supplied snapshots; external corpus/checkpoint and provider delivery trust remains with the caller.
+type CrossRelationPlanIdentity struct {
+	Version, PlanSHA256, GraphSHA256, SourcesSHA256, PromptSHA256, Policy string
+	MaxEvidenceBytes, MaxTokens                                           int
+}
+
+// CrossRelationWorkDescriptor 只暴露副本；终态工作也必须出现在完整结果清单中。
+// RequestSHA256 identifies the logical CompleteRequest, not an actual serialized provider request.
+type CrossRelationWorkDescriptor struct {
+	ID, PlanSHA256, CandidateSHA256, SourcesSHA256, NeighborhoodSHA256, RequestSHA256 string
+	Ordinal                                                                           int
+	OwnerDomain, OwnerSubdomain                                                       string
+	Relation                                                                          Relation
+	Sources                                                                           []CrossSource
+	EvidenceBytes                                                                     int
+	PreflightDisposition, PreflightReason                                             string
+}
+
+// CrossRelationPlan 在构造时冻结图、来源及工作位置，之后没有可变公开字段。
+// The plan owns all snapshots; equivalent canonical inputs recreate equivalent work identities.
+type CrossRelationPlan struct {
+	identity CrossRelationPlanIdentity
+	graph    *Result
+	works    []*CrossRelationWork
+}
+
+// CrossRelationWork 复用既有邻域、UUID 视图和证据解析，不包含 client 或任何派发能力。
+// Work is immutable and safe to evaluate independently; no call or retry is performed here.
+type CrossRelationWork struct {
+	descriptor      CrossRelationWorkDescriptor
+	task            crossTask
+	preflight       CrossRelationDecision
+	requestable     bool
+	request         llm.CompleteRequest
+	members         map[string]map[sourceKey]bool
+	byID            map[string]crossOriginal
+	sourceView      uuidSourceView
+	neighborhoodSHA string
+}
+
+// CrossRelationEvaluation 的判定与绑定均不导出，调用方不能构造伪造的 accepted 增量。
+// Only Work.Evaluate seals an evaluation; exported accessors return defensive copies.
+// A seal proves evaluation by this recipe, not authenticated delivery from a model provider.
+type CrossRelationEvaluation struct {
+	planSHA, workID, sealSHA string
+	decision                 CrossRelationDecision
+}
+
+func (p *CrossRelationPlan) Identity() CrossRelationPlanIdentity { return p.identity }
+func (p *CrossRelationPlan) Works() []*CrossRelationWork         { return crossCopySlice(p.works) }
+func (w *CrossRelationWork) Descriptor() CrossRelationWorkDescriptor {
+	d := w.descriptor
+	d.Sources = crossCopySlice(d.Sources)
+	return d
+}
+func (w *CrossRelationWork) Request() (llm.CompleteRequest, bool) {
+	if !w.requestable {
+		return llm.CompleteRequest{}, false
+	}
+	r := w.request
+	r.StopSequences = crossCopySlice(r.StopSequences)
+	return r, true
+}
+func (v *CrossRelationEvaluation) Decision() CrossRelationDecision {
+	return cloneCrossDecision(v.decision)
+}
+
+// BuildCrossRelationPlan 枚举每个真实跨域候选和本域 contradicts 一次，保留重复存储候选的独立位置。
+// Preparation preserves the existing terminal dispositions, prompt, source view and limits.
+// 仅接收新全量提取候选；既有/人工边不进入此接口，增量新边仍未接线。
+// Existing/human-curated edges and incremental integration remain outside this full-build verifier seam.
+func BuildCrossRelationPlan(res *Result, docs []*dktypes.AnnotatedDocument, originals []FrozenSource, opts CrossRelationOptions, maxTokens int) *CrossRelationPlan {
 	limit := opts.MaxEvidenceBytes
 	if limit <= 0 {
 		limit = DefaultCrossRelationEvidenceBytes
 	}
-	rpt := &CrossRelationReport{ValidationPolicy: CrossRelationPolicyV2, MaxEvidenceBytes: limit, Decisions: []CrossRelationDecision{}}
-	if res == nil {
-		return rpt
+	graph := cloneCrossResult(res)
+	documents := cloneCrossDocuments(docs)
+	sources := crossCopySlice(originals)
+	identity := CrossRelationPlanIdentity{Version: "cairn-cross-relation-plan/v1", GraphSHA256: crossIdentityHash(graph), SourcesSHA256: crossSourceIdentity(documents, sources), PromptSHA256: crossIdentityHash(crossRelationSystemPrompt), Policy: CrossRelationPolicyV2, MaxEvidenceBytes: limit, MaxTokens: maxTokens}
+	identity.PlanSHA256 = crossIdentityHash(identity)
+	p := &CrossRelationPlan{identity: identity, graph: graph, works: []*CrossRelationWork{}}
+	if graph == nil {
+		return p
 	}
-	index := indexEndpoints(res.Domains)
+	index := indexEndpoints(graph.Domains)
 	var tasks []crossTask
-	for di := range res.Domains {
-		d := &res.Domains[di]
+	for di := range graph.Domains {
+		d := &graph.Domains[di]
 		for si := range d.Subdomains {
 			sd := &d.Subdomains[si]
 			scope := endpointScope{d.Slug, sd.Slug}
@@ -252,75 +330,212 @@ func (e *Extractor) ValidateCrossRelations(ctx context.Context, res *Result, doc
 				if ss == "resolved" && ts == "resolved" && source.scope == scope && target.scope == scope && r.Kind != "contradicts" {
 					continue
 				}
-				tasks = append(tasks, crossTask{scope, sd, ri, r, source, target, ss, ts})
+				tasks = append(tasks, crossTask{domainIndex: di, subdomainIndex: si, scope: scope, sd: sd, index: ri, relation: r, source: source, target: target, ss: ss, ts: ts})
 			}
 		}
 	}
-	rpt.Candidates = len(tasks)
-	// member→原文位置来自代码保留的 04 文档归属，不信任 LLM 生成的 source_skills。
-	// Membership-to-document bindings come from annotation ownership, not generated prose.
-	members := make(map[string]map[sourceKey]bool)
-	for _, doc := range docs {
+	members := map[string]map[sourceKey]bool{}
+	for _, doc := range documents {
 		if doc == nil {
 			continue
 		}
 		for _, item := range doc.Items {
 			if members[item.ID] == nil {
-				members[item.ID] = make(map[sourceKey]bool)
+				members[item.ID] = map[sourceKey]bool{}
 			}
 			members[item.ID][sourceKey{doc.Skill, doc.FilePath}] = true
 		}
 	}
-	frozen := make(map[sourceKey]FrozenSource)
-	conflicts := make(map[sourceKey]bool)
-	for _, src := range originals {
+	frozen := map[sourceKey]FrozenSource{}
+	conflicts := map[sourceKey]bool{}
+	for _, src := range sources {
 		key := sourceKey{src.Skill, src.Path}
 		if previous, ok := frozen[key]; ok && previous.Content != src.Content {
 			conflicts[key] = true
 		}
-		// Recompute to reject mutated or mislabeled source snapshots rather than trusting a supplied hash.
 		if !utf8.ValidString(src.Content) || FreezeSource(src.Skill, src.Path, src.Content).SHA256 != src.SHA256 {
 			conflicts[key] = true
 		}
 		frozen[key] = src
 	}
-	rpt.Decisions = make([]CrossRelationDecision, len(tasks))
-	parallel.ForEachIndexed(parallel.MaxConcurrency, tasks, func(i int, task crossTask) {
-		rpt.Decisions[i] = e.validateCrossCandidate(ctx, task, members, frozen, conflicts, limit)
-	})
-	// 原地关系删除必须等并发只读验证全部结束，避免索引/切片数据竞争。
-	// Apply only after all read-only verifications finish.
-	rejected := make(map[*Subdomain]map[int]bool)
-	for i, decision := range rpt.Decisions {
-		if decision.Disposition == "accepted" {
+	for ordinal, task := range tasks {
+		w := prepareCrossCandidate(task, members, frozen, conflicts, limit, maxTokens)
+		candidate := crossIdentityHash(struct {
+			Domain, Subdomain                                   string
+			Ordinal, DomainIndex, SubdomainIndex, RelationIndex int
+			Relation                                            Relation
+			Source, Target                                      CrossEndpoint
+			SourceStatus, TargetStatus                          string
+		}{task.scope.domain, task.scope.subdomain, ordinal, task.domainIndex, task.subdomainIndex, task.index, task.relation, w.preflight.Source, w.preflight.Target, task.ss, task.ts})
+		id := crossIdentityHash(struct{ Plan, Candidate string }{identity.PlanSHA256, candidate})
+		w.descriptor = CrossRelationWorkDescriptor{ID: id, PlanSHA256: identity.PlanSHA256, CandidateSHA256: candidate, SourcesSHA256: identity.SourcesSHA256, NeighborhoodSHA256: w.neighborhoodSHA, Ordinal: ordinal, OwnerDomain: task.scope.domain, OwnerSubdomain: task.scope.subdomain, Relation: task.relation, Sources: crossCopySlice(w.preflight.Sources), EvidenceBytes: w.preflight.EvidenceBytes}
+		if w.requestable {
+			w.descriptor.RequestSHA256 = crossIdentityHash(w.request)
+		} else {
+			w.descriptor.PreflightDisposition = w.preflight.Disposition
+			w.descriptor.PreflightReason = w.preflight.Reason
+		}
+		p.works = append(p.works, w)
+	}
+	return p
+}
+
+func (w *CrossRelationWork) seal(d CrossRelationDecision) *CrossRelationEvaluation {
+	v := &CrossRelationEvaluation{planSHA: w.descriptor.PlanSHA256, workID: w.descriptor.ID, decision: cloneCrossDecision(d)}
+	v.sealSHA = crossIdentityHash(struct {
+		Plan, Work string
+		Decision   CrossRelationDecision
+	}{v.planSHA, v.workID, v.decision})
+	return v
+}
+func (v *CrossRelationEvaluation) executionError(reason string) *CrossRelationEvaluation {
+	d := cloneCrossDecision(v.decision)
+	d.Disposition = "execution_error"
+	d.Reason = reason
+	out := &CrossRelationEvaluation{planSHA: v.planSHA, workID: v.workID, decision: d}
+	out.sealSHA = crossIdentityHash(struct {
+		Plan, Work string
+		Decision   CrossRelationDecision
+	}{out.planSHA, out.workID, out.decision})
+	return out
+}
+
+// Apply 要求原图完整身份及工作清单恰好覆盖，成功后返回独立图和报告，不修改输入。
+// Missing, duplicate, unknown or foreign evaluations fail before any relation mutation.
+// A bounded caller must treat any Apply error as a hard stop and must not publish its base graph.
+func (p *CrossRelationPlan) Apply(base *Result, evaluations []*CrossRelationEvaluation) (*Result, *CrossRelationReport, error) {
+	return p.apply(base, evaluations, false)
+}
+func (p *CrossRelationPlan) apply(base *Result, evaluations []*CrossRelationEvaluation, inPlace bool) (*Result, *CrossRelationReport, error) {
+	if p == nil || crossIdentityHash(base) != p.identity.GraphSHA256 {
+		return nil, nil, fmt.Errorf("cross relation plan: base graph identity mismatch")
+	}
+	if len(evaluations) != len(p.works) {
+		return nil, nil, fmt.Errorf("cross relation plan: incomplete evaluation inventory")
+	}
+	byID := map[string]*CrossRelationEvaluation{}
+	for _, v := range evaluations {
+		if v == nil || v.planSHA != p.identity.PlanSHA256 || v.workID == "" || byID[v.workID] != nil || v.sealSHA != crossIdentityHash(struct {
+			Plan, Work string
+			Decision   CrossRelationDecision
+		}{v.planSHA, v.workID, v.decision}) {
+			return nil, nil, fmt.Errorf("cross relation plan: foreign, duplicate or unsealed evaluation")
+		}
+		byID[v.workID] = v
+	}
+	rpt := &CrossRelationReport{ValidationPolicy: CrossRelationPolicyV2, Candidates: len(p.works), MaxEvidenceBytes: p.identity.MaxEvidenceBytes, Decisions: make([]CrossRelationDecision, len(p.works))}
+	removed := map[[2]int]map[int]bool{}
+	for i, w := range p.works {
+		v, ok := byID[w.descriptor.ID]
+		if !ok {
+			return nil, nil, fmt.Errorf("cross relation plan: unknown or missing work identity")
+		}
+		d := cloneCrossDecision(v.decision)
+		rpt.Decisions[i] = d
+		if d.Disposition == "accepted" {
 			rpt.Accepted++
 		} else {
-			if rejected[tasks[i].sd] == nil {
-				rejected[tasks[i].sd] = make(map[int]bool)
+			key := [2]int{w.task.domainIndex, w.task.subdomainIndex}
+			if removed[key] == nil {
+				removed[key] = map[int]bool{}
 			}
-			rejected[tasks[i].sd][tasks[i].index] = true
+			removed[key][w.task.index] = true
 		}
-		log.Printf("[extract-cross] scope=%s %s/%s %s --%s--> %s: %s (%s)", decision.Scope, decision.OwnerDomain, decision.OwnerSubdomain, decision.Relation.Source, decision.Kind, decision.Relation.Target, decision.Disposition, decision.Reason)
 	}
-	for sd, removed := range rejected {
+	out := base
+	if !inPlace {
+		out = cloneCrossResult(base)
+	}
+	for key, indices := range removed {
+		sd := &out.Domains[key[0]].Subdomains[key[1]]
 		kept := sd.Relations[:0]
 		for ri, rel := range sd.Relations {
-			if !removed[ri] {
+			if !indices[ri] {
 				kept = append(kept, rel)
 			}
 		}
 		sd.Relations = kept
 	}
+	return out, rpt, nil
+}
+
+// ValidateCrossRelations 保留既有 client/context、原地过滤和报告行为，委托给同一纯计划及解析器。
+// Only this compatibility wrapper performs calls and logs; preparation/evaluation/apply remain pure.
+// 调用期间需独占图和来源；不支持调用方中途改写。此旧报告接口不能替代新编排器的 Apply 错误硬停止。
+// Caller mutation is unsupported; on mismatch report every frozen candidate as execution_error and preserve unknown edits.
+func (e *Extractor) ValidateCrossRelations(ctx context.Context, res *Result, docs []*dktypes.AnnotatedDocument, originals []FrozenSource, opts CrossRelationOptions) *CrossRelationReport {
+	p := BuildCrossRelationPlan(res, docs, originals, opts, e.maxTokens)
+	evaluations := make([]*CrossRelationEvaluation, len(p.works))
+	parallel.ForEachIndexed(parallel.MaxConcurrency, p.works, func(i int, w *CrossRelationWork) {
+		req, requestable := w.Request()
+		if !requestable {
+			evaluations[i] = w.Evaluate(nil, nil)
+			return
+		}
+		if err := ctx.Err(); err != nil {
+			evaluations[i] = w.Evaluate(nil, nil).executionError(err.Error())
+			return
+		}
+		if e.client == nil {
+			evaluations[i] = w.Evaluate(nil, nil).executionError("nil LLM client")
+			return
+		}
+		response, err := e.client.Complete(ctx, req)
+		if err != nil {
+			evaluations[i] = w.Evaluate(response, err)
+			return
+		}
+		if err = ctx.Err(); err != nil {
+			evaluations[i] = w.Evaluate(nil, nil).executionError(err.Error())
+			return
+		}
+		v := w.Evaluate(response, nil)
+		// 既有最终取消检查只在证据通过后执行，保留已解析 verifier/evidence。
+		if v.decision.Disposition == "accepted" {
+			if err = ctx.Err(); err != nil {
+				v = v.executionError(err.Error())
+			}
+		}
+		evaluations[i] = v
+	})
+	var rpt *CrossRelationReport
+	var err error
+	if crossSourceIdentity(docs, originals) != p.identity.SourcesSHA256 {
+		err = fmt.Errorf("cross relation plan: source identity changed")
+	} else {
+		_, rpt, err = p.apply(res, evaluations, true)
+	}
+	if err != nil {
+		log.Printf("[extract-cross] plan apply failed: %v", err)
+		rpt = &CrossRelationReport{ValidationPolicy: CrossRelationPolicyV2, Candidates: len(p.works), MaxEvidenceBytes: p.identity.MaxEvidenceBytes, Decisions: make([]CrossRelationDecision, len(p.works))}
+		for i, w := range p.works {
+			d := cloneCrossDecision(w.preflight)
+			if evaluations[i] != nil {
+				d = evaluations[i].Decision()
+			}
+			d.Disposition = "execution_error"
+			d.Reason = "verifier input identity changed during validation; exclusive caller ownership required"
+			rpt.Decisions[i] = d
+		}
+	}
+	for _, d := range rpt.Decisions {
+		log.Printf("[extract-cross] scope=%s %s/%s %s --%s--> %s: %s (%s)", d.Scope, d.OwnerDomain, d.OwnerSubdomain, d.Relation.Source, d.Kind, d.Relation.Target, d.Disposition, d.Reason)
+	}
 	return rpt
 }
 
-func (e *Extractor) validateCrossCandidate(ctx context.Context, task crossTask, members map[string]map[sourceKey]bool, frozen map[sourceKey]FrozenSource, conflicts map[sourceKey]bool, limit int) CrossRelationDecision {
+func prepareCrossCandidate(task crossTask, members map[string]map[sourceKey]bool, frozen map[sourceKey]FrozenSource, conflicts map[sourceKey]bool, limit, maxTokens int) *CrossRelationWork {
+	w := &CrossRelationWork{task: task, members: members}
 	d := CrossRelationDecision{OwnerDomain: task.scope.domain, OwnerSubdomain: task.scope.subdomain, Relation: task.relation, Source: crossEndpoint(task.source), Target: crossEndpoint(task.target)}
 	d.Kind, d.Scope = task.relation.Kind, CrossRelationScopeCross
 	if task.ss == "resolved" && task.ts == "resolved" && task.source.scope == task.scope && task.target.scope == task.scope {
 		d.Scope = CrossRelationScopeLocal
 	}
-	finish := func(status, reason string) CrossRelationDecision { d.Disposition, d.Reason = status, reason; return d }
+	finish := func(status, reason string) *CrossRelationWork {
+		d.Disposition, d.Reason = status, reason
+		w.preflight = d
+		return w
+	}
 	if task.ss != "resolved" || task.ts != "resolved" {
 		return finish("rejected_endpoint", fmt.Sprintf("source=%s target=%s", task.ss, task.ts))
 	}
@@ -385,20 +600,30 @@ func (e *Extractor) validateCrossCandidate(ctx context.Context, task crossTask, 
 	if len(viewPayload) > limit {
 		return finish("insufficient_evidence", fmt.Sprintf("complete source neighborhood exceeds evidence budget: %d > %d bytes; no truncation", len(viewPayload), limit))
 	}
-	if err := ctx.Err(); err != nil {
-		return finish("execution_error", err.Error())
+
+	w.preflight = d
+	w.byID = byID
+	w.sourceView = sourceView
+	w.neighborhoodSHA = crossIdentityHash(input)
+	w.requestable = true
+	w.request = llm.CompleteRequest{System: crossRelationSystemPrompt, User: viewPayload, MaxTokens: maxTokens}
+	return w
+}
+
+// Evaluate 使用原有 verifier JSON 与逐字原文证据谓词，不派发、不重试，也不放宽 parser。
+// Caller-side cancellation is supplied as execution error; the legacy wrapper keeps exact reason timing.
+func (w *CrossRelationWork) Evaluate(response *llm.CompleteResponse, executionErr error) *CrossRelationEvaluation {
+	d := cloneCrossDecision(w.preflight)
+	task, members, byID, sourceView := w.task, w.members, w.byID, w.sourceView
+	finish := func(status, reason string) *CrossRelationEvaluation {
+		d.Disposition, d.Reason = status, reason
+		return w.seal(d)
 	}
-	if e.client == nil {
-		return finish("execution_error", "nil LLM client")
+	if !w.requestable {
+		return finish(d.Disposition, d.Reason)
 	}
-	response, err := e.client.Complete(ctx, llm.CompleteRequest{System: crossRelationSystemPrompt, User: viewPayload, MaxTokens: e.maxTokens})
-	if err != nil {
-		return finish("execution_error", fmt.Sprintf("source verifier: %v", err))
-	}
-	// 传输返回成功不代表阶段仍有效；取消可能发生在读取响应与本地解析之间。
-	// Do not accept a late response after stage cancellation/deadline expiry.
-	if err := ctx.Err(); err != nil {
-		return finish("execution_error", err.Error())
+	if executionErr != nil {
+		return finish("execution_error", fmt.Sprintf("source verifier: %v", executionErr))
 	}
 	if response == nil {
 		return finish("execution_error", "source verifier returned nil response")
@@ -482,10 +707,174 @@ func (e *Extractor) validateCrossCandidate(ctx context.Context, task crossTask, 
 	if !roles["source"] || !roles["target"] {
 		return finish("rejected_evidence", "exact original evidence required for both endpoints")
 	}
-	if err := ctx.Err(); err != nil {
-		return finish("execution_error", err.Error())
-	}
 	return finish("accepted", verdict.Reason)
+}
+
+// crossIdentityHash 逐字段绑定强类型快照，包含 json:"-" 层身份，且不改写无效 UTF-8 或非有限浮点。
+// A versioned typed encoding avoids JSON-clone loss and process-dependent pointer identities.
+func crossIdentityHash(value any) string {
+	h := sha256.New()
+	h.Write([]byte("cairn-cross-binding/v1"))
+	var word [8]byte
+	number := func(n uint64) { binary.BigEndian.PutUint64(word[:], n); h.Write(word[:]) }
+	text := func(v string) { number(uint64(len(v))); h.Write([]byte(v)) }
+	var emit func(reflect.Value)
+	emit = func(v reflect.Value) {
+		if !v.IsValid() {
+			h.Write([]byte{0})
+			return
+		}
+		h.Write([]byte{byte(v.Kind()) + 1})
+		switch v.Kind() {
+		case reflect.Pointer, reflect.Interface:
+			if v.IsNil() {
+				h.Write([]byte{0})
+			} else {
+				h.Write([]byte{1})
+				emit(v.Elem())
+			}
+		case reflect.Struct:
+			text(v.Type().PkgPath())
+			text(v.Type().Name())
+			for i := 0; i < v.NumField(); i++ {
+				f := v.Type().Field(i)
+				if f.PkgPath == "" {
+					text(f.Name)
+					emit(v.Field(i))
+				}
+			}
+		case reflect.Slice:
+			if v.IsNil() {
+				h.Write([]byte{0})
+			} else {
+				h.Write([]byte{1})
+			}
+			number(uint64(v.Len()))
+			for i := 0; i < v.Len(); i++ {
+				emit(v.Index(i))
+			}
+		case reflect.Array:
+			number(uint64(v.Len()))
+			for i := 0; i < v.Len(); i++ {
+				emit(v.Index(i))
+			}
+		case reflect.String:
+			text(v.String())
+		case reflect.Bool:
+			if v.Bool() {
+				h.Write([]byte{1})
+			} else {
+				h.Write([]byte{0})
+			}
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			number(uint64(v.Int()))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			number(v.Uint())
+		case reflect.Float32, reflect.Float64:
+			number(math.Float64bits(v.Float()))
+		default:
+			panic("cross relation identity: unsupported internal snapshot kind")
+		}
+	}
+	emit(reflect.ValueOf(value))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func crossSourceIdentity(docs []*dktypes.AnnotatedDocument, originals []FrozenSource) string {
+	return crossIdentityHash(struct {
+		Documents []*dktypes.AnnotatedDocument
+		Originals []FrozenSource
+	}{docs, originals})
+}
+func crossCopySlice[T any](in []T) []T {
+	if in == nil {
+		return nil
+	}
+	out := make([]T, len(in))
+	copy(out, in)
+	return out
+}
+func cloneCrossResult(in *Result) *Result {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.UnresolvedFiles = crossCopySlice(in.UnresolvedFiles)
+	out.Domains = crossCopySlice(in.Domains)
+	cloneNode := func(in Node) Node {
+		out := in
+		out.Synonyms = crossCopySlice(in.Synonyms)
+		out.SourceSkills = crossCopySlice(in.SourceSkills)
+		out.Members = crossCopySlice(in.Members)
+		return out
+	}
+	for di := range out.Domains {
+		d := &out.Domains[di]
+		d.SourceSkills = crossCopySlice(d.SourceSkills)
+		d.Subdomains = crossCopySlice(d.Subdomains)
+		for si := range d.Subdomains {
+			sd := &d.Subdomains[si]
+			sd.Relations = crossCopySlice(sd.Relations)
+			sd.Entities = crossCopySlice(sd.Entities)
+			sd.Concepts = crossCopySlice(sd.Concepts)
+			for ni := range sd.Entities {
+				sd.Entities[ni] = cloneNode(sd.Entities[ni])
+			}
+			for ni := range sd.Concepts {
+				sd.Concepts[ni] = cloneNode(sd.Concepts[ni])
+			}
+		}
+	}
+	return &out
+}
+func cloneCrossDocuments(in []*dktypes.AnnotatedDocument) []*dktypes.AnnotatedDocument {
+	out := crossCopySlice(in)
+	for i, d := range in {
+		if d == nil {
+			continue
+		}
+		c := *d
+		c.Items = crossCopySlice(d.Items)
+		for n := range c.Items {
+			if c.Items[n].SourceSpan != nil {
+				span := *c.Items[n].SourceSpan
+				c.Items[n].SourceSpan = &span
+			}
+		}
+		out[i] = &c
+	}
+	return out
+}
+func cloneCrossDecision(in CrossRelationDecision) CrossRelationDecision {
+	out := in
+	out.Source.Members = crossCopySlice(in.Source.Members)
+	out.Target.Members = crossCopySlice(in.Target.Members)
+	out.Sources = crossCopySlice(in.Sources)
+	out.Evidence = crossCopySlice(in.Evidence)
+	boolean := func(b *bool) *bool {
+		if b == nil {
+			return nil
+		}
+		v := *b
+		return &v
+	}
+	if in.Verifier != nil {
+		v := *in.Verifier
+		v.Evidence = crossCopySlice(v.Evidence)
+		v.RelationSupported = boolean(v.RelationSupported)
+		v.DirectionSupported = boolean(v.DirectionSupported)
+		if v.Contradiction != nil {
+			c := *v.Contradiction
+			c.SameSubject = boolean(c.SameSubject)
+			c.SameAttribute = boolean(c.SameAttribute)
+			c.SameTime = boolean(c.SameTime)
+			c.SameConditions = boolean(c.SameConditions)
+			c.Incompatible = boolean(c.Incompatible)
+			v.Contradiction = &c
+		}
+		out.Verifier = &v
+	}
+	return out
 }
 
 func containsMember(members []string, member string) bool {

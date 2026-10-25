@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dktypes"
@@ -419,5 +422,381 @@ func TestCrossVerifierRejectsResponseAfterContextCancellation(t *testing.T) {
 	rpt := NewExtractor(client, 4096).ValidateCrossRelations(ctx, res, docs, sources, CrossRelationOptions{})
 	if client.calls.Load() != 1 || rpt.Accepted != 0 || rpt.Decisions[0].Disposition != "execution_error" || len(res.Domains[0].Subdomains[0].Relations) != 0 {
 		t.Fatalf("late verifier response accepted after cancellation: %+v", rpt)
+	}
+}
+
+// 纯 seam 不能从假的 Complete 调用反推请求；请求逐字段等于既有完整原文邻域。
+// The logical request remains byte-for-byte identical to the existing prompt and source view.
+func TestCrossRelationPlanRequestAndLegacyParity(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"supported", "rejected-direction", "bad-quote", "malformed", "truncated", "nil-response", "execution-error", "missing-original", "overflow", "unresolved"} {
+		t.Run(mode, func(t *testing.T) {
+			base, docs, originals := crossFixture()
+			opts := CrossRelationOptions{}
+			v := supportedCrossVerdict()
+			var executionErr error
+			var response *llm.CompleteResponse
+			switch mode {
+			case "rejected-direction":
+				b := false
+				v.DirectionSupported = &b
+			case "bad-quote":
+				v.Evidence[0].Quote = "generated prose is not original evidence"
+			case "missing-original":
+				originals = originals[:1]
+			case "overflow":
+				opts.MaxEvidenceBytes = 16
+			case "unresolved":
+				base.Domains[0].Subdomains[0].Relations[0].Target = "missing"
+			}
+			response, _ = crossReply(v)(llm.CompleteRequest{})
+			switch mode {
+			case "malformed":
+				response.Text = "{broken"
+			case "truncated":
+				response.FinishReason = "length"
+			case "nil-response":
+				response = nil
+			case "execution-error":
+				executionErr = errors.New("offline verifier unavailable")
+			}
+			plan := BuildCrossRelationPlan(base, docs, originals, opts, 8192)
+			works := plan.Works()
+			if len(works) != 1 {
+				t.Fatal("lost actual candidate")
+			}
+			work := works[0]
+			request, requestable := work.Request()
+			if mode == "supported" {
+				expected := crossNeighborhood{Source: CrossEndpoint{"engineering", "admission", "admission", "Admission", []string{"member-admission"}}, Target: CrossEndpoint{"engineering", "capacity", "quota", "Quota", []string{"member-quota"}}, Relation: base.Domains[0].Subdomains[0].Relations[0], Sources: []crossOriginal{{CrossSource: CrossSource{"s1", "system", docs[0].FilePath, originals[0].SHA256}, Content: originals[0].Content, Members: []string{"member-admission"}}, {CrossSource: CrossSource{"s2", "system", docs[1].FilePath, originals[1].SHA256}, Content: originals[1].Content, Members: []string{"member-quota"}}}}
+				payload, _ := json.Marshal(expected)
+				want := llm.CompleteRequest{System: crossRelationSystemPrompt, User: string(payload), MaxTokens: 8192}
+				if !requestable || !reflect.DeepEqual(request, want) {
+					t.Fatal("request/prompt/full source recipe changed")
+				}
+				if work.Descriptor().RequestSHA256 != crossIdentityHash(want) || work.Descriptor().NeighborhoodSHA256 != crossIdentityHash(expected) {
+					t.Fatal("logical request/neighborhood identity mismatch")
+				}
+			}
+			eval := work.Evaluate(response, executionErr)
+			pure, report, err := plan.Apply(base, []*CrossRelationEvaluation{eval})
+			if err != nil {
+				t.Fatal(err)
+			}
+			legacy := cloneCrossResult(base)
+			client := &crossFixtureClient{reply: func(req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				if !requestable || !reflect.DeepEqual(req, request) {
+					t.Error("legacy used a different request")
+				}
+				return response, executionErr
+			}}
+			legacyReport := NewExtractor(client, 8192).ValidateCrossRelations(context.Background(), legacy, docs, originals, opts)
+			if !reflect.DeepEqual(pure, legacy) || !reflect.DeepEqual(report, legacyReport) {
+				t.Fatalf("pure/wrapper behavior differs: pure=%+v legacy=%+v", report, legacyReport)
+			}
+			if requestable != (client.calls.Load() == 1) {
+				t.Fatal("terminal preflight reached client or requestable work was skipped")
+			}
+		})
+	}
+}
+
+func TestCrossRelationPlanCompleteInventoryAndIndependentDuplicateSlots(t *testing.T) {
+	t.Parallel()
+	base, docs, originals := crossFixture()
+	sd := &base.Domains[0].Subdomains[0]
+	sd.Entities = append(sd.Entities, Node{ID: "local", Members: []string{"member-local"}})
+	local := Relation{Source: "admission", Target: "local", Kind: "references", Description: "noncandidate local relation"}
+	sd.Relations = append(sd.Relations, sd.Relations[0], Relation{Source: "admission", Target: "local", Kind: "contradicts"}, Relation{Source: "admission", Target: "missing", Kind: "depends_on"}, Relation{Source: "admission", Target: "quota", Kind: "unknown"}, local)
+	plan := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	works := plan.Works()
+	if len(works) != 5 {
+		t.Fatalf("inventory=%d", len(works))
+	}
+	ids := map[string]bool{}
+	var evaluations []*CrossRelationEvaluation
+	var requestable int
+	for _, w := range works {
+		d := w.Descriptor()
+		if ids[d.ID] {
+			t.Fatal("identical relation slots collided")
+		}
+		ids[d.ID] = true
+		response := (*llm.CompleteResponse)(nil)
+		if _, ok := w.Request(); ok {
+			requestable++
+			response, _ = crossReply(supportedCrossVerdict())(llm.CompleteRequest{})
+		}
+		evaluations = append(evaluations, w.Evaluate(response, nil))
+	}
+	if requestable != 2 {
+		t.Fatalf("terminal inventory not explicit: %d", requestable)
+	}
+	for i, j := 0, len(evaluations)-1; i < j; i, j = i+1, j-1 {
+		evaluations[i], evaluations[j] = evaluations[j], evaluations[i]
+	}
+	out, report, err := plan.Apply(base, evaluations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Candidates != 5 || report.Accepted != 2 || len(out.Domains[0].Subdomains[0].Relations) != 3 || !reflect.DeepEqual(out.Domains[0].Subdomains[0].Relations[2], local) {
+		t.Fatal("candidate coverage or noncandidate local relation changed")
+	}
+	want := []string{"accepted", "accepted", "insufficient_evidence", "rejected_endpoint", "rejected_relation"}
+	for i, d := range report.Decisions {
+		if d.Disposition != want[i] {
+			t.Fatalf("report ordering/classification %d: %+v", i, d)
+		}
+	}
+	for _, bad := range [][]*CrossRelationEvaluation{evaluations[:4], append(crossCopySlice(evaluations[:4]), evaluations[0]), append(crossCopySlice(evaluations[:4]), &CrossRelationEvaluation{})} {
+		before := crossIdentityHash(base)
+		if _, _, err = plan.Apply(base, bad); err == nil || crossIdentityHash(base) != before {
+			t.Fatal("invalid coverage mutated/adopted base")
+		}
+	}
+}
+
+func TestCrossRelationPlanFrozenRootsAndDefensiveCopies(t *testing.T) {
+	t.Parallel()
+	base, docs, originals := crossFixture()
+	base.Domains[0].Provenance = "extraction"
+	base.Domains[0].SourceSkills = []string{"system"}
+	base.Domains[0].Subdomains[0].Entities[0].Synonyms = []string{"initial alias"}
+	docs[0].Items[0].SourceSpan = &dktypes.SourceSpan{StartLine: 1, EndLine: 2, Quote: "frozen annotation span"}
+	frozenBase := cloneCrossResult(base)
+	plan := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	work := plan.Works()[0]
+	request, _ := work.Request()
+	id := plan.Identity()
+	d := work.Descriptor()
+	d.Sources[0].Path = "mutated descriptor"
+	d.Relation.Description = "mutated relation"
+	outer := plan.Works()
+	outer[0] = nil
+	base.Domains[0].Slug = "mutated source graph"
+	docs[0].Items[0].SourceSpan.Quote = "mutated original docs"
+	docs[0].Items[0].ID = "mutated member"
+	originals[0].Content = "mutated caller originals"
+	again, _ := work.Request()
+	if !reflect.DeepEqual(request, again) || plan.Identity() != id || plan.Works()[0] == nil || work.Descriptor().Sources[0].Path == "mutated descriptor" {
+		t.Fatal("caller mutation escaped into immutable plan")
+	}
+	response, _ := crossReply(supportedCrossVerdict())(request)
+	evaluation := work.Evaluate(response, nil)
+	copyDecision := evaluation.Decision()
+	copyDecision.Source.Members[0] = "mutated member"
+	copyDecision.Sources[0].Path = "mutated source"
+	copyDecision.Evidence[0].Quote = "mutated quote"
+	*copyDecision.Verifier.DirectionSupported = false
+	copyDecision.Verifier.Evidence[0].Quote = "mutated verdict quote"
+	out, report, err := plan.Apply(frozenBase, []*CrossRelationEvaluation{evaluation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Accepted != 1 || out.Domains[0].Slug != "engineering" || out.Domains[0].Provenance != "extraction" || out.Domains[0].Subdomains[1].Slug != "capacity" {
+		t.Fatal("hidden hierarchy identity or sealed decision was lost")
+	}
+	out.Domains[0].SourceSkills[0] = "mutated output"
+	out.Domains[0].Subdomains[0].Entities[0].Synonyms[0] = "mutated output"
+	out.Domains[0].Subdomains[0].Entities[0].Members[0] = "mutated output"
+	report.Decisions[0].Evidence[0].Quote = "mutated report"
+	out2, report2, err := plan.Apply(frozenBase, []*CrossRelationEvaluation{evaluation})
+	if err != nil || report2.Accepted != 1 || report2.Decisions[0].Evidence[0].Quote == "mutated report" || out2.Domains[0].SourceSkills[0] != "system" || frozenBase.Domains[0].Subdomains[0].Entities[0].Synonyms[0] != "initial alias" {
+		t.Fatal("Apply did not return independent copies")
+	}
+	for _, field := range []string{"domain-slug", "subdomain-slug", "domain-provenance", "label", "member", "relation"} {
+		t.Run(field, func(t *testing.T) {
+			changed := cloneCrossResult(frozenBase)
+			switch field {
+			case "domain-slug":
+				changed.Domains[0].Slug = "other"
+			case "subdomain-slug":
+				changed.Domains[0].Subdomains[0].Slug = "other"
+			case "domain-provenance":
+				changed.Domains[0].Provenance = "human_curated"
+			case "label":
+				changed.Domains[0].Subdomains[0].Entities[0].Label = "Concept"
+			case "member":
+				changed.Domains[0].Subdomains[0].Entities[0].Members[0] = "other"
+			case "relation":
+				changed.Domains[0].Subdomains[0].Relations[0].Description = "other"
+			}
+			before := crossIdentityHash(changed)
+			if _, _, e := plan.Apply(changed, []*CrossRelationEvaluation{evaluation}); e == nil || crossIdentityHash(changed) != before {
+				t.Fatal("wrong graph root adopted or mutated")
+			}
+		})
+	}
+}
+
+func TestCrossRelationPlanDeterministicRebuildAndForeignSourceBinding(t *testing.T) {
+	t.Parallel()
+	base, docs, originals := crossFixture()
+	a := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	b := BuildCrossRelationPlan(cloneCrossResult(base), cloneCrossDocuments(docs), crossCopySlice(originals), CrossRelationOptions{}, 4096)
+	response, _ := crossReply(supportedCrossVerdict())(llm.CompleteRequest{})
+	evaluation := a.Works()[0].Evaluate(response, nil)
+	if a.Identity() != b.Identity() || a.Works()[0].Descriptor().ID != b.Works()[0].Descriptor().ID {
+		t.Fatal("equivalent reconstructed plans depend on process/pointer identity")
+	}
+	if _, r, e := b.Apply(base, []*CrossRelationEvaluation{evaluation}); e != nil || r.Accepted != 1 {
+		t.Fatal("equivalent immutable plan could not reuse sealed work result")
+	}
+	for _, mode := range []string{"annotation-detail", "ownership", "original-content", "budget", "tokens"} {
+		t.Run(mode, func(t *testing.T) {
+			otherDocs := cloneCrossDocuments(docs)
+			otherSources := crossCopySlice(originals)
+			opts := CrossRelationOptions{}
+			tokens := 4096
+			switch mode {
+			case "annotation-detail":
+				otherDocs[0].Items[0].Detail = "different complete annotation"
+			case "ownership":
+				otherDocs[0].FilePath = "different source owner"
+			case "original-content":
+				otherSources[0] = FreezeSource(otherSources[0].Skill, otherSources[0].Path, otherSources[0].Content+"additional original bytes")
+			case "budget":
+				opts.MaxEvidenceBytes = 128 * 1024
+			case "tokens":
+				tokens = 8192
+			}
+			other := BuildCrossRelationPlan(base, otherDocs, otherSources, opts, tokens)
+			if other.Identity().PlanSHA256 == a.Identity().PlanSHA256 {
+				t.Fatal("changed input recipe/root retained old plan identity")
+			}
+			if _, _, e := other.Apply(base, []*CrossRelationEvaluation{evaluation}); e == nil {
+				t.Fatal("foreign-source/recipe evaluation accepted")
+			}
+		})
+	}
+}
+
+func TestCrossRelationPlanConcurrentPureEvaluationAndLocalContradiction(t *testing.T) {
+	t.Parallel()
+	base, docs, originals := crossFixture()
+	base.Domains[0].Subdomains[0].Concepts = base.Domains[0].Subdomains[1].Concepts
+	base.Domains[0].Subdomains[1].Concepts = nil
+	base.Domains[0].Subdomains[0].Relations[0].Kind = "contradicts"
+	originals[0] = FreezeSource(originals[0].Skill, originals[0].Path, "In version 2 under condition X, admission is enabled.\n")
+	originals[1] = FreezeSource(originals[1].Skill, originals[1].Path, "In version 2 under condition X, admission is disabled.\n")
+	v := supportedCrossVerdict()
+	yes := true
+	v.Contradiction = &crossContradiction{&yes, &yes, &yes, &yes, &yes}
+	v.Evidence[0].Quote = originals[0].Content
+	v.Evidence[1].Quote = originals[1].Content
+	response, _ := crossReply(v)(llm.CompleteRequest{})
+	plan := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	work := plan.Works()[0]
+	results := make(chan *CrossRelationEvaluation, 16)
+	var group sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		group.Add(1)
+		go func() { defer group.Done(); results <- work.Evaluate(response, nil) }()
+	}
+	group.Wait()
+	close(results)
+	var first *CrossRelationEvaluation
+	for result := range results {
+		if first == nil {
+			first = result
+		}
+		if !reflect.DeepEqual(first.Decision(), result.Decision()) || result.Decision().Scope != CrossRelationScopeLocal || result.Decision().Disposition != "accepted" {
+			t.Fatal("pure evaluation mutated shared work or lost local contradiction")
+		}
+	}
+	if _, report, e := plan.Apply(base, []*CrossRelationEvaluation{first}); e != nil || report.Candidates != 1 || report.Accepted != 1 {
+		t.Fatal("local contradiction inventory/apply failed")
+	}
+}
+
+type crossFinalCancellation struct{ calls atomic.Int64 }
+
+func (*crossFinalCancellation) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (*crossFinalCancellation) Done() <-chan struct{}       { return nil }
+func (c *crossFinalCancellation) Err() error {
+	if c.calls.Add(1) >= 3 {
+		return context.Canceled
+	}
+	return nil
+}
+func (*crossFinalCancellation) Value(any) any { return nil }
+
+func TestCrossRelationPlanLegacyFinalCancellationPreservesParsedEvidence(t *testing.T) {
+	t.Parallel()
+	base, docs, originals := crossFixture()
+	ctx := &crossFinalCancellation{}
+	client := &crossFixtureClient{reply: crossReply(supportedCrossVerdict())}
+	r := NewExtractor(client, 4096).ValidateCrossRelations(ctx, base, docs, originals, CrossRelationOptions{})
+	if client.calls.Load() != 1 || r.Decisions[0].Disposition != "execution_error" || r.Decisions[0].Reason != context.Canceled.Error() || r.Decisions[0].Verifier == nil || len(r.Decisions[0].Evidence) != 2 || len(base.Domains[0].Subdomains[0].Relations) != 0 {
+		t.Fatal("final cancellation changed the legacy report/filter semantics")
+	}
+}
+
+func TestCrossRelationPlanTypedRootsPreserveNonJSONMetadata(t *testing.T) {
+	t.Parallel()
+	base, docs, originals := crossFixture()
+	base.Domains[0].Subdomains[0].Entities[0].Confidence = math.NaN()
+	base.Domains[0].Provenance = "extraction"
+	a := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	b := BuildCrossRelationPlan(cloneCrossResult(base), cloneCrossDocuments(docs), crossCopySlice(originals), CrossRelationOptions{}, 4096)
+	if a.Identity() != b.Identity() {
+		t.Fatal("typed root lost nonfinite metadata or hidden provenance")
+	}
+	response, _ := crossReply(supportedCrossVerdict())(llm.CompleteRequest{})
+	out, report, e := a.Apply(base, []*CrossRelationEvaluation{a.Works()[0].Evaluate(response, nil)})
+	if e != nil || report.Accepted != 1 || !math.IsNaN(out.Domains[0].Subdomains[0].Entities[0].Confidence) {
+		t.Fatal("pure factoring changed legacy nonrendered metadata behavior")
+	}
+	docs[0].Items[0].Detail = string([]byte{0xff})
+	c := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	docs[0].Items[0].Detail = string([]byte{0xfe})
+	d := BuildCrossRelationPlan(base, docs, originals, CrossRelationOptions{}, 4096)
+	if c.Identity().SourcesSHA256 == d.Identity().SourcesSHA256 {
+		t.Fatal("source identity silently normalized distinct invalid UTF8 metadata")
+	}
+}
+
+// 旧报告签名无法返回 Apply error；不支持的调用方改写必须有完整失败清单，不能伪装成功或覆盖未知改动。
+// The new bounded orchestrator must stop on Apply errors; the compatibility wrapper only reports this violation.
+func TestCrossRelationPlanLegacyCallerMutationHasCompleteFailureInventory(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"graph", "annotation-owner", "original-source"} {
+		t.Run(mode, func(t *testing.T) {
+			base, docs, originals := crossFixture()
+			sd := &base.Domains[0].Subdomains[0]
+			sd.Relations = append(sd.Relations, sd.Relations[0])
+			before := cloneCrossResult(base)
+			var once sync.Once
+			client := &crossFixtureClient{reply: func(req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				once.Do(func() {
+					switch mode {
+					case "graph":
+						base.Domains[0].Name = "caller-edited graph"
+						base.Domains[0].Subdomains[0].Relations = append(base.Domains[0].Subdomains[0].Relations, Relation{Source: "caller-source", Target: "caller-target", Kind: "references", Description: "unknown caller edit"})
+					case "annotation-owner":
+						docs[0].FilePath = "caller-changed owner"
+					case "original-source":
+						originals[0] = FreezeSource(originals[0].Skill, originals[0].Path, "caller changed original bytes")
+					}
+				})
+				return crossReply(supportedCrossVerdict())(req)
+			}}
+			report := NewExtractor(client, 4096).ValidateCrossRelations(context.Background(), base, docs, originals, CrossRelationOptions{})
+			if report.Candidates != 2 || report.Accepted != 0 || len(report.Decisions) != 2 || client.calls.Load() != 2 {
+				t.Fatal("caller mutation hid the frozen candidate denominator or claimed success")
+			}
+			for _, decision := range report.Decisions {
+				if decision.Disposition != "execution_error" || decision.Reason != "verifier input identity changed during validation; exclusive caller ownership required" {
+					t.Fatal("identity violation misclassified")
+				}
+			}
+			if mode == "graph" {
+				if base.Domains[0].Name != "caller-edited graph" || len(base.Domains[0].Subdomains[0].Relations) != 3 || base.Domains[0].Subdomains[0].Relations[2].Description != "unknown caller edit" {
+					t.Fatal("wrapper reverted or deleted unknown caller edits")
+				}
+			} else if !reflect.DeepEqual(base, before) {
+				t.Fatal("source-root mismatch modified the caller graph")
+			}
+		})
 	}
 }
