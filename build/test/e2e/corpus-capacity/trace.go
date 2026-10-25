@@ -293,7 +293,7 @@ func (t *traceTransport) RoundTrip(request *http.Request) (*http.Response, error
 		return reject("cancelled")
 	}
 	if t.seedPolicy != nil {
-		if err := t.seedPolicy.admit(info, parsed, raw); err != nil {
+		if err := t.seedPolicy.admit(info, parsed, raw, count); err != nil {
 			return reject("seeded_phase_profile_or_wire_budget")
 		}
 	}

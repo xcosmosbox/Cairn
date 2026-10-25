@@ -53,6 +53,33 @@ type seededInputs struct {
 	ArchivedRejectionSHA             string
 }
 
+// seededCounterIdentity 绑定计数器实际配置；计数值相等不能掩盖运行时替换。
+// Bind executable, adapter and runtime pins, not merely an equal token count.
+type seededCounterIdentity struct {
+	PythonSHA  string `json:"python_sha256"`
+	AdapterSHA string `json:"adapter_sha256"`
+	RuntimeSHA string `json:"runtime_receipt_sha256"`
+	CounterID  string `json:"counter_id"`
+}
+
+func (c externalCounter) seededIdentity() seededCounterIdentity {
+	return seededCounterIdentity{c.PythonSHA, c.AdapterSHA, c.ReceiptSHA, "deepseek-recipe@935817c66f5d6e64838f419692545f06787e485f/v41"}
+}
+func counterSeedIdentity(counter tokenCounter) (seededCounterIdentity, error) {
+	c, ok := counter.(interface{ seededIdentity() seededCounterIdentity })
+	if !ok {
+		return seededCounterIdentity{}, fmt.Errorf("seeded: explicit counter identity required")
+	}
+	i := c.seededIdentity()
+	if i.PythonSHA == "" || i.AdapterSHA == "" || i.RuntimeSHA == "" || i.CounterID == "" {
+		return i, fmt.Errorf("seeded: incomplete counter configuration")
+	}
+	return i, nil
+}
+func (i seededCounterIdentity) matches(count tokenCount) bool {
+	return count.RuntimeSHA == i.RuntimeSHA && count.CounterID == i.CounterID && count.Reserved == seededMaxTokens && count.Context == 1000000 && count.Input > 0 && count.Input <= count.Context-count.Reserved
+}
+
 func loadSeededInputs(root, planPath, pin string) (seededInputs, seededPlan, error) {
 	var in seededInputs
 	var p seededPlan
@@ -158,14 +185,15 @@ func (info *callInfo) addSeedIdentity(row map[string]any) {
 type seededWirePolicy struct {
 	mu                  sync.Mutex
 	Document, SourceSHA string
+	Counter             seededCounterIdentity
 	admitted            int
 }
 
-func (p *seededWirePolicy) admit(info *callInfo, req wireRequest, raw []byte) error {
+func (p *seededWirePolicy) admit(info *callInfo, req wireRequest, raw []byte, count tokenCount) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	phases := []string{"qualification", "revision", "validation"}
-	if p.admitted >= len(phases) || info.Phase != phases[p.admitted] || info.Mode != seededMode || info.Document != p.Document || len(info.Documents) != 1 || info.Documents[0] != p.Document || info.SourceSHA != p.SourceSHA || info.Attempts.Load() != 1 || req.MaxTokens != seededMaxTokens || req.Model != "deepseek-flash" || req.Thinking.Type != "enabled" || req.ResponseFormat.Type != "json_object" {
+	if !p.Counter.matches(count) || p.admitted >= len(phases) || info.Phase != phases[p.admitted] || info.Mode != seededMode || info.Document != p.Document || len(info.Documents) != 1 || info.Documents[0] != p.Document || info.SourceSHA != p.SourceSHA || info.Attempts.Load() != 1 || req.MaxTokens != seededMaxTokens || req.Model != "deepseek-flash" || req.Thinking.Type != "enabled" || req.ResponseFormat.Type != "json_object" {
 		return fmt.Errorf("seeded: phase/profile/wire budget")
 	}
 	var fields map[string]json.RawMessage
@@ -211,10 +239,12 @@ func captureSeedRevision(in seededInputs, feedback *annotation.SemanticRejection
 }
 
 type seededExecutor struct {
-	in     seededInputs
-	next   llm.Client
-	out    string
-	phases []string
+	in            seededInputs
+	next          llm.Client
+	out           string
+	phases        []string
+	accepted      *dktypes.AnnotatedDocument
+	acceptedPhase string
 }
 
 func (e *seededExecutor) withPhase(ctx context.Context, phase string, expected llm.CompleteRequest) context.Context {
@@ -263,6 +293,25 @@ func (e *seededExecutor) save(name string, v any) error {
 	return writeNew(filepath.Join(e.out, name), v)
 }
 
+func (e *seededExecutor) accept(doc *dktypes.AnnotatedDocument, phase string) error {
+	e.accepted, e.acceptedPhase = doc, phase
+	if e.out == "" {
+		return nil
+	}
+	if err := e.save("accepted-cleaned.private.json", doc); err != nil {
+		return err
+	}
+	accepted, err := os.ReadFile(filepath.Join(e.out, "accepted-cleaned.private.json"))
+	if err != nil {
+		return err
+	}
+	runStart, err := os.ReadFile(filepath.Join(e.out, "seed-run-start.json"))
+	if err != nil {
+		return err
+	}
+	return e.save("accepted-checkpoint.json", map[string]any{"format": "cairn-seeded-accepted-checkpoint/v1", "mode": seededMode, "acceptance_state": "provisional_until_seed_audit_pass", "accepted_by_phase": phase, "document_id": e.in.Document, "skill": e.in.Skill, "path": e.in.Path, "original_sha256": e.in.SourceSHA, "accepted_cleaned_sha256": sha(accepted), "run_identity_receipt_sha256": sha(runStart), "run_identity_receipt": "seed-run-start.json", "actual_pass_receipt": phase + "-response.private.json", "assign_ids": "not performed; separate accepted checkpoint adapter required", "original_spans": "unknown", "historical63_outcome": "FAIL; unchanged"})
+}
+
 // execute 不调用编排器，也不会把一次新实验附加成旧 #63 的第四轮。
 // Qualification gates revision; no pipeline continuation or extra candidate is admitted.
 func (e *seededExecutor) execute(ctx context.Context) (string, error) {
@@ -276,6 +325,9 @@ func (e *seededExecutor) execute(ctx context.Context) (string, error) {
 	e.phases = append(e.phases, "qualification")
 	err = annotation.NewSemanticGate(e.next, seededMaxTokens, 1).Check(e.withPhase(ctx, "qualification", expected), e.in.Original, e.in.Candidate)
 	if err == nil {
+		if err = e.accept(e.in.Candidate, "qualification"); err != nil {
+			return "FAIL_persistence", err
+		}
 		return "QUALIFICATION_PASS_no_revision_effect", nil
 	}
 	var feedback *annotation.SemanticRejection
@@ -311,6 +363,9 @@ func (e *seededExecutor) execute(ctx context.Context) (string, error) {
 	e.phases = append(e.phases, "validation")
 	if err = annotation.NewSemanticGate(e.next, seededMaxTokens, 1).Check(e.withPhase(ctx, "validation", expected), e.in.Original, cleaned); err != nil {
 		return "FAIL_final_gate", fmt.Errorf("seeded: final semantic gate rejected or failed")
+	}
+	if err = e.accept(cleaned, "validation"); err != nil {
+		return "FAIL_persistence", err
 	}
 	return "SEEDED_REVISION_GATE_PASS_not_capacity_or_causal_effect", nil
 }
@@ -363,6 +418,10 @@ func seededRequestMetadata(req llm.CompleteRequest, raw []byte, count tokenCount
 }
 
 func seedPreflight(ctx context.Context, in seededInputs, out, planSHA string, counter tokenCounter) error {
+	identity, err := counterSeedIdentity(counter)
+	if err != nil {
+		return err
+	}
 	req, err := captureSeedGate(in, in.Candidate)
 	if err != nil {
 		return err
@@ -375,7 +434,7 @@ func seedPreflight(ctx context.Context, in seededInputs, out, planSHA string, co
 	if err != nil {
 		return err
 	}
-	if count.Input < 1 || count.Reserved != seededMaxTokens || count.Context != 1000000 || count.Input > count.Context-count.Reserved {
+	if !identity.matches(count) {
 		return fmt.Errorf("seeded: qualification preflight context guard")
 	}
 	// Synthetic critique exercises the production revision builder for free; it is not future live feedback.
@@ -397,17 +456,24 @@ func seedPreflight(ctx context.Context, in seededInputs, out, planSHA string, co
 	if err != nil {
 		return err
 	}
-	if revCount.Input < 1 || revCount.Reserved != seededMaxTokens || revCount.Context != 1000000 || revCount.Input > revCount.Context-revCount.Reserved {
+	if !identity.matches(revCount) {
 		return fmt.Errorf("seeded: synthetic revision preflight context guard")
 	}
 	binary, err := os.ReadFile(os.Args[0])
 	if err != nil {
 		return err
 	}
-	return writeNew(filepath.Join(out, "seed-preflight.json"), map[string]any{"format": "cairn-seeded-preflight/v1", "mode": seededMode, "model_calls": 0, "plan_sha256": planSHA, "original_sha256": in.SourceSHA, "candidate_sha256": seededCandidateSHA, "archived_rejection_sha256": in.ArchivedRejectionSHA, "archived_reason_use": "provenance_only; not typed feedback", "binary_sha256": sha(binary), "driver_source_digest": driverSourceDigest(), "production_source_digest": buildmeta.SourceDigest("annotation/", "llm/"), "qualification": seededRequestMetadata(req, raw, count), "revision_builder_synthetic_critique_only": seededRequestMetadata(rev, revRaw, revCount), "actual_revision_and_final_gate_wire": "unknown until new typed qualification and new candidate; per-wire guard mandatory", "max_actual_wires": 3, "original_spans": "unknown; no new stored span claim"})
+	return writeNew(filepath.Join(out, "seed-preflight.json"), map[string]any{"format": "cairn-seeded-preflight/v1", "mode": seededMode, "model_calls": 0, "counter_identity": identity, "plan_sha256": planSHA, "original_sha256": in.SourceSHA, "candidate_sha256": seededCandidateSHA, "archived_rejection_sha256": in.ArchivedRejectionSHA, "archived_reason_use": "provenance_only; not typed feedback", "binary_sha256": sha(binary), "driver_source_digest": driverSourceDigest(), "production_source_digest": buildmeta.SourceDigest("annotation/", "llm/"), "qualification": seededRequestMetadata(req, raw, count), "revision_builder_synthetic_critique_only": seededRequestMetadata(rev, revRaw, revCount), "actual_revision_and_final_gate_wire": "unknown until new typed qualification and new candidate; per-wire guard mandatory", "max_actual_wires": 3, "original_spans": "unknown; no new stored span claim"})
 }
 
 func seededRun(ctx context.Context, in seededInputs, out, planSHA string, counter tokenCounter) error {
+	if strings.TrimSpace(os.Getenv("CAIRN_LLM_API_KEY")) == "" {
+		return fmt.Errorf("seeded: nonempty API key required before dispatch")
+	}
+	identity, identityErr := counterSeedIdentity(counter)
+	if identityErr != nil {
+		return identityErr
+	}
 	preflight, err := os.ReadFile(filepath.Join(out, "seed-preflight.json"))
 	if err != nil {
 		return fmt.Errorf("seeded: reviewed preflight required")
@@ -426,9 +492,32 @@ func seededRun(ctx context.Context, in seededInputs, out, planSHA string, counte
 			return fmt.Errorf("seeded: preflight identity changed")
 		}
 	}
+	var expectedCounter seededCounterIdentity
+	if decodeStrict(pre["counter_identity"], &expectedCounter) != nil || identity != expectedCounter {
+		return fmt.Errorf("seeded: preflight counter configuration changed")
+	}
+	qualification, err := captureSeedGate(in, in.Candidate)
+	if err != nil {
+		return err
+	}
+	qualificationWire, err := renderSeedWire(ctx, qualification)
+	if err != nil {
+		return err
+	}
+	currentCount, err := counter.Count(ctx, qualificationWire)
+	if err != nil {
+		return err
+	}
+	var expectedQualification struct {
+		RequestSHA string     `json:"request_sha256"`
+		Count      tokenCount `json:"token_count"`
+	}
+	if json.Unmarshal(pre["qualification"], &expectedQualification) != nil || expectedQualification.RequestSHA != sha(qualificationWire) || currentCount != expectedQualification.Count || !identity.matches(currentCount) {
+		return fmt.Errorf("seeded: preflight wire/counter mismatch")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 1800*time.Second)
 	defer cancel()
-	if err = writeNew(filepath.Join(out, "seed-run-start.json"), map[string]any{"format": "cairn-seeded-run/v1", "mode": seededMode, "started_at": now(), "plan_sha256": planSHA, "preflight_sha256": sha(preflight), "binary_sha256": sha(binary), "driver_source_digest": driverSourceDigest(), "production_source_digest": buildmeta.SourceDigest("annotation/", "llm/"), "original_sha256": in.SourceSHA, "candidate_sha256": seededCandidateSHA, "archived_rejection_sha256": in.ArchivedRejectionSHA, "max_actual_wires": 3, "max_wires_per_call": 1, "annotation_and_gate_inner_attempts": 1, "provider_configured_retries": 1, "provider_wire_retries_admitted": 0, "outer_retries": 0, "max_tokens": seededMaxTokens, "request_timeout_seconds": 600, "run_timeout_seconds": 1800, "logical_concurrency": 1, "historical63_outcome": "FAIL; unchanged", "qa_gold_holdout_full609": false}); err != nil {
+	if err = writeNew(filepath.Join(out, "seed-run-start.json"), map[string]any{"format": "cairn-seeded-run/v1", "mode": seededMode, "counter_identity": identity, "requested_model": "deepseek-flash", "endpoint": "https://api.deepseek.com/chat/completions", "response_format": "json_object", "thinking": "enabled", "started_at": now(), "plan_sha256": planSHA, "preflight_sha256": sha(preflight), "binary_sha256": sha(binary), "driver_source_digest": driverSourceDigest(), "production_source_digest": buildmeta.SourceDigest("annotation/", "llm/"), "original_sha256": in.SourceSHA, "candidate_sha256": seededCandidateSHA, "archived_rejection_sha256": in.ArchivedRejectionSHA, "max_actual_wires": 3, "max_wires_per_call": 1, "annotation_and_gate_inner_attempts": 1, "provider_configured_retries": 1, "provider_wire_retries_admitted": 0, "outer_retries": 0, "max_tokens": seededMaxTokens, "request_timeout_seconds": 600, "run_timeout_seconds": 1800, "logical_concurrency": 1, "historical63_outcome": "FAIL; unchanged", "qa_gold_holdout_full609": false}); err != nil {
 		return err
 	}
 	logFile, err := os.OpenFile(filepath.Join(out, "seed-private.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -445,7 +534,7 @@ func seededRun(ctx context.Context, in seededInputs, out, planSHA string, counte
 	}
 	defer file.Close()
 	previous := http.DefaultTransport
-	observer := &traceTransport{next: previous, ledger: ledger, counter: counter, seedPolicy: &seededWirePolicy{Document: in.Document, SourceSHA: in.SourceSHA}}
+	observer := &traceTransport{next: previous, ledger: ledger, counter: counter, seedPolicy: &seededWirePolicy{Document: in.Document, SourceSHA: in.SourceSHA, Counter: identity}}
 	http.DefaultTransport = observer
 	defer func() { http.DefaultTransport = previous }()
 	client, err := llm.NewOpenAICompatClient(llm.Config{Provider: "openai_compatible", APIKeyEnv: "CAIRN_LLM_API_KEY", Model: dkconfig.DeepSeekFlashModel, Endpoint: dkconfig.DeepSeekEndpoint, MaxTokens: seededMaxTokens, Timeout: "600s", MaxRetries: 1})
@@ -523,6 +612,24 @@ func seedAudit(out string, in seededInputs) error {
 	if err != nil {
 		failures = append(failures, "ledger unavailable")
 	}
+	var start struct {
+		Mode         string                `json:"mode"`
+		PlanSHA      string                `json:"plan_sha256"`
+		PreflightSHA string                `json:"preflight_sha256"`
+		Counter      seededCounterIdentity `json:"counter_identity"`
+		MaxWires     int                   `json:"max_actual_wires"`
+		PerCall      int                   `json:"max_wires_per_call"`
+		OriginalSHA  string                `json:"original_sha256"`
+	}
+	var reviewed struct {
+		Counter seededCounterIdentity `json:"counter_identity"`
+		Mode    string                `json:"mode"`
+		PlanSHA string                `json:"plan_sha256"`
+	}
+	preBytes, preErr := os.ReadFile(filepath.Join(out, "seed-preflight.json"))
+	if readJSON(filepath.Join(out, "seed-run-start.json"), &start) != nil || start.Mode != seededMode || start.MaxWires != 3 || start.PerCall != 1 || start.OriginalSHA != in.SourceSHA || preErr != nil || sha(preBytes) != start.PreflightSHA || json.Unmarshal(preBytes, &reviewed) != nil || reviewed.Mode != seededMode || reviewed.PlanSHA != start.PlanSHA || reviewed.Counter != start.Counter || start.Counter.RuntimeSHA == "" || start.Counter.PythonSHA == "" || start.Counter.AdapterSHA == "" || start.Counter.CounterID == "" {
+		failures = append(failures, "reviewed counter/start/preflight identity mismatch")
+	}
 	var finish struct {
 		Mode           string   `json:"mode"`
 		Status         string   `json:"status"`
@@ -551,22 +658,23 @@ func seedAudit(out string, in seededInputs) error {
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		var row struct {
-			Event      string `json:"event"`
-			Mode       string `json:"operation_mode"`
-			Phase      string `json:"phase"`
-			Source     string `json:"original_sha256"`
-			Document   string `json:"document_id"`
-			Provider   int    `json:"provider_attempt"`
-			Status     int    `json:"http_status"`
-			Finish     string `json:"finish_reason"`
-			Delta      *int   `json:"provider_minus_local_input_tokens"`
-			Call       int64  `json:"call_id"`
-			RequestSHA string `json:"request_sha256"`
-			SystemSHA  string `json:"system_sha256"`
-			UserSHA    string `json:"user_sha256"`
-			ContentSHA string `json:"final_content_sha256"`
-			Input      int    `json:"input_tokens"`
-			Output     int    `json:"output_tokens"`
+			Event      string     `json:"event"`
+			Mode       string     `json:"operation_mode"`
+			Phase      string     `json:"phase"`
+			Source     string     `json:"original_sha256"`
+			Document   string     `json:"document_id"`
+			Provider   int        `json:"provider_attempt"`
+			Status     int        `json:"http_status"`
+			Finish     string     `json:"finish_reason"`
+			Delta      *int       `json:"provider_minus_local_input_tokens"`
+			Call       int64      `json:"call_id"`
+			RequestSHA string     `json:"request_sha256"`
+			SystemSHA  string     `json:"system_sha256"`
+			UserSHA    string     `json:"user_sha256"`
+			ContentSHA string     `json:"final_content_sha256"`
+			Input      int        `json:"input_tokens"`
+			Output     int        `json:"output_tokens"`
+			Count      tokenCount `json:"token_count"`
 		}
 		if json.Unmarshal([]byte(line), &row) != nil {
 			continue
@@ -585,6 +693,9 @@ func seedAudit(out string, in seededInputs) error {
 			failures = append(failures, "per-call phase binding mismatch")
 		}
 		if row.Event == "request" {
+			if !start.Counter.matches(row.Count) {
+				failures = append(failures, "request counter differs from reviewed freeze")
+			}
 			var captured map[string]json.RawMessage
 			if readJSON(filepath.Join(out, row.Phase+"-request-capture.json"), &captured) != nil {
 				failures = append(failures, "request capture missing")
@@ -624,6 +735,25 @@ func seedAudit(out string, in seededInputs) error {
 	replayStatus, replayErr := replayed.execute(context.Background())
 	if replayErr != nil || replayStatus != finish.Status || len(replay.phases) != want {
 		failures = append(failures, "private typed-response replay mismatch")
+	}
+	var accepted dktypes.AnnotatedDocument
+	var checkpoint struct {
+		Mode        string `json:"mode"`
+		Phase       string `json:"accepted_by_phase"`
+		OriginalSHA string `json:"original_sha256"`
+		AcceptedSHA string `json:"accepted_cleaned_sha256"`
+		RunSHA      string `json:"run_identity_receipt_sha256"`
+	}
+	acceptedRaw, acceptedErr := os.ReadFile(filepath.Join(out, "accepted-cleaned.private.json"))
+	startRaw, startErr := os.ReadFile(filepath.Join(out, "seed-run-start.json"))
+	if acceptedErr != nil || startErr != nil || json.Unmarshal(acceptedRaw, &accepted) != nil || replayed.accepted == nil || readJSON(filepath.Join(out, "accepted-checkpoint.json"), &checkpoint) != nil || checkpoint.Mode != seededMode || checkpoint.Phase != replayed.acceptedPhase || checkpoint.OriginalSHA != in.SourceSHA || checkpoint.AcceptedSHA != sha(acceptedRaw) || checkpoint.RunSHA != sha(startRaw) {
+		failures = append(failures, "accepted checkpoint identity missing or mismatched")
+	} else {
+		actualJSON, _ := json.Marshal(accepted)
+		replayJSON, _ := json.Marshal(replayed.accepted)
+		if string(actualJSON) != string(replayJSON) {
+			failures = append(failures, "accepted cleaned document differs from replay")
+		}
 	}
 	receiptErr := writeNew(filepath.Join(out, "seed-audit-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".json"), map[string]any{"format": "cairn-seeded-audit/v1", "mode": seededMode, "status": finish.Status, "pass": len(failures) == 0, "errors": failures, "counts": counts, "ledger_sha256": sha(raw), "ledger_bytes": len(raw), "original_sha256": in.SourceSHA, "candidate_sha256": seededCandidateSHA, "archived_rejection_sha256": in.ArchivedRejectionSHA, "private_replay_file_sha256": replay.files, "historical63_outcome": "FAIL; unchanged", "quality_capacity_causal_effect": "not established"})
 	if receiptErr != nil {

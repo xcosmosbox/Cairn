@@ -315,3 +315,20 @@ Source/model payloads, candidate/revised documents, typed reason and private log
 remain restricted. Public reports contain sanitized method/counts/hashes/negative
 results only. No seeded result establishes causal improvement, factual recall,
 full12/full609 capacity, graph/answer quality, QA/HOLDOUT or stable readiness.
+
+The counter freeze includes Python executable SHA, adapter SHA, runtime receipt
+SHA and official counter ID. `seed-run` rejects a different/missing configuration
+before the first wire, rerenders/recounts the identical qualification request and
+compares it with preflight. Each wire's token receipt must match that identity;
+standalone audit compares every request with start/preflight. A coincidentally
+equal token count cannot authorize changing runtime. A nonempty environment key
+is required before seeded dispatch, matching normal capacity admission.
+
+A current qualification or final GateB pass retains
+`accepted-cleaned.private.json` plus `accepted-checkpoint.json`, bound to the
+actual pass response, full-original hash, skill/path, accepted bytes and complete
+run/runtime/counter identity receipt. Offline audit reproduces that accepted
+candidate. No IDs/04 are assigned here. A future separately accepted checkpoint
+adapter must use existing AssignIDs semantics; a failure creates no accepted04.
+The accepted checkpoint is explicitly provisional until a matching seed-audit
+PASS; a parsed gate pass during a transport/counter/ledger failure is unusable.
