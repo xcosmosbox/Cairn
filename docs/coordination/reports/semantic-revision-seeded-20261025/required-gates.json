@@ -1,0 +1,51 @@
+{
+  "format": "cairn-seeded-required-gates/v1",
+  "meaning": "Recovered actual completed gates on reviewed implementation tree; session restart did not cause a repeat. Both logs independently rehashed against the original receipt.",
+  "source_tree": "d126d381e5fc4281502e0b0075cc712b43cc2b09",
+  "original_receipt_sha256": "e6b056dffc5f013f26bcc58d93efb8dcad03fbe905056631bc38ffa03d174cee",
+  "receipt": {
+    "local_head": "d76a3a00d0664774435eef9e2ec652bc8c9f3af4",
+    "started_at_utc": "2026-10-25T01:38:49.705974+00:00",
+    "checks": [
+      {
+        "name": "race",
+        "argv": [
+          "/workspace/scratch/c1bb49a45412/cairn-toolchain-1.27.3/go/bin/go",
+          "test",
+          "-race",
+          "-count=1",
+          "./..."
+        ],
+        "started_at_utc": "2026-10-25T01:38:49.706079+00:00",
+        "finished_at_utc": "2026-10-25T01:39:24.473412+00:00",
+        "exit_code": 0,
+        "log_path": "race-d76a3a0.log",
+        "log_sha256": "25c4994b9ce7c541fde3bc7e2e0c41ac6bb53d7bc70191fb98ea73a1724e4cfd"
+      },
+      {
+        "name": "verify",
+        "argv": [
+          "make",
+          "verify"
+        ],
+        "started_at_utc": "2026-10-25T01:39:24.473972+00:00",
+        "finished_at_utc": "2026-10-25T01:39:32.703319+00:00",
+        "exit_code": 0,
+        "log_path": "verify-d76a3a0.log",
+        "log_sha256": "26e94f1d499ae33f40cfdafe520248c89bff32c1e8e84b2d1b6ffb474d1424a4"
+      }
+    ],
+    "finished_at_utc": "2026-10-25T01:39:32.704515+00:00"
+  },
+  "exact_head_ci": {
+    "head": "172da5d5121b5e3f700741a978730acfbd080f26",
+    "Correctness": {
+      "run": 40151393081,
+      "conclusion": "success"
+    },
+    "Coordination": {
+      "run": 40151393087,
+      "conclusion": "success"
+    }
+  }
+}

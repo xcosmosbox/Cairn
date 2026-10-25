@@ -1,0 +1,14 @@
+{
+  "format": "cairn-seeded-revision-plan/v1",
+  "mode": "fixed-r3-qualification-revision-validation/v1",
+  "archive_commit": "1a44fa27db4221778da3986efa5f4414c6f27611",
+  "document_id": "6f388affbc74a3719f00167cd84e7a04981655e63c7acdab04d0c82d57ebb92b",
+  "original_sha256": "96c295b30c38e1cf2421ca4615ce375a7012a68b3f81ec05947fa4a03a519309",
+  "candidate_sha256": "7b7a3d15e711f0857d3899c981e79b17eb7f47a5a7b694ec59d1e983e63de34a",
+  "archived_rejection_sha256": "c2d503378f06c25940c2e698dd00b78763fafeb582d7de9a00734e73a018b735",
+  "max_tokens": 65536,
+  "request_timeout_seconds": 600,
+  "run_timeout_seconds": 1800,
+  "max_actual_wires": 3,
+  "max_wires_per_call": 1
+}
