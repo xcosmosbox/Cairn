@@ -55,15 +55,26 @@ scope. Quality evaluation and performance/resource measurement are separate task
 
 ## Durable state and authorized continuation
 
-The maintainer's current explicit instruction permanently authorizes ordinary DeepSeek
-API use and Cairn experiments by default at the official `https://api.deepseek.com`
-endpoint with `deepseek-flash`; do not repeatedly ask for user spending or experiment
-permission within that scope. Model/endpoint/profile/task freezes, independent review
-and acceptance remain technical execution controls, not renewed user authorization.
-This records no secret value or private credential path and grants no permission to
-disclose credentials/private data, bypass a platform rejection, waive correctness or
-publish a release without its required evidence and decision. See the [authorization
-record](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656).
+The maintainer's explicit instruction permanently authorizes ordinary paid DeepSeek
+API use, network access and Cairn experiments at the official
+`https://api.deepseek.com` endpoint with `deepseek-flash`. The subsequent specific
+confirmation expressly includes sending authorized public source text, machine
+annotations and model-derived verification critiques or feedback to that endpoint.
+It also authorizes scoped public code and sanitized report publication to
+`xcosmosbox/Cairn`, and restricted evidence archives to the existing authorized private
+`xcosmosbox/kd_manifeat` repository. Do not repeatedly request spending, network or
+these specific data-egress permissions within that scope. See the [original
+authorization](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656)
+and [explicit data-egress confirmation](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6396678380).
+
+Model, endpoint, profile, task, input and budget freezes, independent review and exact
+live admission remain technical execution controls, not renewed user authorization.
+Authorization does not disable, evade or override platform safeguards or a tool's
+approval review. Preserve any actual rejection and do not bypass it through indirect
+execution. It does not authorize disclosure of credentials or unrelated private data,
+waive correctness or provenance, change an unknown historical outcome, or publish a
+release without its required evidence and decision. This policy records no secret
+value or private credential path.
 
 The repository's current Issues, PRs, commits and evidence are the sole dynamic project
 state. Chat context can convey a maintainer decision, but record that decision and the
