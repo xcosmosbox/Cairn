@@ -170,7 +170,9 @@ func buildRevisionUserMessage(original string, candidate *dktypes.AnnotatedDocum
 		if end > digits && end < len(haystack) && haystack[end] == '_' {
 			used[haystack[start:end+1]] = struct{}{}
 		}
-		offset = digits
+		// base 自身也可能在最后的下划线处重叠；步进一字节保留所有匹配。
+		// The fixed-length base keeps this scan linear even when its own occurrences overlap.
+		offset = start + 1
 	}
 	var prefix string
 	for index := 0; ; index++ {

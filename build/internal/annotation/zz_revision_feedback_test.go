@@ -197,6 +197,8 @@ func TestRevisionAliasPrefixSelectionForAdversarialLiteralText(t *testing.T) {
 		{"long-underscores", base + strings.Repeat("_", 1<<18), base + "1_", base + "0_", base + "2_"},
 		// The two reason prefixes overlap at the separator underscore; a non-overlapping regex misses 258.
 		{"enumerated-and-overlapping", enumerated.String(), base + "256_", base + "257" + base + "258_", base + "259_"},
+		// The base itself overlaps by one underscore; skipping its full length misses the second occurrence.
+		{"overlapping-base", base + base[1:] + "0_1__", "candidate literal", "specific critique", base + "1_"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -217,9 +219,9 @@ func TestRevisionAliasPrefixSelectionForAdversarialLiteralText(t *testing.T) {
 			if alias != tc.wantPrefix+"1__" || strings.Contains(tc.original+tc.candidate+tc.reason, tc.wantPrefix) || input.Original != tc.original || input.Candidate[0].Content != tc.candidate || input.Critique != tc.reason+" "+alias {
 				t.Fatalf("collision selection/round trip: alias=%q", alias)
 			}
-			response := `{"items":[{"tag":"entity","name":"` + alias + `","content":"kept","detail":"` + tc.candidate + ` ` + alias + `","confidence":0.9}]}`
+			response := `{"items":[{"tag":"entity","name":"` + alias + `","content":"kept","detail":"` + tc.original + ` ` + tc.candidate + ` ` + alias + `","confidence":0.9}]}`
 			doc, err := parseAnnotateResponse("s", "p", decodeRevisionAliases(response, aliases))
-			if err != nil || len(doc.Items) != 1 || doc.Items[0].Name != uuid || doc.Items[0].Detail != tc.candidate+" "+uuid {
+			if err != nil || len(doc.Items) != 1 || doc.Items[0].Name != uuid || doc.Items[0].Detail != tc.original+" "+tc.candidate+" "+uuid {
 				t.Fatalf("known alias failed: %+v err=%v", doc, err)
 			}
 		})
