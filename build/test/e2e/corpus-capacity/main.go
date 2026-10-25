@@ -36,7 +36,11 @@ func main() {
 func run() error {
 	overlay := flag.String("runtime-overlay", filepath.Join(rootPath(), "e2e/benchmarks/multihop_public/capacity/runtime-cross-relations-v1.json"), "new immutable reviewed runtime overlay")
 	overlaySHA := flag.String("runtime-overlay-sha256", "", "exact reviewed runtime overlay SHA256 required for preflight/run")
-	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit, trace-audit, seed-preflight/run/audit or receipt-preflight/run/audit; no whole-run retry")
+	mode := flag.String("mode", "prepare", "prepare, preflight, run, audit, trace-audit, seed-preflight/run/audit, receipt-preflight/run/audit or indexed-preflight/run/audit; no whole-run retry")
+	indexedOriginal := flag.String("indexed-original", "", "exact independently authenticated source-only original")
+	indexedDiagnostics := flag.String("indexed-diagnostics", "", "opaque private A12/B2/C3 freeze; never model input")
+	indexedManifest := flag.String("indexed-manifest", "", "independent indexed-source experiment manifest")
+	indexedManifestSHA := flag.String("indexed-manifest-sha256", "", "exact independently reviewed indexed manifest identity")
 	seedRoot := flag.String("seed-input-root", "", "read-only restored historical attempt root for fixed R3")
 	seedPlan := flag.String("seed-manifest", "", "new fixed-R3 experiment plan; never the historical capacity overlay")
 	seedPlanSHA := flag.String("seed-manifest-sha256", "", "exact independently reviewed seeded plan identity")
@@ -58,6 +62,12 @@ func run() error {
 	flag.Parse()
 	if *out == "" || flag.NArg() != 0 {
 		return fmt.Errorf("output required and positional arguments forbidden")
+	}
+	if strings.HasPrefix(*mode, "indexed-") {
+		if *maxTokens != 65536 || *requestTimeout != 600*time.Second || *stageTimeout != 90*time.Minute || *runTimeout != 90*time.Minute {
+			return fmt.Errorf("indexed: capacity flag overrides forbidden; separate plan fixes bounded limits")
+		}
+		return runIndexedCLI(indexedCLI{mode: *mode, original: *indexedOriginal, diagnostics: *indexedDiagnostics, manifest: *indexedManifest, pin: *indexedManifestSHA, out: *out, python: *python, pythonSHA: *pythonSHA, runtime: *runtimeReceipt, runtimeSHA: *runtimeSHA, allowPaid: *allowPaid})
 	}
 	if strings.HasPrefix(*mode, "receipt-") {
 		if *maxTokens != seededMaxTokens || *requestTimeout != 600*time.Second || *stageTimeout != 90*time.Minute || *runTimeout != 90*time.Minute {
