@@ -8,7 +8,11 @@ production change, or HOLDOUT evaluation is part of this task.
 Task [#27](https://github.com/xcosmosbox/Cairn/issues/27) builds on the accepted
 baseline [#21 / PR28](https://github.com/xcosmosbox/Cairn/pull/28), merge
 `bf5d7ec0828b85695a0ad5e196f11f32f02462cb`. Only this new subdirectory changes;
-baseline source, frozen data identities, parameters and reports remain intact.
+the historical source/data identities, parameters and reports remain recorded.
+The current tree retains pure selection/scoring helpers and synthetic tests.
+The obsolete executable runner and its current-tree registration checks were
+retired under [#105](https://github.com/xcosmosbox/Cairn/issues/105); normal code
+changes do not need to match a historical whole-file hash.
 
 ## Registered single factor
 
@@ -33,10 +37,9 @@ original query, frozen DEV IDs and 10,000-code-point serialized context packing
 all reuse the unchanged baseline code. Only `{qid,query}` reaches the retriever.
 Gold labels are used only by the evaluator. No solver, LLM, graph, paid API,
 raw-arm rerun, production behavior change, or HOLDOUT scoring is involved.
-The adapter verifies every pinned baseline file and index hash, opens the exact
-closed index read-only, and checks the hash again afterward. The control's
-original metrics must reproduce the frozen baseline overall and every type,
-fact-count and unique-document-count stratum or the experiment fails.
+At the historical run, the adapter verified pinned baseline files/index and
+compared control metrics with the frozen baseline. Those historical method
+checks describe that run; they are not current-tree test or experiment gates.
 
 ## Recorded result
 
@@ -89,26 +92,26 @@ The shared pool50 retrieval cost is recorded separately from each arm's
 selection/packing cost. Shared-cache timings and fixed execution order do not
 establish performance improvement, and no latency-benefit claim is made.
 
-## Reproduce and review
+## Historical reproduction and current helpers
 
-Use the original verified downloads and the exact baseline index receipt. The
-baseline README describes downloading/rebuilding without committing article
-text. From the repository root:
+The recorded result identifies source commit
+`6101a18b1c4a906fe5df9e5a7679eabbba1be78d`. Reproducing that historical method
+uses a separate checkout at that commit, the original verified downloads and
+exact baseline index receipt. Run the command recorded in `dev-summary.json`
+there. Do not update historical manifest hashes to make current code appear
+unchanged, or label results from changed code as the historical baseline.
+
+Current-tree synthetic helper checks need no dataset, model, registration or
+historical whole-file hash admission:
 
 ```bash
-python3 -m unittest discover -s e2e/benchmarks/multihop_public -p 'test_*.py' -v
-python3 e2e/benchmarks/multihop_public/sourcecap2/experiment.py --data-root /tmp/cairn-mhr-data --index /tmp/cairn-mhr.db --output /tmp/sourcecap2-summary.json --paired-output /tmp/sourcecap2-paired.json
+PYTHONPATH=e2e/benchmarks/multihop_public python3 -m unittest sourcecap2.test_experiment -v
 ```
 
-The focused suite discovers the six new tests and ten unchanged baseline tests
-through `__init__.py`; no CI workflow or baseline test file changed. The new
-tests cover rank preservation/shared-pool immutability, per-source cap2,
-insufficient-source behavior without fallback, identical original packing and
-offsets, explicit same-source-fact loss, complete loss partitions, paired
-gain/loss/tie counts and registered identities. The result records source commit
-and implementation hash; `validation.json` records actual commands and exit
-codes. Local shell push has no credentials, so connector publication maps the
-tested local tree to an identical remote tree as recorded in the PR/checkpoint.
-
-Independent review and current CI apply to this report implementation. Acceptance
-of this negative-result artifact does not adopt source cap2 or open HOLDOUT.
+These checks cover shared-pool/rank preservation, per-source cap2, short selection
+without fallback, original packing/offsets, same-source-fact loss, complete loss
+partitions and paired gain/loss/tie counts. The manifest test reads the historical
+method description; it does not assert the evolving current tree has historical
+bytes. Historical manifests, summaries, paired rows and validation records stay
+unchanged. This retained negative result does not adopt source cap2 or open
+HOLDOUT.

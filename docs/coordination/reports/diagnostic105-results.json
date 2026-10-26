@@ -202,5 +202,14 @@
   "post_run_read_only_identity_unchanged": {
     "graph": true,
     "raw": true
+  },
+  "restricted_evidence": {
+    "repository": "xcosmosbox/kd_manifeat",
+    "branch": "evidence/diagnostic105-20261026",
+    "commit": "1552707b04679ea0617732c104e377f311fde37e",
+    "path": "eval/diagnostic105-20261026/README.json",
+    "saved_parts": 32,
+    "archive_sha256": "cdf5f96ae41bee23ff16eba3e690bf392606691e5f0acf22de3d05c501c86921",
+    "reconstruction_audit": "not performed or required"
   }
 }

@@ -119,3 +119,14 @@ old-response-shape test fixtures; the test-only correction's two combined regres
 0.012s. No local fullrace/verify, full609, recovery or archival rehearsal gated this diagnostic.
 The build, solver, blind projection, judge and summary commands all exited0; individual
 construction/judge failures above remain failures despite process exit0.
+
+Normal CI on published `c223` passed Go/race/build, Viewer and MCP checks; its remaining
+failure was an obsolete sourcecap historical current-file hash admission. That inactive
+execution gate is now retired without changing historical results/hashes; six focused
+sourcecap tests passed in the quality executor. No experiment was rerun.
+
+The selected raw evidence packet's32 parts were saved to restricted `xcosmosbox/kd_manifeat`,
+branch `evidence/diagnostic105-20261026`, commit
+`1552707b04679ea0617732c104e377f311fde37e`,
+`eval/diagnostic105-20261026/README.json`. This records successful storage, not a new
+reconstruction audit or experiment admission requirement.

@@ -67,8 +67,8 @@ class SourceCapTests(unittest.TestCase):
         rows.append(dict(unique_support_doc_count=0, delta=dict(unique_visible_docs=10)))
         self.assertEqual(e.paired_summary(rows)["fact_recall"], dict(gain=1, loss=1, tie=1))
 
-    def test_registered_baseline_and_manifest_identity(self):
-        manifest = e.verify_registration()
+    def test_historical_manifest_describes_original_method(self):
+        manifest = e.baseline.load(e.HERE / "manifest.json")
         self.assertEqual(manifest["baseline_merge_sha"], "bf5d7ec0828b85695a0ad5e196f11f32f02462cb")
         self.assertEqual(manifest["shared_candidate_pool"]["query_calls_per_question"], 1)
         self.assertEqual(manifest["shared_candidate_pool"]["limit"], 50)
