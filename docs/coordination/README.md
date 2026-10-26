@@ -20,18 +20,24 @@ Read [PROTOCOL.md](PROTOCOL.md), [RESTORE.md](RESTORE.md),
 [TEMPLATES.md](TEMPLATES.md) and [DECISIONS.md](DECISIONS.md).
 English identifiers stay stable; Chinese explanations are welcome. Reports may be bilingual.
 
-The maintainer's [execution policy](EXECUTION_POLICY.md) records the Alpha-to-stable
-goal, model defaults and reuse-first evaluation approach. It supplements this entry;
+The maintainer's [execution policy](EXECUTION_POLICY.md) records the v0.1–v0.6→v1
+direction, model defaults and reuse-first evaluation approach. It supplements this entry;
 live task assignment and acceptance still come from Issue/PR records.
 
 ## Current execution
 
-[#105](https://github.com/xcosmosbox/Cairn/issues/105) owns the accepted simplification
-and first fixed small real paired DEV diagnostic. Read its latest claims and
-[decision table](reports/2026-10-26-simplification-plan.md) before editing.
-#11 archive audit and #13 old-control review are optional backlog; #99 old indexed
-preflight and #103 replay optimization no longer block ordinary experiments. Historical
-receipts remain unchanged. No label implies a running job or a completed result.
+[#107](https://github.com/xcosmosbox/Cairn/issues/107) publishes the finite
+[v0.1 construction plan](reports/2026-10-26-v01-build-completeness-plan.md):
+[#108](https://github.com/xcosmosbox/Cairn/issues/108) and six bounded children. All product implementation remains unaccepted
+at plan publication. Start with the actual ready Issue and latest dependency/claim records.
+Source-first semantic coverage, finite failed-step retry/revision, provenance and repeat
+stability are required; successful partial handling does not satisfy normal full coverage.
+#14 is later v0.2/v0.4 backlog, not current dispatch.
+
+#105's simplification and first real diagnostic are completed historical evidence;
+its one-shot/omission-as-warning product direction is superseded by #107. Its deletion of
+unnecessary gates remains. #11/#13/#99/#103 are closed superseded work, not accepted
+successful experiments. No label implies a running job or a completed result.
 
 Use minimal affected checks and actual raw outcomes. Normal CI remains; small experiments
 need no full609/recovery/archive admission or repeated technical GO. Release publication

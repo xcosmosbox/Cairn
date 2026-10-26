@@ -4,6 +4,18 @@ Status: root-approved design; implementation acceptance pending independent revi
 Date: 2026-10-24. Task: [#45](https://github.com/xcosmosbox/Cairn/issues/45).
 Baseline: `c6a2b16f21434147947f4ed30d65a06321571546`.
 
+## Current applicability — 2026-10-26
+
+This record preserves the original bounded design and evidence. #105 removed its old
+64KiB evidence microbudget, cumulative stage deadline and fullrace/verify/repeated-live-GO
+admission as universal experiment prerequisites. Actual request constraints, source/alias/
+quote ownership and relevant checks remain. [#107](https://github.com/xcosmosbox/Cairn/issues/107)
+and the [v0.1 plan](../coordination/reports/2026-10-26-v01-build-completeness-plan.md)
+now require explicit source-relation coverage and finite repair in full and shared changed-
+document construction. That work is planned, not accepted implementation; the earlier
+no-recall-guarantee/candidate-only scope cannot excuse in-scope v0.1 semantic omissions.
+No retired harness or new admission framework is restored.
+
 ## Context
 
 A two-document real smoke extracted an explicit dependency between nodes assigned to

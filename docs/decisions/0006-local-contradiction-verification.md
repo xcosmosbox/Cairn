@@ -4,6 +4,16 @@ Status: proposed implementation under [#68](https://github.com/xcosmosbox/Cairn/
 root approved this bounded method, integration and actual validation remain separate.
 Date: 2026-10-25. Baseline: `a1a016f92cd2883675ed54f9f6afcbefa4a823d4`.
 
+## Current applicability — 2026-10-26
+
+The incremental verification limitation below describes the tested historical/current
+implementation boundary; it is not a permanent exception to v0.1. [#107](https://github.com/xcosmosbox/Cairn/issues/107)
+and its [finite plan](../coordination/reports/2026-10-26-v01-build-completeness-plan.md)
+assign explicit-relation/source-authority closure to v0.1.4 and integration/readback to
+v0.1.6, preserving stable identity and human content. This plan does not claim those
+changes are implemented or extend into the v0.5 daily lifecycle. Historical evidence and
+source/quote truth checks remain; no cost/archive/full609/repeated-GO framework returns.
+
 ## Context and evidence
 
 The sole actual [#63 calibration](https://github.com/xcosmosbox/Cairn/issues/63)

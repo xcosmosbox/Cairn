@@ -90,8 +90,11 @@ cost/counter/time, archive or full609/recovery prerequisites. Missing usage stay
 unknown, individual failures remain in full denominators, and independent work continues.
 
 Record intentional contract/experimental-method changes in the relevant existing
-design document and task decision with compatibility and evidence. #105 has one
-accepted finite simplification plan; it requires no new ADR or governance series.
+design document and task decision with compatibility and evidence. #105's finite
+simplification is completed history. Current #107/v0.1 replaces its one-shot/no-semantic-
+revision and omission-as-warning product direction, retaining necessary finite semantic
+correction without restoring removed peripheral gates. The six-child plan uses this
+existing protocol, not a new ADR/governance series.
 
 ## Keeping records fresh
 
