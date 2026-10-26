@@ -1,0 +1,169 @@
+{
+  "schema_version": "v011-evidence-1",
+  "sources": [
+    {
+      "source_id": "S01",
+      "original_bytes": 8094,
+      "original_lines": 15,
+      "substantive_units": 53,
+      "excluded_units": 1,
+      "covered_units": 53,
+      "explicit_relations": 18,
+      "classifications": {
+        "attribution": 11,
+        "condition": 18,
+        "disagreement": 12,
+        "explicit_relation_context": 52,
+        "negation": 18,
+        "question_or_dialogue_context_required": 9,
+        "source_metadata": 1,
+        "time": 10,
+        "uncertainty": 14
+      },
+      "exclusion_reasons": {
+        "template_wrapper": 1
+      },
+      "expected_inventory_ref": "S01:unit IDs U001–U054; relation IDs R001–R018; full source-bound expectations restricted"
+    },
+    {
+      "source_id": "S02",
+      "original_bytes": 7735,
+      "original_lines": 69,
+      "substantive_units": 59,
+      "excluded_units": 1,
+      "covered_units": 59,
+      "explicit_relations": 34,
+      "classifications": {
+        "attribution": 17,
+        "condition": 15,
+        "disagreement": 1,
+        "explicit_relation_context": 49,
+        "negation": 9,
+        "question_or_dialogue_context_required": 1,
+        "source_metadata": 1,
+        "time": 22,
+        "uncertainty": 16
+      },
+      "exclusion_reasons": {
+        "template_wrapper": 1
+      },
+      "expected_inventory_ref": "S02:unit IDs U001–U060; relation IDs R001–R034; full source-bound expectations restricted"
+    },
+    {
+      "source_id": "S03",
+      "original_bytes": 6880,
+      "original_lines": 45,
+      "substantive_units": 38,
+      "excluded_units": 2,
+      "covered_units": 38,
+      "explicit_relations": 29,
+      "classifications": {
+        "attribution": 16,
+        "condition": 6,
+        "disagreement": 4,
+        "explicit_relation_context": 34,
+        "negation": 3,
+        "source_metadata": 1,
+        "time": 16,
+        "uncertainty": 12
+      },
+      "exclusion_reasons": {
+        "navigation": 1,
+        "template_wrapper": 1
+      },
+      "expected_inventory_ref": "S03:unit IDs U001–U040; relation IDs R001–R029; full source-bound expectations restricted"
+    },
+    {
+      "source_id": "S04",
+      "original_bytes": 8516,
+      "original_lines": 63,
+      "substantive_units": 63,
+      "excluded_units": 1,
+      "covered_units": 63,
+      "explicit_relations": 37,
+      "classifications": {
+        "attribution": 13,
+        "condition": 16,
+        "disagreement": 5,
+        "explicit_relation_context": 56,
+        "negation": 21,
+        "question_or_dialogue_context_required": 3,
+        "source_metadata": 1,
+        "time": 17,
+        "uncertainty": 17
+      },
+      "exclusion_reasons": {
+        "template_wrapper": 1
+      },
+      "expected_inventory_ref": "S04:unit IDs U001–U064; relation IDs R001–R037; full source-bound expectations restricted"
+    },
+    {
+      "source_id": "S05",
+      "original_bytes": 12422,
+      "original_lines": 45,
+      "substantive_units": 103,
+      "excluded_units": 1,
+      "covered_units": 103,
+      "explicit_relations": 51,
+      "classifications": {
+        "attribution": 43,
+        "caption_evidence": 15,
+        "condition": 19,
+        "disagreement": 8,
+        "explicit_relation_context": 99,
+        "negation": 12,
+        "question_or_dialogue_context_required": 3,
+        "source_metadata": 1,
+        "time": 36,
+        "uncertainty": 18
+      },
+      "exclusion_reasons": {
+        "template_wrapper": 1
+      },
+      "expected_inventory_ref": "S05:unit IDs U001–U104; relation IDs R001–R051; full source-bound expectations restricted"
+    },
+    {
+      "source_id": "S06",
+      "original_bytes": 7536,
+      "original_lines": 51,
+      "substantive_units": 44,
+      "excluded_units": 10,
+      "covered_units": 44,
+      "explicit_relations": 25,
+      "classifications": {
+        "attribution": 11,
+        "condition": 6,
+        "disagreement": 5,
+        "explicit_relation_context": 35,
+        "negation": 7,
+        "question_or_dialogue_context_required": 2,
+        "source_metadata": 1,
+        "time": 23,
+        "uncertainty": 11
+      },
+      "exclusion_reasons": {
+        "editorial_promotion": 2,
+        "editorial_transition": 4,
+        "navigation": 3,
+        "template_wrapper": 1
+      },
+      "expected_inventory_ref": "S06:unit IDs U001–U054; relation IDs R001–R025; full source-bound expectations restricted"
+    }
+  ],
+  "totals": {
+    "original_bytes": 51183,
+    "original_lines": 288,
+    "substantive_units": 360,
+    "excluded_units": 16,
+    "covered_units": 360,
+    "explicit_relations": 194
+  },
+  "method": "Six complete immutable originals; manually reviewed paragraph preservation facets, exact sentence claims, speaker/context/time binding, and explicit directed relation evidence. Body/source-reference encodings and generated views are distinguished. Boilerplate exclusions carry explicit reasons. Source metadata, captions, disagreement, uncertainty, conditions, negation and roundup side topics remain accounted for.",
+  "private_evidence": {
+    "inventory_sha256": "f0bfc3a6b8d802f3b15fe7c7e2f6db2e8c09ea4feb7564b241b76d42f78e44d8",
+    "receipt": "https://github.com/xcosmosbox/kd_manifeat/tree/2055faa898418f1f88f90544b0ba6c98d4cf5d62/cairn/v011-inventory-20261026",
+    "manifest_sha256": "e1f13c295d819328f02a7ee7e73c6ec6ab68d4cd85c7f7821398efb03d8c7602"
+  },
+  "semantic_review": "Separate-session full original and final inventory meaning review passed; same model/account limits apply. Structural span/hash checks are distinct.",
+  "builder_boundary": "Acceptance evidence only; never supply expected claim inventory to construction model prompts."
+}

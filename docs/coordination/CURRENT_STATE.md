@@ -1,6 +1,6 @@
 # Current evidence snapshot
 
-As of **2026-10-26 UTC**. Product source baseline:
+As of **2026-10-26 UTC**. Product source starting baseline:
 `d2fa342312809b1d632308433ec507b523d86655` (merged PR106).
 Live [#107](https://github.com/xcosmosbox/Cairn/issues/107), task comments/PR heads and raw
 outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
@@ -14,6 +14,13 @@ answer-utility result is implied by code acceptance/CI.
 unaccepted at plan publication. Four read-only research sessions inspected annotation,
 fusion/relations, provenance/storage and acceptance; publication changes docs/Issues only.
 No product executor or paid model job is started by this plan.
+
+The [v0.1.1 delivery](reports/2026-10-26-v011-source-evidence.md) adds authoritative
+discovery reporting, the complete six-original source-first inventory, finite synthetic
+cases and localized historical loss evidence under [#109](https://github.com/xcosmosbox/Cairn/issues/109).
+Its task checkpoint/PR records exact head checks and acceptance. Ordinary production
+entry wiring, annotation/node/relation/provenance repairs and parent v0.1 acceptance
+remain with #110–#114; no new paid/model run is implied.
 
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/

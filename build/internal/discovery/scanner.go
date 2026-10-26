@@ -3,11 +3,13 @@ package discovery
 import (
 	"bytes"
 	"context"
-	"log"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -49,7 +51,10 @@ var DefaultReferenceDirs = []string{"references", "reference"}
 // the standard library os and filepath packages to traverse the file tree.
 // All filesystem access is done through the os standard library with no
 // external framework dependencies.
-type FSScanner struct{}
+type FSScanner struct {
+	// Optional package-local reader supports deterministic I/O failure tests.
+	readFile func(string) ([]byte, error)
+}
 
 // NewFSScanner 创建一个新的 FSScanner 实例。
 //
@@ -58,194 +63,340 @@ func NewFSScanner() *FSScanner {
 	return &FSScanner{}
 }
 
-// Scan 从指定仓库路径开始扫描，按照 rules 中定义的规则识别 Skill 目录。
-// repoPath 应为仓库克隆后的本地工作区路径。
+// Scan 保持既有技能列表接口，并显式返回读取失败；完整处置请使用 ScanReport。
 //
-// Scan scans from the given repository path, identifying Skill directories
-// according to the rules defined in rules. repoPath should be the local
-// workspace path of a cloned repository.
+// Scan preserves the legacy skills view, but never reports a failed read as an
+// empty successful discovery. Call ScanReport to inspect all dispositions.
 func (s *FSScanner) Scan(ctx context.Context, repoPath string, rules DiscoveryRules) ([]Skill, error) {
-	// 规范化配置参数 / Normalize config parameters
+	report, err := s.ScanReport(ctx, repoPath, rules)
+	return report.Skills, err
+}
+
+// ScanReport 按路径唯一收集完整标记原文和引用，保留成功来源并显式报告失败或取消边界。
+//
+// ScanReport discovers full marker sources and reference sources exactly once.
+// Explicit roots, reference directories and their overlaps share path identity.
+// Read failures do not prevent independent roots/siblings from being inspected;
+// cancellation stops traversal and reports the unfinished boundary.
+func (s *FSScanner) ScanReport(ctx context.Context, repoPath string, rules DiscoveryRules) (Report, error) {
 	rules = normalizeRules(rules)
-
-	var skills []Skill
-
-	// 确定 scan 起点：指定 SkillRootPaths 时限定扫描范围，否则扫描整个 repoPath
-	// Determine scan starting points: restrict to SkillRootPaths if specified,
-	// otherwise scan the entire repoPath
-	scanRoots := rules.SkillRootPaths
-	if len(scanRoots) == 0 {
-		scanRoots = []string{"."}
+	if err := validateRules(rules); err != nil {
+		return Report{}, err
 	}
-
-	for _, root := range scanRoots {
-		absRoot := filepath.Join(repoPath, root)
-		found, err := s.scanDir(ctx, repoPath, absRoot, rules)
-		if err != nil {
-			return nil, err
-		}
-		skills = append(skills, found...)
-	}
-
-	// 按路径排序以保证确定性输出 / Sort by path for deterministic output
-	sort.Slice(skills, func(i, j int) bool {
-		return skills[i].Path < skills[j].Path
-	})
-
-	return skills, nil
-}
-
-// scanDir 递归扫描一个目录，返回发现的 Skill 列表。
-// foundMarker 参数表示当前层级是否已发现 Skill（用于控制递归行为）。
-//
-// scanDir recursively scans a directory, returning discovered Skills.
-// The foundMarker parameter indicates whether a Skill has already been
-// found at the current level (used to control recursion behavior).
-func (s *FSScanner) scanDir(ctx context.Context, repoPath, absDir string, rules DiscoveryRules) ([]Skill, error) {
-	// 检查 context 是否已取消 / Check if context is cancelled
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	var skills []Skill
-
-	// 检查当前目录是否匹配忽略路径 / Check if current dir matches ignore paths
-	if s.shouldIgnore(repoPath, absDir, rules.IgnorePaths) {
-		return nil, nil
-	}
-
-	// 检查当前目录是否包含标记文件 / Check if current dir contains a marker file
-	marker, found := s.findMarker(absDir, rules.Markers)
-	if found {
-		skill := s.buildSkill(repoPath, absDir, marker, rules)
-		skills = append(skills, skill)
-
-		// 如果配置要求不递归，则停止深入该 Skill 的子目录
-		// If RecurseIntoSkills is false, stop descending into subdirectories
-		if !rules.RecurseIntoSkills {
-			return skills, nil
-		}
-	}
-
-	// 读取目录条目并递归扫描子目录 / Read directory entries and recurse into subdirectories
-	entries, err := os.ReadDir(absDir)
+	root, err := filepath.Abs(repoPath)
 	if err != nil {
-		// 跳过无法读取的目录（权限等）/ Skip unreadable directories (permissions, etc.)
-		return skills, nil
+		return Report{}, err
 	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		// 跳过隐藏目录和常见非内容目录 / Skip hidden dirs and common non-content dirs
-		if s.isSkipDir(entry.Name()) {
-			continue
-		}
-
-		childAbs := filepath.Join(absDir, entry.Name())
-		childSkills, err := s.scanDir(ctx, repoPath, childAbs, rules)
-		if err != nil {
-			return skills, err
-		}
-		skills = append(skills, childSkills...)
+	state := scanState{scanner: s, ctx: ctx, root: root, rules: rules,
+		sources: make(map[string]Source), visited: make(map[string]bool)}
+	roots := rules.SkillRootPaths
+	if len(roots) == 0 {
+		roots = []string{"."}
 	}
-
-	return skills, nil
-}
-
-// buildSkill 根据发现的标记文件构建 Skill 结构体。
-// 解析 SKILL.md 的前置元数据（YAML front matter），提取 name 和 domain 提示。
-// 同时收集 ReferenceDirs 中匹配 ReferenceGlob 的引用文件。
-//
-// buildSkill constructs a Skill struct from the discovered marker file.
-// Parses the SKILL.md YAML front matter to extract name and domain hint.
-// Also collects reference files matching ReferenceGlob within ReferenceDirs.
-func (s *FSScanner) buildSkill(repoPath, absDir, markerFile string, rules DiscoveryRules) Skill {
-	// 计算相对于仓库根目录的路径 / Compute relative path from repo root
-	relDir, _ := filepath.Rel(repoPath, absDir)
-	markerRel, _ := filepath.Rel(repoPath, filepath.Join(absDir, markerFile))
-
-	skill := Skill{
-		Name:       filepath.Base(relDir), // 默认使用目录名 / default to directory name
-		Path:       relDir,
-		MarkerFile: markerRel,
-	}
-
-	// 尝试解析 SKILL.md 获取 name 和 domain 提示 / Try parsing SKILL.md for name and domain hint
-	markerPath := filepath.Join(absDir, markerFile)
-	if data, err := os.ReadFile(markerPath); err == nil {
-		name, domainHint := parseFrontMatter(data)
-		if name != "" {
-			skill.Name = name
-		}
-		skill.DomainHint = domainHint
-	}
-
-	// 收集 reference 文件 / Collect reference files
-	skill.ReferenceFiles = s.collectReferenceFiles(repoPath, absDir, rules)
-
-	return skill
-}
-
-// findMarker 检查目录中是否存在任意标记文件。
-// 返回找到的第一个标记文件名和 true，或空字符串和 false。
-//
-// findMarker checks if any marker file exists in the directory.
-// Returns the first marker filename found and true, or empty string and false.
-func (s *FSScanner) findMarker(dir string, markers []string) (string, bool) {
-	for _, marker := range markers {
-		path := filepath.Join(dir, marker)
-		if fileExists(path) {
-			return marker, true
+	// Parent roots first: configuration order must not change ownership.
+	roots = append([]string(nil), roots...)
+	sort.Strings(roots)
+	for _, rel := range roots {
+		state.scanDir(filepath.Join(root, rel))
+		if ctx.Err() != nil {
+			break
 		}
 	}
-	return "", false
-}
-
-// collectReferenceFiles 在 Skill 目录的 ReferenceDirs 中收集匹配 ReferenceGlob 的文件。
-// 返回相对于 repoPath 的路径列表。
-// ReferenceGlob 支持两种形式：简单 glob（如 "*.md"）和递归 glob（如 "**/*.md"）。
-//
-// collectReferenceFiles collects files matching ReferenceGlob within the
-// Skill directory's ReferenceDirs. Returns a list of paths relative to repoPath.
-// ReferenceGlob supports two forms: simple glob (e.g., "*.md") and recursive
-// glob (e.g., "**/*.md").
-func (s *FSScanner) collectReferenceFiles(repoPath, absDir string, rules DiscoveryRules) []string {
-	var refs []string
-
-	for _, refDirName := range rules.ReferenceDirs {
-		refDir := filepath.Join(absDir, refDirName)
-		if !dirExists(refDir) {
-			continue
-		}
-
-		// 遍历 ref 目录收集匹配 glob 的文件 / Walk the ref dir to collect glob-matching files
-		err := filepath.WalkDir(refDir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				log.Printf("discovery: walk error at %s: %v", path, err)
-				return nil // 继续遍历 / continue walking
+	if ctx.Err() != nil {
+		state.cancelled(root)
+	}
+	sort.Slice(state.skills, func(i, j int) bool { return state.skills[i].Path < state.skills[j].Path })
+	// Compatibility callers also receive each reference at most once. A nested
+	// marker has body ownership even if an enclosing reference glob matched it.
+	owned := make(map[string]bool)
+	for i := range state.skills {
+		refs := state.skills[i].ReferenceFiles[:0]
+		for _, path := range state.skills[i].ReferenceFiles {
+			if state.sources[path].Kind == SourceReference && !owned[path] {
+				refs = append(refs, path)
+				owned[path] = true
 			}
-			if d.IsDir() {
+		}
+		state.skills[i].ReferenceFiles = refs
+	}
+	report := Report{Skills: state.skills}
+	for _, source := range state.sources {
+		report.Sources = append(report.Sources, source)
+	}
+	sort.Slice(report.Sources, func(i, j int) bool { return report.Sources[i].Path < report.Sources[j].Path })
+	return report, errors.Join(state.errors...)
+}
+
+type scanState struct {
+	scanner *FSScanner
+	ctx     context.Context
+	root    string
+	rules   DiscoveryRules
+	skills  []Skill
+	sources map[string]Source
+	visited map[string]bool
+	errors  []error
+}
+
+func (s *scanState) relative(path string) string {
+	rel, _ := filepath.Rel(s.root, path)
+	return filepath.ToSlash(rel)
+}
+
+func (s *scanState) record(path string, kind SourceKind, status Disposition, reason string) {
+	rel := s.relative(path)
+	// A general directory traversal must not overwrite an already classified
+	// reference. A supported marker takes priority when discovered inside refs.
+	if old, ok := s.sources[rel]; ok && (old.Kind != SourcePath || (status == Excluded && old.Disposition != Excluded)) {
+		return
+	}
+	s.sources[rel] = Source{Path: rel, Kind: kind, Disposition: status, Reason: reason}
+}
+
+func (s *scanState) failure(path string, kind SourceKind, err error) {
+	s.record(path, kind, Unreadable, err.Error())
+	s.errors = append(s.errors, fmt.Errorf("discovery %s: %w", s.relative(path), err))
+}
+
+func (s *scanState) cancelled(path string) bool {
+	if err := s.ctx.Err(); err != nil {
+		s.record(path, SourcePath, Cancelled, err.Error())
+		s.errors = append(s.errors, err)
+		return true
+	}
+	return false
+}
+
+func (s *scanState) ignored(path string) bool {
+	if s.scanner.shouldIgnore(s.root, path, s.rules.IgnorePaths) {
+		s.record(path, SourcePath, Excluded, "configured IgnorePaths")
+		return true
+	}
+	return false
+}
+
+func (s *scanState) readSource(path string, kind SourceKind) Source {
+	rel := s.relative(path)
+	if old, ok := s.sources[rel]; ok && old.Kind != SourcePath {
+		if kind == SourceSkillBody {
+			old.Kind = kind
+			s.sources[rel] = old
+		}
+		return old
+	}
+	source := Source{Path: rel, Kind: kind}
+	info, err := os.Lstat(path)
+	if err != nil {
+		s.failure(path, kind, err)
+		return s.sources[rel]
+	}
+	if !info.Mode().IsRegular() {
+		source.Disposition = Unsupported
+		source.Reason = "symlinks and non-regular files are unsupported"
+	} else {
+		reader := s.scanner.readFile
+		if reader == nil {
+			reader = os.ReadFile
+		}
+		data, err := reader(path)
+		if err != nil {
+			s.failure(path, kind, err)
+			return s.sources[rel]
+		}
+		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+			source.Disposition = Unsupported
+			source.Reason = "source is not UTF-8 text without NUL bytes"
+		} else {
+			source.Disposition = Supported
+			source.Content = data
+		}
+	}
+	s.sources[rel] = source
+	return source
+}
+
+// Configured nested paths must not bypass the no-symlink traversal rule.
+func (s *scanState) symlinkAncestor(path string) bool {
+	rel := s.relative(path)
+	current := s.root
+	parts := strings.Split(filepath.FromSlash(rel), string(filepath.Separator))
+	for _, part := range parts[:len(parts)-1] {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			s.failure(current, SourcePath, err)
+			return true
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			s.record(current, SourcePath, Unsupported, "symlink directory is not followed")
+			return true
+		}
+	}
+	return false
+}
+
+func (s *scanState) scanDir(path string) {
+	if s.cancelled(path) || s.ignored(path) || s.symlinkAncestor(path) {
+		return
+	}
+	if s.visited[path] {
+		return
+	}
+	s.visited[path] = true
+	info, err := os.Lstat(path)
+	if err != nil {
+		s.failure(path, SourcePath, err)
+		return
+	}
+	if !info.IsDir() {
+		s.record(path, SourcePath, Unsupported, "scan root must be a real directory; symlinks are not followed")
+		return
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		s.failure(path, SourcePath, err)
+		return
+	}
+	byName := make(map[string]os.DirEntry, len(entries))
+	for _, entry := range entries {
+		byName[entry.Name()] = entry
+	}
+	var skill *Skill
+	for _, marker := range s.rules.Markers {
+		if _, exists := byName[marker]; !exists {
+			continue
+		}
+		markerPath := filepath.Join(path, marker)
+		if s.ignored(markerPath) {
+			continue
+		}
+		if s.cancelled(markerPath) {
+			return
+		}
+		source := s.readSource(markerPath, SourceSkillBody)
+		if source.Disposition == Unsupported {
+			continue
+		}
+		if skill == nil {
+			skill = &Skill{Name: filepath.Base(path), Path: s.relative(path), MarkerFile: source.Path}
+			name, domain := parseFrontMatter(source.Content)
+			if name != "" {
+				skill.Name = name
+			}
+			skill.DomainHint = domain
+		}
+	}
+	if skill != nil {
+		skill.ReferenceFiles = s.collectReferences(path)
+		s.skills = append(s.skills, *skill)
+	}
+	for _, entry := range entries {
+		child := filepath.Join(path, entry.Name())
+		if s.cancelled(child) {
+			return
+		}
+		if s.ignored(child) {
+			continue
+		}
+		if entry.IsDir() {
+			if s.scanner.isSkipDir(entry.Name()) {
+				s.record(child, SourcePath, Excluded, "hidden directory excluded from skill discovery")
+			} else if skill != nil && !s.rules.RecurseIntoSkills {
+				s.record(child, SourcePath, Excluded, "nested skill discovery disabled; configured references inspected separately")
+			} else {
+				s.scanDir(child)
+			}
+		} else if entry.Type()&os.ModeSymlink != 0 {
+			s.record(child, SourcePath, Unsupported, "symlink is not followed")
+		} else {
+			s.record(child, SourcePath, Excluded, "outside configured marker and reference scope")
+		}
+	}
+}
+
+func (s *scanState) collectReferences(skillDir string) []string {
+	refs := make(map[string]bool)
+	for _, name := range s.rules.ReferenceDirs {
+		base := filepath.Join(skillDir, name)
+		if s.cancelled(base) {
+			break
+		}
+		info, err := os.Lstat(base)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		} // optional reference directory
+		if err != nil {
+			s.failure(base, SourcePath, err)
+			continue
+		}
+		if s.symlinkAncestor(base) {
+			continue
+		}
+		if !info.IsDir() {
+			s.record(base, SourcePath, Unsupported, "reference root must be a real directory; symlinks are not followed")
+			continue
+		}
+		err = filepath.WalkDir(base, func(path string, entry os.DirEntry, walkErr error) error {
+			if s.cancelled(path) {
+				return s.ctx.Err()
+			}
+			if walkErr != nil {
+				s.failure(path, SourceReference, walkErr)
 				return nil
 			}
-
-			if matchGlob(rules.ReferenceGlob, refDir, path) {
-				// 计算相对于 repoPath 的路径 / Compute path relative to repoPath
-				relPath, _ := filepath.Rel(repoPath, path)
-				refs = append(refs, relPath)
+			if s.ignored(path) {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if !matchGlob(s.rules.ReferenceGlob, base, path) {
+				s.record(path, SourcePath, Unsupported, "does not match configured ReferenceGlob")
+				return nil
+			}
+			source := s.readSource(path, SourceReference)
+			// Keep failed candidates in the legacy list too; the error prevents them
+			// from masquerading as a smaller successful discovery.
+			if source.Disposition != Unsupported {
+				refs[source.Path] = true
 			}
 			return nil
-			})
-			if err != nil {
-				log.Printf("discovery: walk %s failed: %v", refDir, err)
+		})
+		if err != nil && s.ctx.Err() == nil {
+			s.failure(base, SourcePath, err)
+		}
+	}
+	result := make([]string, 0, len(refs))
+	for path := range refs {
+		result = append(result, path)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func validateRules(rules DiscoveryRules) error {
+	for _, marker := range rules.Markers {
+		if marker == "" || marker == "." || marker == ".." || filepath.Base(marker) != marker {
+			return fmt.Errorf("discovery: marker must be a filename: %q", marker)
+		}
+	}
+	for _, paths := range [][]string{rules.SkillRootPaths, rules.ReferenceDirs} {
+		for _, path := range paths {
+			clean := filepath.Clean(path)
+			if filepath.IsAbs(path) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("discovery: path escapes its configured root: %q", path)
 			}
 		}
-
-	sort.Strings(refs)
-	return refs
+	}
+	for _, pattern := range append(append([]string(nil), rules.IgnorePaths...), rules.ReferenceGlob) {
+		if _, err := filepath.Match(pattern, ""); err != nil {
+			return fmt.Errorf("discovery: invalid pattern %q: %w", pattern, err)
+		}
+	}
+	return nil
 }
 
 // matchGlob 检查文件路径是否匹配给定的 glob 模式。
@@ -418,26 +569,4 @@ func parseFrontMatter(data []byte) (name, domainHint string) {
 	}
 
 	return name, domainHint
-}
-
-// fileExists 检查指定路径的文件是否存在。
-//
-// fileExists checks whether a file exists at the given path.
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return !info.IsDir()
-}
-
-// dirExists 检查指定路径的目录是否存在。
-//
-// dirExists checks whether a directory exists at the given path.
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
 }
