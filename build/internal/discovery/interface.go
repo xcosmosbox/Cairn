@@ -28,6 +28,66 @@ type Scanner interface {
 	Scan(ctx context.Context, repoPath string, rules DiscoveryRules) ([]Skill, error)
 }
 
+// ReportingScanner 保持既有 Scanner 兼容，并提供包含原文及明确处置的来源清单。
+//
+// ReportingScanner adds a source roster without breaking existing Scanner mocks.
+// New construction wiring should consume this roster rather than concatenating
+// MarkerFile and ReferenceFiles, which are retained as a compatibility view.
+type ReportingScanner interface {
+	Scanner
+	ScanReport(ctx context.Context, repoPath string, rules DiscoveryRules) (Report, error)
+}
+
+// Report 记录发现事实；错误表示清单可能未完整，成功读取的独立来源仍保留。
+//
+// Report records discovery facts, not semantic or product completion. A non-nil
+// error means the roster may be incomplete; successfully read siblings remain.
+// Sources is sorted and contains one entry per normalized repository-relative
+// path, including explicit exclusions and failed directory boundaries.
+type Report struct {
+	Skills  []Skill
+	Sources []Source
+}
+
+// SourceKind 区分技能正文、引用原文及目录或范围外路径。
+// SourceKind distinguishes skill bodies, references and other path boundaries.
+type SourceKind string
+
+const (
+	SourceSkillBody SourceKind = "skill_body"
+	SourceReference SourceKind = "reference"
+	SourcePath      SourceKind = "path" // directory or file outside supported scope
+)
+
+// Disposition 记录来源的支持、排除、读取失败或取消状态。
+// Disposition records source support, exclusion, read failure or cancellation.
+type Disposition string
+
+const (
+	Supported   Disposition = "supported"
+	Unsupported Disposition = "unsupported"
+	Unreadable  Disposition = "unreadable"
+	Excluded    Disposition = "excluded"
+	Cancelled   Disposition = "cancelled"
+)
+
+// Source 保留仓库内稳定路径身份与完整原始字节；技能元数据和正文均属于原文。
+//
+// Source.Path is the stable identity within the caller's repository identity;
+// identical bytes at different paths remain different originals. Symlinks and
+// non-regular files are unsupported and are never followed. Supported files are
+// UTF-8 text without NUL bytes selected by Markers or ReferenceDirs/ReferenceGlob.
+// No navigation/boilerplate heuristic removes content. SKILL.md is a full source,
+// including front matter AND body; metadata parsing does not replace that source.
+// UUID-looking source text is ordinary content, never a machine identity.
+type Source struct {
+	Path        string
+	Kind        SourceKind
+	Disposition Disposition
+	Reason      string // always present for a non-supported disposition
+	Content     []byte // complete original bytes iff Supported; may be empty
+}
+
 // DiscoveryRules 定义 Skill 发现规则，控制扫描行为和匹配条件。
 // 所有字段均可选：未设置的字段使用包内默认值。
 //

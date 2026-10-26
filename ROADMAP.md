@@ -34,6 +34,10 @@ its tested scope; historical done Issues do not establish current v0.1 or stable
 | [#113](https://github.com/xcosmosbox/Cairn/issues/113) — v0.1.5 | Persisted sources, true distinct counts and Markdown/sidecar preservation | v0.1.1; agreed node/relation candidate interfaces |
 | [#114](https://github.com/xcosmosbox/Cairn/issues/114) — v0.1.6 | Sole shared orchestration/entry wiring, status aggregation and integrated acceptance | Wiring after v0.1.1; final acceptance after v0.1.2–v0.1.5 |
 
+The [v0.1.1 source/evidence delivery](docs/coordination/reports/2026-10-26-v011-source-evidence.md)
+defines the authoritative-source roster and finite downstream handoff; task acceptance
+remains recorded in #109. Parent v0.1 requires the remaining helpers and integrated run.
+
 All six children must deliver integrated implementation and accepted evidence. Their
 contract→task→evidence matrix is the complete v0.1 closure: all six accepted implies
 v0.1 accepted under the existing protocol, without an unnamed later acceptance project.
