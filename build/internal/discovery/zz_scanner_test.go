@@ -249,19 +249,91 @@ func TestScanReportConfigurationAndSymlinkBoundaries(t *testing.T) {
 	}
 }
 
-// A directory named SKILL.md must not hide valid descendant skills; absent optional refs are normal.
+// 普通标记内容不受支持时，原先会丢掉目录身份并把正常引用误报为范围外。
+// Unsupported regular marker bytes previously hid valid references behind an excluded disposition.
+func TestScanReportRegularMarkerContentKeepsReferences(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		marker []byte
+		status Disposition
+	}{
+		{"invalid_utf8", []byte{0xff}, Unsupported},
+		{"nul", []byte("# Unsupported\x00marker"), Unsupported},
+		{"plain_text", []byte("# Marker without front matter\n"), Supported},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			reference := []byte("# 完整引用\nRetain conditions, negation and UUID 6f9619ff-8b86-d011-b42d-00c04fc964ff.\n")
+			writeSource(t, root, "a/SKILL.md", tc.marker)
+			writeSource(t, root, "a/references/valid.md", reference)
+			writeSource(t, root, "b/SKILL.md", []byte("# Healthy sibling\n"))
+			writeSource(t, root, "b/references/valid.md", []byte("Independent source\n"))
+			scanner := NewFSScanner()
+			report, err := scanner.ScanReport(context.Background(), root, DiscoveryRules{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := sourceAt(t, report, "a/references/valid.md"); got.Kind != SourceReference || got.Disposition != Supported || !bytes.Equal(got.Content, reference) {
+				t.Fatalf("supported reference lost: %#v; skills=%#v", got, report.Skills)
+			}
+			wantSkill := Skill{Name: "a", Path: "a", MarkerFile: "a/SKILL.md", ReferenceFiles: []string{"a/references/valid.md"}}
+			if len(report.Skills) != 2 || !reflect.DeepEqual(report.Skills[0], wantSkill) || report.Skills[1].Path != "b" || sourceAt(t, report, "b/references/valid.md").Disposition != Supported {
+				t.Fatalf("fallback identity or healthy sibling lost: %#v", report.Skills)
+			}
+			marker := sourceAt(t, report, "a/SKILL.md")
+			if marker.Kind != SourceSkillBody || marker.Disposition != tc.status || (tc.status == Unsupported && (marker.Reason == "" || marker.Content != nil)) {
+				t.Fatalf("marker disposition changed: %#v", marker)
+			}
+			seen := make(map[string]bool)
+			for _, source := range report.Sources {
+				if seen[source.Path] {
+					t.Fatalf("duplicate source %s", source.Path)
+				}
+				seen[source.Path] = true
+			}
+			rules := DiscoveryRules{SkillRootPaths: []string{"a", ".", "a"}, ReferenceDirs: []string{"references", "references/."}}
+			again, err := scanner.ScanReport(context.Background(), root, rules)
+			if err != nil || !reflect.DeepEqual(report, again) {
+				t.Fatalf("overlapping roots changed source ownership: %v", err)
+			}
+			legacy, err := scanner.Scan(context.Background(), root, rules)
+			if err != nil || !reflect.DeepEqual(legacy, report.Skills) {
+				t.Fatalf("legacy view lost references: %v %#v", err, legacy)
+			}
+		})
+	}
+}
+
+// 非普通标记不能取得目录所有权，否则会隐藏后代；缺省可选引用目录不算错误。
+// Directory and symlink markers must not hide descendants; absent optional references are normal.
 func TestInvalidMarkerDoesNotHideDescendantsAndOptionalNestedRefs(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	writeSource(t, root, "SKILL.md/child/SKILL.md", []byte("# Valid descendant"))
-	report, err := NewFSScanner().ScanReport(context.Background(), root, DiscoveryRules{ReferenceDirs: []string{"docs/references"}})
-	if err != nil {
-		t.Fatalf("absent optional nested reference directory failed scan: %v", err)
-	}
-	if len(report.Skills) != 1 || report.Skills[0].Path != "SKILL.md/child" {
-		t.Fatalf("invalid directory marker hid valid descendants: %#v", report.Skills)
-	}
-	if sourceAt(t, report, "SKILL.md").Disposition != Unsupported {
-		t.Fatal("directory marker not classified unsupported")
+	for _, kind := range []string{"directory", "symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			descendant := "SKILL.md/child"
+			if kind == "symlink" {
+				outside := t.TempDir()
+				writeSource(t, outside, "marker.md", []byte("# Must not follow\n"))
+				if err := os.Symlink(filepath.Join(outside, "marker.md"), filepath.Join(root, "SKILL.md")); err != nil {
+					t.Fatal(err)
+				}
+				descendant = "child"
+			}
+			writeSource(t, root, descendant+"/SKILL.md", []byte("# Valid descendant"))
+			report, err := NewFSScanner().ScanReport(context.Background(), root, DiscoveryRules{ReferenceDirs: []string{"docs/references"}})
+			if err != nil {
+				t.Fatalf("absent optional nested reference directory failed scan: %v", err)
+			}
+			if len(report.Skills) != 1 || report.Skills[0].Path != descendant {
+				t.Fatalf("invalid %s marker hid valid descendants: %#v", kind, report.Skills)
+			}
+			if marker := sourceAt(t, report, "SKILL.md"); marker.Kind != SourceSkillBody || marker.Disposition != Unsupported || marker.Content != nil || marker.Reason == "" {
+				t.Fatalf("%s marker not classified unsupported: %#v", kind, marker)
+			}
+		})
 	}
 }
