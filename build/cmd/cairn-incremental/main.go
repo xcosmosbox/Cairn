@@ -42,7 +42,6 @@ func main() {
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "单次 LLM 最大输出 token（DeepSeek 上限 393216）/ max output tokens per call")
 	timeout := flag.String("timeout", "1800s", "单请求超时 / per-request timeout")
 	maxRetries := flag.Int("max-retries", 3, "标注/语义门原地重试上限 / in-place retry cap")
-	maxRollbacks := flag.Int("max-rollbacks", 3, "单篇文档回退重标注上限 / per-doc rollback budget")
 	minConf := flag.Float64("min-confidence", 0.0, "新建 entity/concept 置信度门控 / confidence gate")
 	recallK := flag.Int("recall-k", 15, "FTS5 召回 top-K / FTS5 recall size")
 	evolutionDir := flag.String("evolution-dir", "", "演化产物目录（默认 <db 同级>/evolution）/ evolution workspace dir")
@@ -76,7 +75,6 @@ func main() {
 		Client:             client,
 		MaxTokens:          *maxTokens,
 		MaxRetries:         *maxRetries,
-		MaxRollbacks:       *maxRollbacks,
 		MinConfidence:      *minConf,
 		RecallK:            *recallK,
 	})

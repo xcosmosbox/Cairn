@@ -1,0 +1,54 @@
+{
+  "format": "cairn-support-enriched-dev-diagnostic/v1",
+  "selection": "first two checked-in selected.dev rows; fixed before reading QA or model outcomes",
+  "qids": [
+    "02f2a372b5109cc853719305e2188216fde659f4f3a951b2e26cfb3c50200a62",
+    "040bf93af9d84d82a5c27faa41512df01e6752a81db06843ea38e0cacd113d64"
+  ],
+  "intended_question_arm_slots": 4,
+  "documents": [
+    {
+      "doc_id": "eb046c4ddbd31a8f9e7712e46100c3c93491df95c385c1f191e024c575058f71",
+      "body_sha256": "5b136a9bad6732b58956655c3e56a7e481b90281a9bccbf43cfb69d40eee0212",
+      "wrapper_sha256": "f7eb7ab9482f65c9dc21cc3617775725f7ba80f70790d089929a261f432268c6",
+      "bytes": 7536
+    },
+    {
+      "doc_id": "8438207b101080d5ea97c351a44a8fcd1e92166632d820054067eb8ea4737d9f",
+      "body_sha256": "ad2540d67a2c96f9f2f123b6006561151cae533ea433cf4cf68546291335cf61",
+      "wrapper_sha256": "257b32d56fcd65d8779398f32843a872a27a2e54f284af640d5cfc5afefddaf5",
+      "bytes": 8516
+    },
+    {
+      "doc_id": "129e45fe8c1a56a0e6a876b0ec446e29a10db73e3bc8a66688dbf8b3f640ad65",
+      "body_sha256": "dfc5f14c1b3c2a3df519a7813998b5fa20dce2c2e625da9f36a7b424631a6cf1",
+      "wrapper_sha256": "a91ad6c64fbb4cad89eacc35db40265c8cccd95f2239d35ff6c4c76f58573ce9",
+      "bytes": 8094
+    },
+    {
+      "doc_id": "77a817dff918b45a5c0c05cb7639ad06607f77c96e9ab80b7ed6d6e43d24fdd4",
+      "body_sha256": "3c8d3acaf5086a5a3ff546071a1be9c728c76ee582a688390917fb2d987f796a",
+      "wrapper_sha256": "a2d359ecb4a6a597e0045367894ab05ca01d3ac59ec705efdbdc57a727aecaee",
+      "bytes": 6880
+    },
+    {
+      "doc_id": "8c45ace0c9f63f2107670f852b224c8e80af153b7ac1915d393ae99cd17f816e",
+      "body_sha256": "b187e5568b28a72bf2f467ba52f299e437009df3ed4b96003f0cfe52530d1243",
+      "wrapper_sha256": "58b7374c8f722ce13ff9ccd1293cf66d67bf97134367d8aa434afb0b1468acc6",
+      "bytes": 12422
+    },
+    {
+      "doc_id": "3d08aa8f2eec4126b0b2d629dc063ce0d9fdc300604457905566cbbc44472099",
+      "body_sha256": "2386db846da9710bfce0137c436a5949d631a24e3823c4e854ae0ae7a6840a4c",
+      "wrapper_sha256": "109892fc50fd6af110716b2012a9a02be2227f8c7b0e0397b4d46ff29e925f99",
+      "bytes": 7735
+    }
+  ],
+  "corpus_sha256": "cfe71fa32ea587b807bca00c348661b0380c71572e290743f3fdd26e9c926438",
+  "source_corpus_sha256": "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f",
+  "qa_sha256": "03cfb4926461f868684903aadc8024447bdda5bb3f6804741424cce338515bff",
+  "scope": "complete original support-document union; support-enriched exploratory given-source utility only; no full-corpus retrieval/generalization/HOLDOUT claim",
+  "builder_input": "original-repo original source wrappers only; no QA/question/gold",
+  "solver_input": "separate question_id/question projection",
+  "holdout_status": "not read/scored; only selected DEV gold projected"
+}

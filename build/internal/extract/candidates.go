@@ -2,11 +2,11 @@ package extract
 
 import (
 	"fmt"
+	"log"
 	"math"
 )
 
-// CandidateSelectionReport records the confidence gate once, before the same
-// candidate graph is used for both SQLite and Markdown/sidecar materialization.
+// CandidateSelectionReport counts the same valid graph used for SQLite and writeback.
 type CandidateSelectionReport struct {
 	MinConfidence     float64
 	NodesInput        int
@@ -21,25 +21,32 @@ type CandidateSelectionReport struct {
 
 // SelectMaterializationCandidates returns an independent graph view without
 // changing the diagnostic extraction result. UUIDs must already be assigned.
-// A filtered duplicate must not remove an eligible node with the same UUID;
-// multiple eligible definitions of one UUID are ambiguous and fail closed.
+// Ambiguous identities and their incident edges are omitted locally.
 func SelectMaterializationCandidates(res *Result, minConfidence float64) (*Result, *CandidateSelectionReport, error) {
-	report := &CandidateSelectionReport{MinConfidence: minConfidence}
+	report := &CandidateSelectionReport{}
+	_ = minConfidence // legacy argument, never an admission threshold
 	if res == nil {
 		return nil, report, fmt.Errorf("candidate selection: missing extraction result")
 	}
-	if math.IsNaN(minConfidence) || math.IsInf(minConfidence, 0) {
-		return nil, report, fmt.Errorf("candidate selection: invalid confidence threshold")
+	counts := map[string]int{}
+	for _, d := range res.Domains {
+		for _, sd := range d.Subdomains {
+			for _, nodes := range [][]Node{sd.Entities, sd.Concepts} {
+				for _, n := range nodes {
+					if n.ID != "" {
+						counts[n.ID]++
+					}
+				}
+			}
+		}
 	}
 	selectedIDs := map[string]string{}
 	selectNodes := func(nodes []Node, label string) ([]Node, error) {
 		selected := make([]Node, 0, len(nodes))
 		for _, node := range nodes {
 			report.NodesInput++
-			if math.IsNaN(node.Confidence) || math.IsInf(node.Confidence, 0) {
-				return nil, fmt.Errorf("candidate selection: node %q has invalid confidence", node.Name)
-			}
-			if node.Confidence < minConfidence {
+			if node.ID == "" || counts[node.ID] > 1 || math.IsNaN(node.Confidence) || math.IsInf(node.Confidence, 0) || node.Confidence < 0 || node.Confidence > 1 {
+				log.Printf("[extract] omitted invalid candidate %q", node.Name)
 				report.NodesFiltered++
 				if label == "Entity" {
 					report.EntitiesFiltered++
@@ -47,12 +54,6 @@ func SelectMaterializationCandidates(res *Result, minConfidence float64) (*Resul
 					report.ConceptsFiltered++
 				}
 				continue
-			}
-			if node.ID == "" {
-				return nil, fmt.Errorf("candidate selection: eligible node %q has no UUID", node.Name)
-			}
-			if previous, exists := selectedIDs[node.ID]; exists {
-				return nil, fmt.Errorf("candidate selection: duplicate eligible UUID %q for nodes %q and %q", node.ID, previous, node.Name)
 			}
 			selectedIDs[node.ID] = node.Name
 			selected = append(selected, node)

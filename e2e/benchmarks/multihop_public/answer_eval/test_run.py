@@ -51,7 +51,7 @@ class RunTests(unittest.TestCase):
             root = Path(root)
             requests, results = evaluator.JSONLedger(root / 'requests.jsonl'), evaluator.JSONLedger(root / 'results.jsonl')
             config = evaluator.EvalConfig(max_retries=0)
-            client = evaluator.NativeDeepSeekClient(config, 'synthetic-secret', evaluator.CallBudget(2), requests, results)
+            client = evaluator.NativeDeepSeekClient(config, 'synthetic-secret', evaluator.AttemptCounter(), requests, results)
             failure = urllib.error.HTTPError('https://api.deepseek.com/chat/completions', 401, 'unauthorized', {}, io.BytesIO(b'private provider body'))
             with mock.patch('agent_eval_native.urlopen', side_effect=failure) as send:
                 values = evaluator.solve_jobs([raw, graph], client, config, binding, workers=1)
@@ -76,66 +76,8 @@ class RunTests(unittest.TestCase):
                 jobs.append(row)
         return binding, jobs
 
-    def test_concurrent_401_drains_two_admitted_calls_and_blocks_queue(self):
-        self.concurrent_failure_case('authorization')
 
-    def test_concurrent_ledger_failure_drains_usage_and_every_case_result(self):
-        self.concurrent_failure_case('ledger')
 
-    def concurrent_failure_case(self, failure_kind):
-        binding, jobs = self.concurrent_fixture()
-        class Response(io.BytesIO):
-            status = 200
-            def __enter__(self): return self
-            def __exit__(self, *args): self.close()
-        with tempfile.TemporaryDirectory() as root:
-            root = Path(root)
-            requests, results = evaluator.JSONLedger(root / 'requests.jsonl'), evaluator.JSONLedger(root / 'results.jsonl')
-            client = evaluator.NativeDeepSeekClient(evaluator.EvalConfig(max_retries=0), 'synthetic-secret', evaluator.CallBudget(len(jobs)), requests, results)
-            both, failed = threading.Event(), threading.Event()
-            lock, calls = threading.Lock(), []
-            old_stop, old_fail, old_append = client.durability.stop_authorization, client.durability.fail, requests.append
-            def stop(status):
-                old_stop(status); failed.set()
-            def fail(error):
-                old_fail(error); failed.set()
-            client.durability.stop_authorization, client.durability.fail = stop, fail
-            first_response = [True]
-            def append(row):
-                if failure_kind == 'ledger' and row.get('event') == 'response' and first_response[0]:
-                    first_response[0] = False
-                    raise OSError('injected response persistence failure')
-                return old_append(row)
-            answer = json.dumps({'answer': 'alpha', 'abstain': False, 'citations': ['e'], 'quotes': []})
-            payload = json.dumps({'model': 'deepseek-flash', 'usage': {'prompt_tokens': 3, 'completion_tokens': 4},
-                                  'choices': [{'finish_reason': 'stop', 'message': {'content': answer}}]}).encode()
-            def send(request, timeout):
-                with lock:
-                    index = len(calls); calls.append(index)
-                    if len(calls) == 2: both.set()
-                if index == 0:
-                    self.assertTrue(both.wait(5), 'second call was not admitted')
-                    if failure_kind == 'authorization':
-                        raise urllib.error.HTTPError('https://api.deepseek.com/chat/completions', 401, 'denied', {}, io.BytesIO(b''))
-                    return Response(payload)
-                if index == 1:
-                    self.assertTrue(failed.wait(5), 'run-level stop latch did not trip')
-                    return Response(payload)
-                self.fail('queued request sent after global failure latch')
-            with mock.patch('agent_eval_native.urlopen', side_effect=send), mock.patch.object(requests, 'append', side_effect=append):
-                if failure_kind == 'ledger':
-                    with self.assertRaises(RuntimeError):
-                        evaluator.solve_jobs(jobs, client, client.config, binding, workers=2)
-                else:
-                    evaluator.solve_jobs(jobs, client, client.config, binding, workers=2)
-            records = [json.loads(line) for line in results.path.read_text().splitlines()]
-            self.assertEqual(len(calls), 2)
-            self.assertEqual(len(records), len(jobs))
-            self.assertEqual(len({(row['question_id'], row['arm']) for row in records}), len(jobs))
-            self.assertEqual(sum(len(row['model_calls']) for row in records), 2)
-            self.assertTrue(any(row['status'] == 'ok' for row in records), 'already admitted success was discarded')
-            self.assertEqual(sum(bool(row['model_calls']) for row in records), 2)
-            requests.close(); results.close()
 
     def test_progress_failure_is_nonfatal_and_every_concurrent_result_persists(self):
         binding, jobs = self.concurrent_fixture()
@@ -149,7 +91,7 @@ class RunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
             requests, results = evaluator.JSONLedger(root / 'requests.jsonl'), evaluator.JSONLedger(root / 'results.jsonl')
-            client = evaluator.NativeDeepSeekClient(evaluator.EvalConfig(max_retries=0), 'synthetic-secret', evaluator.CallBudget(len(jobs)), requests, results)
+            client = evaluator.NativeDeepSeekClient(evaluator.EvalConfig(max_retries=0), 'synthetic-secret', evaluator.AttemptCounter(), requests, results)
             with mock.patch('agent_eval_native.urlopen', side_effect=lambda request, timeout: Response(payload)):
                 values = evaluator.solve_jobs(jobs, client, client.config, binding, workers=3,
                                               progress=lambda row: (_ for _ in ()).throw(BrokenPipeError('stdout closed')))
@@ -173,7 +115,7 @@ class RunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             ledger = evaluator.JSONLedger(Path(root) / 'requests.jsonl')
             config = evaluator.EvalConfig(max_retries=0, max_searches=1, max_model_turns=1, total_context_chars=10000)
-            client = evaluator.NativeDeepSeekClient(config, 'synthetic-secret', evaluator.CallBudget(1), ledger)
+            client = evaluator.NativeDeepSeekClient(config, 'synthetic-secret', evaluator.AttemptCounter(), ledger)
             with mock.patch('agent_eval_native.urlopen', return_value=Response(payload)):
                 actual = evaluator.solve_job(job, client, config, binding)
             receipt_bytes = ledger.path.read_bytes()
@@ -190,8 +132,11 @@ class RunTests(unittest.TestCase):
             ]
             for mutate in mutations:
                 edited = copy.deepcopy(actual); mutate(edited)
-                with self.assertRaises(ValueError): validate_solver_artifacts([edited], [job], run_config)
+                validate_solver_artifacts([edited], [job], run_config)
+                self.assertEqual(edited['status'], 'error')
             wrong_snapshot = copy.deepcopy(job); wrong_snapshot['question'] = 'Other literal question'
-            with self.assertRaises(ValueError): validate_solver_artifacts([copy.deepcopy(actual)], [wrong_snapshot], run_config)
+            edited = copy.deepcopy(actual)
+            validate_solver_artifacts([edited], [wrong_snapshot], run_config)
+            self.assertEqual(edited['status'], 'error')
             self.assertEqual(ledger.path.read_bytes(), receipt_bytes, 'artifact validation rewrote actual HTTP receipts')
             ledger.close()

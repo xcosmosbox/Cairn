@@ -63,29 +63,6 @@ including for ASCII queries. Tests and reports preserve these limitations.
 
 ## Paid solver and grading
 
-Only `agent_eval_native.py --allow-paid` and `grade.py judge` call the provider.
-Keys come from runtime environment variables, never committed files or logs.
-Imports, unit tests and offline replay make no provider requests.
+Current execution follows [#105](https://github.com/xcosmosbox/Cairn/issues/105) and the [paired public evaluator](../benchmarks/multihop_public/answer_eval/README.md). `agent_eval_native.py`, the JSON-action runner and `grade.py judge` use ordinary request IDs without cumulative call/token/cost quotas or repeated paid-admission flags. Raw request/response/outcome JSONL records have an in-memory fallback; missing usage is unknown, and a failed sink never cancels independent model work. Per-request timeout/context/output bounds and endpoint/credential redirect isolation remain.
 
-The solver uses `deepseek-flash`, thinking disabled, max4096 output tokens,
-at most three searches/four model rounds, and top10. Native search batches run
-in provider order; the final answer must be one separate submit call. Mixed,
-duplicate and invalid calls fail explicitly. Assistant prose is never repaired
-into a tool action. Errors and JSON framing consume the same evidence budget.
-All requests, responses, retries, failures and actual usage remain in the fsynced
-ledger and result records.
-
-```bash
-python3 e2e/quality/agent_eval_native.py --help
-python3 e2e/quality/grade.py --help
-python3 -m unittest discover -s e2e/quality -p 'test_*.py'
-python3 e2e/quality/export_receipts.py --self-test
-```
-
-The judge retains thinking enabled/low, max32768 output tokens and at most two
-attempts per case. Every attempt consumes the frozen global budget. Automatic
-errors are not passes; residual AI adjudication is separately labeled. The
-benchmark and grading are AI-produced, not human gold. The ten-question holdout
-has prior aggregate results and is not an untouched generalization set.
-Protocol success, nonempty retrieval and source overlap alone do not establish
-answer correctness or GraphRAG effectiveness.
+Schema, source/citation and provider failures are local outcomes. The paired evaluator retains all intended question×arm slots. Judge results remain AI judgments, never human review. Interrupted attempts are not silently resent. Historical pilot JSON/results stay unchanged; executable pilot archive copies and the plan-only Source Backfill admission shell were removed. Old controls and archive audits are optional historical work, not dependencies of a new diagnostic.

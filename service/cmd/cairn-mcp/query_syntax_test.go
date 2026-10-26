@@ -21,7 +21,7 @@ func TestMCPQuerySyntaxSingleAndFederated(t *testing.T) {
 			{"invalid", "aggregate0", false, true},
 		} {
 			res, err := toolDomainSearch(state, map[string]interface{}{"keyword": tc.query, "query_syntax": tc.syntax, "kg": kg})
-			if (err != "") != tc.hasError {
+			if (err != "" || (res != nil && res.IsError)) != tc.hasError {
 				t.Fatalf("kg=%s query=%q syntax=%s error=%s", kg, tc.query, tc.syntax, err)
 			}
 			if !tc.hasError {

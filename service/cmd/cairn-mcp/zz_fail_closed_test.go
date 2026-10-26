@@ -29,8 +29,8 @@ func mutateLoadedDatabase(t *testing.T, path, statement string) {
 }
 
 // 原联邦路径吞掉所有或部分 SQL 错误，把不完整结果当作正常零命中返回。
-// Real SQL failures in any KB must fail the whole operation, including REST adapters.
-func TestKnowledgeBaseReadErrorsFailClosed(t *testing.T) {
+// Healthy KB results survive; partial failures remain explicit through MCP and REST.
+func TestKnowledgeBaseReadErrorsAreLocal(t *testing.T) {
 	t.Parallel()
 	for _, partial := range []bool{false, true} {
 		t.Run(map[bool]string{false: "all-failed", true: "partial-failed"}[partial], func(t *testing.T) {
@@ -47,7 +47,7 @@ func TestKnowledgeBaseReadErrorsFailClosed(t *testing.T) {
 				params, _ := json.Marshal(map[string]interface{}{"name": name, "arguments": map[string]interface{}{"keyword": "aggregate0"}})
 				resp := handleToolsCall(state, &jsonRPCRequest{ID: json.RawMessage("1"), Params: params})
 				result, ok := resp.Result.(*toolResult)
-				if !ok || !result.IsError || !strings.Contains(result.Content[0].Text, "smoke") {
+				if !ok || result.IsError == partial || (!partial && !strings.Contains(result.Content[0].Text, "smoke")) {
 					t.Fatalf("%s masked SQL failure: %+v", name, resp)
 				}
 				recorder := httptest.NewRecorder()
@@ -56,8 +56,21 @@ func TestKnowledgeBaseReadErrorsFailClosed(t *testing.T) {
 				if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 					t.Fatal(err)
 				}
-				if body["isError"] != true || body["error"] == nil || body["markdown"] != nil {
-					t.Fatalf("REST masked %s failure: %s", name, recorder.Body.String())
+				if !partial {
+					if body["isError"] != true || body["error"] == nil {
+						t.Fatalf("REST masked %s failure: %s", name, recorder.Body.String())
+					}
+				} else {
+					failures, ok := body["failed_kbs"].([]interface{})
+					if body["partial"] != true || !ok || len(failures) != 1 || failures[0].(map[string]interface{})["kg"] != "smoke" {
+						t.Fatalf("missing partial status: %s", recorder.Body.String())
+					}
+					if name == "domain_search" {
+						hits, ok := body["hits"].([]interface{})
+						if !ok || len(hits) == 0 || hits[0].(map[string]interface{})["kg"] != "healthy" {
+							t.Fatalf("lost healthy hits: %s", recorder.Body.String())
+						}
+					}
 				}
 			}
 		})
@@ -79,12 +92,16 @@ func TestDescribeDoesNotHideCrossKnowledgeLinkReadErrors(t *testing.T) {
 }
 
 func TestWatcherShutdownCancelsAndWaitsForInflightFetch(t *testing.T) {
-	// Setenv is process global, so this lifecycle test intentionally is not parallel.
+	// Public catalogs must reach the watcher without a configured token.
+	t.Parallel()
 	dir := t.TempDir()
 	state := lifecycleState(t, lifecycleDB(t, filepath.Join(dir, "knowledge.db"), 1))
 	entered, canceled := make(chan struct{}), make(chan struct{})
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("public watcher sent Authorization")
+		}
 		if requests.Add(1) == 1 {
 			close(entered)
 			<-r.Context().Done()
@@ -95,10 +112,9 @@ func TestWatcherShutdownCancelsAndWaitsForInflightFetch(t *testing.T) {
 	}))
 	defer server.Close()
 	defer server.CloseClientConnections()
-	t.Setenv("CAIRN_WATCH_CANCEL_TEST_TOKEN", "synthetic-token")
 	state.catalogAPIBase = server.URL
 	install := filepath.Join(dir, "installed")
-	state.watchConfigs = map[string]config.KBConfig{"smoke": {CatalogRepo: "owner/catalog", CatalogBranch: "main", ManifestDir: "knowledge-bases", InstallDir: install, TokenEnv: "CAIRN_WATCH_CANCEL_TEST_TOKEN", PollInterval: "1ms"}}
+	state.watchConfigs = map[string]config.KBConfig{"smoke": {CatalogRepo: "owner/catalog", CatalogBranch: "main", ManifestDir: "knowledge-bases", InstallDir: install, PollInterval: "1ms"}}
 	parent, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	state.startCatalogWatcher(parent)
@@ -141,5 +157,27 @@ func TestCanceledWatcherParentDoesNotStartFetch(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("already canceled watcher did not stop")
+	}
+}
+
+// 错误的显式配置原来会静默选择 ./knowledge.db，可能返回别的语料。
+func TestMalformedExplicitConfigDoesNotFallBack(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.yaml")
+	if cfg, err := loadServerConfig(missing, false); err != nil || cfg == nil {
+		t.Fatalf("implicit no-config default: %v", err)
+	}
+	if cfg, err := loadServerConfig(missing, true); err == nil || cfg != nil {
+		t.Fatal("explicit missing config accepted")
+	}
+	malformed := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(malformed, []byte("mcp: [invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, explicit := range []bool{true, false} {
+		if cfg, err := loadServerConfig(malformed, explicit); err == nil || cfg != nil {
+			t.Fatal("malformed config fell back to unrelated default database")
+		}
 	}
 }

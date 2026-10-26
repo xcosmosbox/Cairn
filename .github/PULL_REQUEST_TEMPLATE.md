@@ -14,7 +14,7 @@ Refs #<!-- task -->
 ## Validation and evidence
 
 <!-- Commands, exit results, CI and immutable artifacts. Identify not-run/blocked checks. -->
-<!-- Code: CONTRIBUTING gates. Docs: links/templates. Automation: focused tests and CI. -->
+<!-- Code: affected tests/builds and normal CI. Docs: links/templates. No universal local fullsuite or experiment admission. -->
 
 ## Limitations, recovery and follow-up
 

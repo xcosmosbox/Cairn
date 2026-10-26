@@ -105,7 +105,7 @@ func (s *Scheduler) stepActiveRuns(ctx context.Context) {
 		return
 	}
 	for _, run := range runs {
-		s.stepRunWithTimeout(ctx, run.RunID)
+		s.stepRun(ctx, run.RunID)
 	}
 }
 
@@ -122,7 +122,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 		log.Printf("[scheduler] 读取活跃 run 失败: %v", err)
 	} else {
 		for _, run := range runs {
-			s.stepRunWithTimeout(ctx, run.RunID)
+			s.stepRun(ctx, run.RunID)
 		}
 	}
 	// 2. 为每个 repo 检查新 SHA（若无活跃 run）。
@@ -168,17 +168,11 @@ func (s *Scheduler) tick(ctx context.Context) {
 	}
 }
 
-// stepRunWithTimeout 持续推进一个 run，每步带超时（防止 LLM/git 卡死阻塞调度）。
-// 超时统一使用 config.llm.timeout——与 pipeline 各阶段的 stage timeout 共用同一配置值。
-func (s *Scheduler) stepRunWithTimeout(ctx context.Context, runID string) {
-	stepTimeout := s.cfg.LLM.Timeout.Std()
-	if stepTimeout <= 0 {
-		stepTimeout = 30 * time.Minute // 兜底
-	}
+// stepRun 使用调用方取消信号推进；单个网络请求保留自己的超时。
+// Caller cancellation bounds reconciliation, without an accumulated stage timer.
+func (s *Scheduler) stepRun(ctx context.Context, runID string) {
 	for i := 0; i < 100; i++ {
-		stepCtx, cancel := context.WithTimeout(ctx, stepTimeout)
-		res, err := s.recon.Step(stepCtx, runID)
-		cancel()
+		res, err := s.recon.Step(ctx, runID)
 		if err != nil {
 			log.Printf("[scheduler] 推进 run %s 失败: %v", runID, err)
 			return

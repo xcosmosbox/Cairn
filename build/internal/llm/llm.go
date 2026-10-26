@@ -37,5 +37,5 @@ type Config struct {
 	Temperature float64 // 默认 0.0
 	Endpoint    string  // 可选，覆盖默认 endpoint
 	Timeout     string  // 默认 "60s"
-	MaxRetries  int     // 默认 3
+	MaxRetries  int     // 0 默认 3；负数禁用 HTTP 重试 / negative disables retries
 }

@@ -1,6 +1,6 @@
 {
   "format": "cairn-public-paired-answer/v1",
-  "status": "offline_implementation; no QA, model, DEV or HOLDOUT admission",
+  "status": "current #105 diagnostic method; standing authorization, no repeated stage admission",
   "decision_references": [
     "https://github.com/xcosmosbox/Cairn/issues/54",
     "docs/decisions/0004-public-graph-evaluation.md",
@@ -8,11 +8,11 @@
     "docs/decisions/0002-mcp-source-citations.md (source semantics)",
     "docs/decisions/0003-source-grounded-cross-relations.md (construction invariant)"
   ],
-  "scientific_adr_status": "ADR0004 records actual root adoption in issue54; implementation/review/execution admission separate",
+  "scientific_adr_status": "current #105 simplification supersedes historical admission prerequisites",
   "source_manifest": "e2e/benchmarks/multihop_public/manifest.json",
   "source_revision": "71ac0d0bd1f951d2d6b70311f7d2ae404e1ffa82",
-  "corpus_documents": 609,
-  "raw_arm": "raw_source_fts_sqlite; existing256-whitespace-token chunks/224 stride; frozen full original corpus",
+  "corpus_documents": "declared original-only source roster size",
+  "raw_arm": "raw_source_fts_sqlite; existing256-whitespace-token chunks/224 stride; exactly same declared originals as graph",
   "graph_arm": "existing cairn-eval-retrieve --mode graph --query-syntax fts5; actual SearchPipeline; no algorithm tuning",
   "query": "one original question; identical whitespace atoms double-quote escaped and joined by explicit OR",
   "top_k": 10,
@@ -43,35 +43,22 @@
   },
   "explicit_abstention": "schema-valid abstain=true, answer='', citations=[], quotes=[] only; every other malformed/empty/error result is an attempted failure",
   "judge": {
-    "engine": "unchanged grade.judge durable scheduler plus scoped adapter validator",
+    "engine": "existing grade.judge concurrent scheduler with scoped verdict validation",
     "model": "deepseek-flash",
     "thinking": "disabled",
     "max_tokens": 32768,
     "max_input_chars": 500000,
     "timeout_seconds": 180,
     "concurrency": 8,
-    "validation_retries": 1,
+    "validation_retries": 0,
     "no_null_judge": true,
-    "source_excerpt_policy": "exact original body substring,500-codepoint surrounding window for each gold unit plus complete cited originals; oversized judge input blocks admission, no silent source truncation"
+    "source_excerpt_policy": "exact original support windows and retrieved originals; oversized input fails only that case"
   },
   "positive_judge_cases": {
     "A": "actual answer; required_facts=[unchanged expected_answer]; GC requires target met, overall correct, at least1substantive claim, every claim original-supported and supported by solver-cited actually visible substantive evidence, no ambiguity or invalid citations/quotes",
     "B": "candidate answer=exact full packed visible context; required_facts=dedup(originalURL,goldfact) within question; only met=1, all other statuses=0; ignore B overall/strict/claim aggregate scores"
   },
   "fact_credit_guard": "credited authoritative ref binds target originalURL/bodyhash; exact answer_quote maps to actually visible substantive description/relation/body content bound to that URL; metadata/sourceIDs/titles/serialization alone cannot prove a proposition; semantic judge must establish full conditions/numbers/time entailment",
-  "construction_gate": {
-    "all_original_documents_materialized": 609,
-    "minimum_distinct_doc_accepted04member_incidence_fraction": 0.95,
-    "denominator": "distinct(doc_id,accepted04member_id) before fusion/confidence/drop; sharedID across docs remains multiple incidences",
-    "explained_omission_credit": false,
-    "ownership": "actual UUID/member/document source tuples; optional original span hints are unknown/unverified and never rewritten positions"
-  },
-  "formal_denominator": {
-    "positive_questions": 192,
-    "each_positive_type": 64,
-    "null_questions": 64,
-    "DEV_smoke": "existing smoke8 then DEV128 diagnostics; fixed HOLDOUT256 opens separately"
-  },
   "bootstrap": {
     "accepted_replicates": 20000,
     "rng": "NumPy PCG64",
@@ -107,22 +94,12 @@
     "precision_bootstrap": "positive group multiplicities plus independent64null singleton draws; pooled successes/attempts; undefined replicate contributes0",
     "null_lower": "same independent null count vectors"
   },
-  "interpretation": "Graph infrastructure and cited-answer integration are separate acceptance outputs; no answer pass when demo floors fail, no superiority, no hosted answer SLA, no numerical comparison with old raw exact-span39.76%, no stable-release claim",
-  "freeze_required_before_execution": [
-    "implementation/source/binary hashes",
-    "protocol/runtime/NumPyPCG64 identity",
-    "unchanged original corpus/raw index/graph/construction hashes",
-    "admitted question projection/roster hashes",
-    "exact contexts and source bindings",
-    "judge rubric/schema/config/private blind map",
-    "stored bootstrap vectors and seed/version",
-    "all attempts/failures/unknown usage and fixed paired denominator"
-  ],
+  "interpretation": "Tiny DEV diagnostics complete with negative or inconclusive results. Historical formal full-sample floors are optional analyses, never prerequisites for publication or a next small run.",
   "declared_quote_scope": "mechanically validate every declared quotes[] item; report emitted/invalid counts and undefined rate when none; no claim of detecting all natural-language quotations",
   "transport_fence": {
     "shared_helper": "e2e/quality/safe_http.py",
-    "redirects": "reject all unexpected3xx before forwarding; stop new admissions, drain/persist admitted calls",
-    "transactions": "Native http_attempt and grade request_id ledgers remain separate and independently validated/namespaced; never nest or double-admit",
+    "redirects": "reject unexpected3xx before forwarding; mark only endpoint+credential cohort unavailable; drain observed outcomes",
+    "transactions": "ordinary request IDs and raw outcome records, no ledger admission/replay chain",
     "callbacks": "local per-invocation transport/validator injection, no global monkeypatch",
     "compatibility": "ordinary payload/header/model defaults unchanged; redirect behavior intentionally changed by issue54ACK6386191624"
   },
@@ -136,6 +113,30 @@
     "visibility": "retain original top10 ranking and budget; explicit structural_unbound marker, empty sources, all displayed text/metadata counted",
     "support": "no original-source citation, quotation, claim support or bound-source fact credit; sole-unbound met verdict invalid under existing one-validation-retry then unresolved0/no-pass",
     "forbidden": "no source backfill, filtering, reranking, replacement or inferred original ownership",
-    "leaf_failure": "Entity/Concept missing or invalid original/member/UUID ownership globally halts provenance admission"
-  }
+    "leaf_failure": "invalid source binding fails affected question/arm; later independent work continues"
+  },
+  "construction_observation": {
+    "denominator": "all declared original documents and distinct(document, accepted member) incidences",
+    "missing_or_failed": "retain and count; no all609, nonempty-document or .95 threshold",
+    "ownership": "actual UUID/member/document tuples; original hints remain unverified"
+  },
+  "historical_formal_denominator": {
+    "positive_questions": 192,
+    "each_positive_type": 64,
+    "null_questions": 64,
+    "DEV_smoke": "existing smoke8 then DEV128 diagnostics; fixed HOLDOUT256 opens separately",
+    "scope": "Optional historical full-sample statistical method; never a diagnostic prerequisite"
+  },
+  "diagnostic": {
+    "roster": "fixed explicit subset of existing DEV before outcomes; no HOLDOUT",
+    "corpus": "complete original support-document union, support-enriched diagnostic only",
+    "claims": "descriptive paired outcomes; no full-corpus retrieval/generalization/release claim",
+    "failure": "question/arm-local; retain all intended slots and unresolved judgments"
+  },
+  "record_once": [
+    "declared sources, question roster and method/settings",
+    "actual original-source/DB/index identity",
+    "exact request/response/outcome with item/arm IDs, excluding credentials",
+    "all failures, unknown usage and fixed paired denominator"
+  ]
 }

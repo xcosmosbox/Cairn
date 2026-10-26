@@ -11,8 +11,8 @@ import (
 	"testing"
 )
 
-func TestPullRequiresCompleteMatchingCatalogAndExactAsset(t *testing.T) {
-	for _, scenario := range []string{"missing-digest", "invalid-digest", "incomplete-provenance", "changed-source", "changed-schema", "wrong-kg", "missing-asset", "raw-db", "exact-asset"} {
+func TestPullMatchesIdentityAndAllowsPublicUnknownMetadata(t *testing.T) {
+	for _, scenario := range []string{"missing-digest", "invalid-digest", "incomplete-provenance", "changed-source", "changed-schema", "wrong-kg", "missing-asset", "raw-db", "exact-asset", "public-unknown-metadata", "private-forbidden"} {
 		t.Run(scenario, func(t *testing.T) {
 			cm, asset := pullCancellationBundle(t)
 			root := t.TempDir()
@@ -34,6 +34,8 @@ func TestPullRequiresCompleteMatchingCatalogAndExactAsset(t *testing.T) {
 				cm.BundleDigest = ""
 			case "invalid-digest":
 				cm.BundleDigest = "sha256:xyz"
+			case "public-unknown-metadata":
+				cm.BuilderVersion, cm.BuilderCommit, cm.PromptSetVersion, cm.Model, cm.CreatedAt, cm.PublishedAt = "", "", "", "", "", ""
 			case "incomplete-provenance":
 				cm.PromptSetVersion = ""
 			case "changed-source":
@@ -49,8 +51,19 @@ func TestPullRequiresCompleteMatchingCatalogAndExactAsset(t *testing.T) {
 			case "exact-asset":
 				cm.AssetName = "bundle-custom.tar.gz"
 			}
+			token := "synthetic"
+			if scenario == "public-unknown-metadata" || scenario == "private-forbidden" {
+				token = ""
+			}
 			var base string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if token == "" && r.Header.Get("Authorization") != "" {
+					t.Error("empty token sent an Authorization header")
+				}
+				if scenario == "private-forbidden" {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
 				switch {
 				case strings.Contains(r.URL.Path, "/contents/"):
 					_ = json.NewEncoder(w).Encode(cm)
@@ -60,7 +73,7 @@ func TestPullRequiresCompleteMatchingCatalogAndExactAsset(t *testing.T) {
 						wanted = cm.AssetName
 					}
 					_ = json.NewEncoder(w).Encode(ghRelease{TagName: cm.ReleaseTag, Assets: []ghAsset{{ID: 8, Name: "knowledge.db", BrowserDownloadURL: base + "/wrong"}, {ID: 9, Name: wanted, BrowserDownloadURL: base + "/asset"}}})
-				case r.URL.Path == "/repos/owner/catalog/releases/assets/9":
+				case r.URL.Path == "/repos/owner/catalog/releases/assets/9" || (scenario == "public-unknown-metadata" && r.URL.Path == "/asset"):
 					_, _ = w.Write(asset)
 				default:
 					t.Errorf("unexpected substitute release/asset request: %s", r.URL.Path)
@@ -69,11 +82,11 @@ func TestPullRequiresCompleteMatchingCatalogAndExactAsset(t *testing.T) {
 			}))
 			base = server.URL
 			defer server.Close()
-			res, err := PullRemoteContext(context.Background(), PullRemoteSpec{CatalogOwner: "owner", CatalogRepo: "catalog", CatalogBranch: "main", ManifestDir: "knowledge-bases", KG: "smoke", Token: "synthetic", APIBaseURL: base, InstallDir: installDir})
+			res, err := PullRemoteContext(context.Background(), PullRemoteSpec{CatalogOwner: "owner", CatalogRepo: "catalog", CatalogBranch: "main", ManifestDir: "knowledge-bases", KG: "smoke", Token: token, APIBaseURL: base, InstallDir: installDir})
 			if res != nil {
 				defer os.RemoveAll(res.TempDir)
 			}
-			if scenario == "exact-asset" {
+			if scenario == "exact-asset" || scenario == "public-unknown-metadata" || scenario == "incomplete-provenance" {
 				if err != nil {
 					t.Fatal(err)
 				}

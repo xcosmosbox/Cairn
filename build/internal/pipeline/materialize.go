@@ -30,6 +30,18 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	if err := extract.ValidateFusionCompleteness(candidate, docs, o.minConf, true); err != nil {
 		return report, fmt.Errorf("pipeline: materialization candidate incomplete: %w", err)
 	}
+	// Selection and output counts refer to the same validated subset.
+	nodes, relations := 0, 0
+	for _, d := range candidate.Domains {
+		for _, sd := range d.Subdomains {
+			nodes += len(sd.Entities) + len(sd.Concepts)
+			relations += len(sd.Relations)
+		}
+	}
+	selection.NodesFiltered += selection.NodesSelected - nodes
+	selection.NodesSelected = nodes
+	selection.RelationsFiltered += selection.RelationsSelected - relations
+	selection.RelationsSelected = relations
 	o.dumpJSON("05h_materialization_candidate.json", candidate)
 	log.Printf("[pipeline] 候选筛选: 节点保留 %d/%d，置信度过滤 %d（entity=%d concept=%d）；关系保留 %d/%d，端点过滤 %d",
 		selection.NodesSelected, selection.NodesInput, selection.NodesFiltered, selection.EntitiesFiltered, selection.ConceptsFiltered,
@@ -41,9 +53,7 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	// Both output paths consume this exact confidence-selected graph.
 	memberSources := buildMemberSources(docs)
 	logStage("4", "全量重建入库 / ingest（物化双层图）")
-	s4Ctx, cancel := stageCtx(ctx, o.stageTimeout)
-	report.Ingest, err = o.fullRebuildIngest(s4Ctx, dbPath, candidate, skillMetas, memberSources, identity)
-	cancel()
+	report.Ingest, err = o.fullRebuildIngest(ctx, dbPath, candidate, skillMetas, memberSources, identity)
 	if err != nil {
 		return report, fmt.Errorf("pipeline: ingest: %w", err)
 	}

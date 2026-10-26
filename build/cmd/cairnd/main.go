@@ -141,15 +141,13 @@ func main() {
 	case "daemon":
 		runDaemon(cfg, st, sched, recon)
 	case "run":
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+		ctx := context.Background()
 		mustNoErr(runOnce(ctx, cfg, st, forge, recon, *fake))
 	case "reconcile":
 		if *repoID == "" {
 			mustNoErr(fmt.Errorf("reconcile 需要 --repo"))
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+		ctx := context.Background()
 		runID, err := recon.CreateRun(ctx, *repoID)
 		mustNoErr(err)
 		mustNoErr(advanceRun(ctx, st, forge, recon, runID, *fake))

@@ -1,27 +1,11 @@
-// Package pipeline 编排新 LLM 流水线的状态机：
-// discovery → 标注(per-doc LLM) → 双门校验(Gate A 代码 + Gate B LLM 语义) →
-// 提取(repo 级一次性投喂) → 入库(全量重建)。
-//
-// 本文件实现 Orchestrator（内存态状态机）。设计要点（对齐澄清 5 点）：
-//   - 全量重建：每次运行先删除旧库再重建（增量的特例——空状态起步即全量）。
-//   - 无失败终态：任一阶段出问题都用「原地重试」或「回退重试」，而非中断流水线。
-//     · 标注调用失败 / 非法 JSON：由 LLMAnnotator 内部原地重试。
-//     · Gate A / Gate B 校验不通过：回退到标注阶段重标注该文档（受回退上限约束）。
-//     · 提取调用失败 / 非法 JSON / schema 不通过：由 Extractor 内部原地重试。
-//   - 文档隔离：每篇 reference 文档独立标注（1 文档 = 1 次 LLM 调用），互不影响；
-//     多篇文档并发处理，单篇文档反复回退耗尽上限后「降级跳过」，不阻塞其它文档与整条流水线。
-//
-// Package pipeline orchestrates the new LLM pipeline as an in-memory state machine:
-// discovery → per-doc annotation → two-gate validation → repo-wide extraction →
-// full-rebuild ingest. There is no failure terminal state: every stage recovers via
-// in-place retry (annotate/extract) or rollback-retry (gates); a document that
-// exhausts its rollback budget is degraded/skipped without failing the pipeline.
+// Package pipeline builds a source-bound graph in an isolated database.
+// Each document is annotated and factually assessed once; valid independent
+// material continues after local failures, without repair or coverage loops.
 package pipeline
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
@@ -30,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/discovery"
@@ -43,23 +26,6 @@ import (
 	"github.com/xcosmosbox/cairn/core/storage"
 )
 
-// DefaultMaxRollbacks 是单篇文档「回退重标注」的默认上限（含首次尝试的总标注轮数）。
-// 超过后该文档降级跳过，不阻塞整条流水线（无失败终态）。
-// DefaultMaxRollbacks is the default per-document rollback budget (total annotate
-// rounds including the first). Beyond it the document is degraded/skipped.
-const DefaultMaxRollbacks = 3
-
-// defaultStageTimeout 是 Options.StageTimeout 未设置时的兜底值。
-// 与 LLM client 的 HTTP timeout 独立——stage timeout 约束整个阶段的总耗时
-// （一个阶段可能含多次 LLM 调用 + 并发），HTTP timeout 约束单次请求。
-const defaultStageTimeout = 30 * time.Minute
-
-// stageCtx gives each stage its own timeout while retaining caller cancellation,
-// deadline and lease ownership. A previous stage's timeout does not affect the next.
-func stageCtx(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(parent, timeout)
-}
-
 // Options 配置 Orchestrator 的依赖与参数。
 // Options configures the orchestrator's dependencies and parameters.
 type Options struct {
@@ -70,13 +36,13 @@ type Options struct {
 	Client llm.Client
 	// MaxTokens 是单次 LLM 请求的 max_tokens；≤0 交由 client 默认。
 	MaxTokens int
-	// MaxRetries 是各 LLM 阶段（标注 / 语义门 / 提取）的原地重试上限；≤0 取各自默认。
+	// MaxRetries is retained for caller compatibility; annotation/assessment run once.
 	MaxRetries int
-	// MaxRollbacks 是单篇文档的回退重标注上限；≤0 取 DefaultMaxRollbacks。
+	// MaxRollbacks is retired and ignored.
 	MaxRollbacks int
-	// MinConfidence 是 entity/concept 入库的置信度硬门控。
+	// MinConfidence is retired and ignored; finite confidence is descriptive.
 	MinConfidence float64
-	// MaxNameRunes 是 Gate A 校验的名称长度上限；≤0 取默认。
+	// MaxNameRunes is retired and ignored.
 	MaxNameRunes int
 	// Rules 是 discovery 扫描规则；零值使用其内置默认（SKILL.md + references/reference + **/*.md）。
 	Rules discovery.DiscoveryRules
@@ -85,11 +51,7 @@ type Options struct {
 	// When non-empty, intermediate artifacts of each stage are written under this
 	// directory for inspection with a real LLM run.
 	DumpDir string
-	// StageTimeout 是每个 pipeline 阶段的独立超时预算。
-	// ≤0 取 defaultStageTimeout。统一使用 config.llm.timeout，不做 per-stage 差异化。
-	StageTimeout time.Duration
-	// CrossRelationEvidenceBytes 只调整完整原文验证的容量；≤0 使用64KiB，超限明确不足而非截断。
-	// CrossRelationEvidenceBytes bounds one source neighborhood; it does not cap candidate count.
+	// CrossRelationEvidenceBytes is retired and ignored; complete evidence is sent.
 	CrossRelationEvidenceBytes int
 }
 
@@ -103,12 +65,10 @@ type Orchestrator struct {
 	semanticGate               *annotation.SemanticGate
 	extractor                  *extract.Extractor
 	client                     llm.Client // 供 GenerateFileSlugs 使用 / for GenerateFileSlugs
-	maxRollbacks               int
 	minConf                    float64
 	rules                      discovery.DiscoveryRules
 	dumpDir                    string
 	crossRelationEvidenceBytes int
-	stageTimeout               time.Duration // 每个阶段的独立超时（统一值，不分阶段）
 }
 
 // NewOrchestrator 组装 Orchestrator 及其全部阶段组件。Client 不可为 nil。
@@ -116,14 +76,6 @@ type Orchestrator struct {
 func NewOrchestrator(opts Options) (*Orchestrator, error) {
 	if opts.Client == nil {
 		return nil, fmt.Errorf("pipeline: llm client is nil")
-	}
-	maxRollbacks := opts.MaxRollbacks
-	if maxRollbacks <= 0 {
-		maxRollbacks = DefaultMaxRollbacks
-	}
-	stageTimeout := opts.StageTimeout
-	if stageTimeout <= 0 {
-		stageTimeout = defaultStageTimeout
 	}
 	return &Orchestrator{
 		repositoryIdentity:         opts.RepositoryIdentity,
@@ -133,11 +85,9 @@ func NewOrchestrator(opts Options) (*Orchestrator, error) {
 		semanticGate:               annotation.NewSemanticGate(opts.Client, opts.MaxTokens, opts.MaxRetries),
 		extractor:                  extract.NewExtractor(opts.Client, opts.MaxTokens),
 		client:                     opts.Client,
-		maxRollbacks:               maxRollbacks,
-		minConf:                    opts.MinConfidence,
+		minConf:                    0,
 		rules:                      opts.Rules,
 		dumpDir:                    opts.DumpDir,
-		stageTimeout:               stageTimeout,
 		crossRelationEvidenceBytes: opts.CrossRelationEvidenceBytes,
 	}, nil
 }
@@ -172,17 +122,9 @@ type RunReport struct {
 	Writeback *writeback.Report
 }
 
-// RunFullRebuild 执行一次完整的全量重建：
-//  1. discovery 扫描 repo，得到 skill 及其 reference 文档；
-//  2. 并发处理每篇文档（标注 → Gate A → Gate B），文档间互不阻塞；通过者进入 Rewritten，
-//     失败者回退重标注，回退耗尽则降级跳过——不阻塞其他文档与整条流水线；
-//  3. 等所有文档并发完成后，汇总 Rewritten 文档一次性投喂提取器归纳领域层级；
-//  4. 删除旧库并重建，将提取结果物化入库（双层图）。
-//
-// RunFullRebuild scans the repo, runs each document concurrently through
-// annotate→GateA→GateB (rollback-retrying on gate failure, degrading after the budget),
-// waits for all to finish, then extracts from all passed documents and materializes
-// the result into a freshly rebuilt database.
+// RunFullRebuild scans source documents, assesses each once, and builds the
+// validated subset. Temporary DB creation, WAL checks and atomic publication
+// preserve an existing database if materialization fails.
 func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath string) (*RunReport, error) {
 	if err := store.CheckLease(ctx); err != nil {
 		return nil, err
@@ -195,9 +137,8 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 
 	// ——1. 扫描——
 	logStage("1", "扫描 / discovery")
-	s1Ctx, s1Cancel := stageCtx(ctx, o.stageTimeout)
+	s1Ctx := ctx
 	skills, err := o.scanner.Scan(s1Ctx, repoPath, o.rules)
-	s1Cancel()
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: scan %s: %w", repoPath, err)
 	}
@@ -223,7 +164,7 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	report.DocsTotal = len(tasks)
 
 	// Stage 2 独立 context：标注阶段的 LLM 调用不受前面阶段剩余预算影响。
-	s2Ctx, s2Cancel := stageCtx(ctx, o.stageTimeout)
+	s2Ctx := ctx
 
 	// 每篇文档一个 goroutine，内部完整走「标注→Gate A→Gate B」（含回退重试）。
 	// processDocument 无共享可变状态（dump 写不同文件路径），天然并发安全。
@@ -296,7 +237,6 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 		}
 	}
 	log.Printf("[pipeline] 标注阶段完成: %d/%d 篇通过双门, %d 篇跳过", report.DocsRewritten, report.DocsTotal, len(report.Skipped))
-	s2Cancel()
 
 	// ——3. 提取 + 覆盖保障闭环（repo 级一次性投喂）——
 	logStage("3", "领域提取 + 覆盖保障 / extract with coverage")
@@ -304,11 +244,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	// 供提取阶段用稳定 id 引用做融合映射。
 	withIDs := extract.AssignIDs(passed)
 	o.dumpJSON("04_extract_input.json", withIDs)
-	// ExtractWithCoverage 内部完成：提取 → 融合校准（合并重复节点 / 剔非法 member）→ 空节点补 members
-	// → P99/P95 双门控 + 增量补融合 + 兜底整轮重提取，返回覆盖完整的干净融合映射与覆盖报告。
-	s3Ctx, s3Cancel := stageCtx(ctx, o.stageTimeout)
+	// ExtractWithCoverage makes one extraction and reports omitted members.
+	s3Ctx := ctx
 	res, covRpt, err := o.extractor.ExtractWithCoverage(s3Ctx, withIDs)
-	s3Cancel()
 	if err != nil {
 		// 提取器已内部原地重试并耗尽；这是本次运行无法产出 KG 的实质失败，向上报告。
 		return report, fmt.Errorf("pipeline: extract: %w", err)
@@ -324,10 +262,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	// ——3.5 悬空边修正（覆盖治理之后、ingest 前）——
 	logStage("3.5", "悬空边修正 / repair dangling relations")
 	// 融合校准与覆盖闭环已在 stage 3 完成；本阶段只专注 relations 悬空端点：
-	// 清洗 → 伪 session LLM 增量 patch → 重新校验；修正失败降级用清洗后 05 继续 ingest。
-	s35Ctx, s35Cancel := stageCtx(ctx, o.stageTimeout)
+	// 仅清洗端点无效的边；不发起修复调用。
+	s35Ctx := ctx
 	repairRpt := o.extractor.RepairDanglingRelations(s35Ctx, res, withIDs)
-	s35Cancel()
 	report.Repair = repairRpt
 	o.dumpJSON("05b_extract_repaired.json", res)
 	o.dumpJSON("05c_repair_report.json", repairRpt)
@@ -344,10 +281,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	// ——3.6 description 融合重写（悬空修正之后、relation 识别之前）——
 	logStage("3.6", "description 融合 / fuse descriptions（按节点并发）")
 	// 第二期融合节点 description 留空；此处为每个节点综合其 members 的 04 detail 用 LLM 重写出
-	// 完整 description，写回 res。重试耗尽的缺失保留在诊断产物中，但阻止候选入库。
-	s36Ctx, s36Cancel := stageCtx(ctx, o.stageTimeout)
+	// description，写回有效节点。缺少响应的节点及关联边局部省略。
+	s36Ctx := ctx
 	describeRpt := o.extractor.FuseDescriptions(s36Ctx, res, withIDs)
-	s36Cancel()
 	report.Describe = describeRpt
 	o.dumpJSON("05d_extract_described.json", res)
 	o.dumpJSON("05d_describe_report.json", describeRpt)
@@ -360,10 +296,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	// ——3.7 relation 识别（description 之后、ingest 之前，按 subdomain 并发）——
 	logStage("3.7", "relation 识别 / identify relations（按 subdomain 并发）")
 	// 提取阶段刻意弱化了关系识别；此处以 subdomain 为隔离视角，输入其内全部融合节点（含完整 description），
-	// 让 LLM 识别节点间语义关系（kind ∈ 6 枚举，越界原地重试，允许为空），写回 sd.Relations。
-	s37Ctx, s37Cancel := stageCtx(ctx, o.stageTimeout)
+	// 让 LLM 识别节点间语义关系（kind ∈ 6 枚举，越界局部省略，允许为空），写回 sd.Relations。
+	s37Ctx := ctx
 	relateRpt := o.extractor.IdentifyRelations(s37Ctx, res)
-	s37Cancel()
 	report.Relate = relateRpt
 	o.dumpJSON("05e_extract_related.json", res)
 	o.dumpJSON("05e_relate_report.json", relateRpt)
@@ -372,10 +307,9 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 
 	// ——3.75 原文验证跨子域候选；端点存在并不代表语义真实。——
 	// Keep all validation before UUID translation (R1); only accepted candidates survive.
-	s375Ctx, s375Cancel := stageCtx(ctx, o.stageTimeout)
+	s375Ctx := ctx
 	report.CrossRelations = o.extractor.ValidateCrossRelations(s375Ctx, res, withIDs, originals,
 		extract.CrossRelationOptions{MaxEvidenceBytes: o.crossRelationEvidenceBytes})
-	s375Cancel()
 	o.dumpJSON("05e_cross_relation_report.json", report.CrossRelations)
 	o.dumpJSON("05e_cross_validated.json", res)
 
@@ -390,7 +324,7 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	extract.AssignNodeUUIDs(res.Domains)
 	o.dumpJSON("05f_uuid_assigned.json", res)
 
-	// 为 shared 节点生成 file_slug（LLM 生成可读文件名，首次创建后不可变）。
+	// 为 shared 节点生成确定性 file_slug，已有名称保持不变。
 	extract.GenerateFileSlugs(ctx, res.Domains, o.client) //nolint:staticcheck // o.client is set in NewOrchestrator
 	o.dumpJSON("05g_file_slugs.json", res)
 
@@ -461,69 +395,23 @@ func toWritebackMemberSources(m map[string][]ingest.MemberSource) map[string][]w
 	return out
 }
 
-// processDocument 对单篇文档执行「标注 → Gate A → Gate B」，并在校验失败时回退重标注。
-// 返回 (cleanedDoc, "")：成功；返回 (nil, reason)：回退耗尽降级跳过。
-//
-// processDocument runs annotate→GateA→GateB for one document, rolling back to
-// re-annotation on gate failure. Returns the cleaned doc on success, or (nil, reason)
-// when the rollback budget is exhausted.
+// processDocument annotates and assesses once; unknown/rejected material stays
+// document-local and never causes another paid annotation request.
 func (o *Orchestrator) processDocument(ctx context.Context, skill, path, content string) (*dktypes.AnnotatedDocument, string) {
-	var lastReason string
-	var candidate *dktypes.AnnotatedDocument
-	var feedback *annotation.SemanticRejection
-	for attempt := 1; attempt <= o.maxRollbacks; attempt++ {
-		// 标注（LLMAnnotator 内部对调用/JSON 失败做原地重试）。
-		var doc *dktypes.AnnotatedDocument
-		var err error
-		if feedback == nil {
-			doc, err = o.annotator.Annotate(ctx, skill, path, content)
-		} else {
-			doc, err = o.annotator.Revise(ctx, skill, path, content, candidate, feedback)
-		}
-		if err != nil {
-			lastReason = fmt.Sprintf("标注失败: %v", err)
-			log.Printf("[pipeline] %s 第 %d/%d 轮标注失败，回退重试: %v", path, attempt, o.maxRollbacks, err)
-			continue
-		}
-		o.dumpJSON(fmt.Sprintf("01_annotated/%s/%s_r%d.json", sanitizeDir(skill), sanitizeFilename(path), attempt), doc)
-
-		// Gate A：纯代码归一化 + 去重 + 校验。
-		cleaned, err := o.formatGate.Check(doc)
-		if err != nil {
-			lastReason = fmt.Sprintf("Gate A 未通过: %v", err)
-			if errors.Is(err, annotation.ErrRollbackToAnnotate) {
-				log.Printf("[pipeline] %s 第 %d/%d 轮 Gate A 未通过，回退重标注: %v", path, attempt, o.maxRollbacks, err)
-				continue
-			}
-			// 非回退类错误（理论上不会发生）：也按回退处理，保证无失败终态。
-			log.Printf("[pipeline] %s Gate A 非回退错误，仍回退重标注: %v", path, err)
-			continue
-		}
-		o.dumpJSON(fmt.Sprintf("02_gate_a/%s/%s_r%d.json", sanitizeDir(skill), sanitizeFilename(path), attempt), cleaned)
-
-		// Gate B：LLM 语义幂等核验（内部对调用/JSON 失败原地重试；不幂等 / 无法核验则回退）。
-		if err := o.semanticGate.Check(ctx, content, cleaned); err != nil {
-			// 暂时无法标注/核验不能抹掉已取得的具体意见；只有新的语义拒绝才替换它。
-			// Keep the last valid critique through transient failures, never aggregate history.
-			var rejected *annotation.SemanticRejection
-			if errors.As(err, &rejected) {
-				candidate, feedback = cleaned, rejected
-			}
-			lastReason = fmt.Sprintf("Gate B 未通过: %v", err)
-			o.dumpJSON(fmt.Sprintf("03_gate_b/%s/%s_r%d_fail.json", sanitizeDir(skill), sanitizeFilename(path), attempt),
-				map[string]any{"passed": false, "reason": err.Error()})
-			log.Printf("[pipeline] %s 第 %d/%d 轮 Gate B 未通过，回退重标注: %v", path, attempt, o.maxRollbacks, err)
-			continue
-		}
-		o.dumpJSON(fmt.Sprintf("03_gate_b/%s/%s_r%d_pass.json", sanitizeDir(skill), sanitizeFilename(path), attempt),
-			map[string]any{"passed": true})
-
-		// 双门通过 → Rewritten。
-		return cleaned, ""
+	doc, err := o.annotator.Annotate(ctx, skill, path, content)
+	if err != nil {
+		return nil, fmt.Sprintf("annotation unavailable: %v", err)
 	}
-
-	log.Printf("[pipeline] %s 回退 %d 次仍未通过，降级跳过（%s）", path, o.maxRollbacks, lastReason)
-	return nil, lastReason
+	o.dumpJSON(fmt.Sprintf("01_annotated/%s/%s.json", sanitizeDir(skill), sanitizeFilename(path)), doc)
+	cleaned, err := o.formatGate.Check(doc)
+	if err != nil {
+		return nil, fmt.Sprintf("invalid annotation: %v", err)
+	}
+	if err := o.semanticGate.Check(ctx, content, cleaned); err != nil {
+		return nil, fmt.Sprintf("factual assessment unavailable/rejected: %v", err)
+	}
+	o.dumpJSON(fmt.Sprintf("03_assessed/%s/%s.json", sanitizeDir(skill), sanitizeFilename(path)), cleaned)
+	return cleaned, ""
 }
 
 // fullRebuildIngest 完整建立、checkpoint 并关闭临时库后，原子发布主文件。
@@ -552,7 +440,7 @@ func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res
 	result, err := ingest.IngestDomains(ctx, db, ingest.IngestDomainsOptions{
 		Result:        res,
 		Skills:        metas,
-		MinConfidence: o.minConf,
+		MinConfidence: 0,
 		MemberSources: memberSources,
 	})
 	if err != nil {
@@ -564,10 +452,8 @@ func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res
 	for _, domain := range res.Domains {
 		for _, subdomain := range domain.Subdomains {
 			for _, nodes := range [][]extract.Node{subdomain.Entities, subdomain.Concepts} {
-				for _, node := range nodes {
-					if node.Confidence >= o.minConf {
-						expectedLeaves++
-					}
+				for range nodes {
+					expectedLeaves++
 				}
 			}
 		}

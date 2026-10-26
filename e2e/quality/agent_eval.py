@@ -49,51 +49,36 @@ class EvalConfig:
     top_k: int = 10
 
 
-class CallBudgetExceeded(RuntimeError):
-    pass
-
-
 class ModelCallError(RuntimeError):
     def __init__(self, message: str, attempts: list[dict]):
         super().__init__(message)
         self.attempts = attempts
 
 
-class CallBudget:
-    def __init__(self, maximum: int):
-        self.maximum, self.used, self.lock = maximum, 0, threading.Lock()
+class AttemptCounter:
+    """Thread-safe request IDs, without a call or spending ceiling."""
+    def __init__(self):
+        self.used, self.lock = 0, threading.Lock()
 
-    def reserve(self) -> int:
+    def next_id(self) -> int:
         with self.lock:
-            if self.used >= self.maximum:
-                raise CallBudgetExceeded(f"global HTTP attempt budget {self.maximum} exhausted")
             self.used += 1
             return self.used
 
 
-class JSONLedger:
-    def __init__(self, path: Path):
-        self.stream = path.open("x", encoding="utf-8")
-        self.lock = threading.Lock()
-
-    def append(self, record: dict):
-        with self.lock:
-            self.stream.write(json_text(record) + "\n")
-            self.stream.flush()
-            os.fsync(self.stream.fileno())
-
-    def close(self):
-        self.stream.close()
+from durable_ledger import JSONLedger
+from safe_http import urlopen, is_redirect_status
 
 
 class DeepSeekClient:
-    def __init__(self, config: EvalConfig, api_key: str, budget: CallBudget, ledger: JSONLedger):
+    def __init__(self, config: EvalConfig, api_key: str, budget: AttemptCounter, ledger: JSONLedger):
         parsed = urllib.parse.urlparse(config.endpoint)
         if parsed.scheme != "https" or parsed.hostname != "api.deepseek.com" or parsed.path != "/chat/completions":
             raise ValueError("evaluation credentials may only be sent to the official DeepSeek chat endpoint")
         if not api_key:
             raise ValueError("CAIRN_LLM_API_KEY is missing")
-        self.config, self._api_key, self.budget, self.ledger = config, api_key, budget, ledger
+        self.config, self._api_key, self.counter, self.ledger = config, api_key, budget, ledger
+        self.authorization_failure = threading.Event()
 
     def complete(self, messages: list[dict], context: dict) -> tuple[str, list[dict]]:
         config = self.config
@@ -102,15 +87,13 @@ class DeepSeekClient:
         body = json_text(payload).encode("utf-8")
         attempts = []
         for attempt in range(config.max_retries + 1):
-            try:
-                call_id = self.budget.reserve()
-            except CallBudgetExceeded as exc:
-                exc.attempts = attempts
-                raise
+            if self.authorization_failure.is_set():
+                raise ModelCallError("endpoint credential unavailable", attempts)
+            call_id = self.counter.next_id()
             record = {**context, "http_attempt": call_id, "attempt_for_turn": attempt + 1,
                       "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                       "request_sha256": hashlib.sha256(body).hexdigest(), "request_bytes": len(body),
-                      "request_max_tokens": config.max_tokens, "model": config.model, "thinking": config.thinking}
+                      "request_body": payload, "request_max_tokens": config.max_tokens, "model": config.model, "thinking": config.thinking}
             if attempts:
                 record["retry_of_http_attempt"] = attempts[-1]["http_attempt"]
             # Write before the network operation: an interrupted process leaves
@@ -121,11 +104,12 @@ class DeepSeekClient:
             try:
                 request = urllib.request.Request(config.endpoint, body,
                     {"Authorization": "Bearer " + self._api_key, "Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(request, timeout=config.timeout) as response:
+                with urlopen(request, timeout=config.timeout) as response:
                     record["http_status"] = response.status
                     raw = response.read()
                 record["response_sha256"] = hashlib.sha256(raw).hexdigest()
                 record["response_bytes"] = len(raw)
+                record["response_body"] = raw.decode("utf-8", errors="replace").replace(self._api_key, "[REDACTED]")
                 response_json = json.loads(raw)
                 usage = response_json.get("usage")
                 record["usage"] = usage if isinstance(usage, dict) else None
@@ -145,10 +129,12 @@ class DeepSeekClient:
                 record["content"] = content
                 record["status"] = "ok"
             except urllib.error.HTTPError as exc:
+                if exc.code in (401,403) or is_redirect_status(exc.code):
+                    self.authorization_failure.set()
                 raw = exc.read()
                 record.update(http_status=exc.code, response_sha256=hashlib.sha256(raw).hexdigest(),
                               response_bytes=len(raw), status="error", error=f"provider HTTP {exc.code}")
-                # Do not retain provider error bodies: they may echo credential data.
+                record["response_body"] = raw.decode("utf-8", errors="replace").replace(self._api_key, "[REDACTED]")
             except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException) as exc:
                 record["status"] = "error"
                 record["error"] = str(exc).replace(self._api_key, "[REDACTED]")[:1000]
@@ -236,10 +222,6 @@ def evaluate_question(question_id: str, question: str, arm: str, engine: Retriev
         calls.extend(exc.attempts)
         result["error"] = str(exc)
         result["failure_kind"] = "provider_error"
-    except CallBudgetExceeded as exc:
-        calls.extend(getattr(exc, "attempts", []))
-        result["error"] = str(exc)
-        result["failure_kind"] = "global_call_budget"
     except (ValueError, RuntimeError, OSError) as exc:
         result["error"] = str(exc)[:1500]
         result["failure_kind"] = "protocol_or_retrieval_error"
@@ -285,7 +267,6 @@ def main():
     parser.add_argument("--arms", nargs="+", choices=("raw", "fts", "graph"), default=["raw", "fts", "graph"])
     parser.add_argument("--limit-questions", type=int)
     parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--max-http-attempts", type=int, default=700)
     parser.add_argument("--seed", type=int, default=20261004)
     parser.add_argument("--model", default="deepseek-flash")
     parser.add_argument("--thinking", choices=("enabled", "disabled"), default="disabled")
@@ -294,14 +275,11 @@ def main():
     parser.add_argument("--max-retries", type=int, default=1)
     parser.add_argument("--per-search-chars", type=int, default=10000)
     parser.add_argument("--total-context-chars", type=int, default=20000)
-    parser.add_argument("--allow-paid", action="store_true", help="required to execute real solver requests")
     args = parser.parse_args()
-    if not args.allow_paid:
-        parser.error("--allow-paid is required; no provider requests made")
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
         parser.error("output directory must be new/empty")
-    if args.workers < 1 or not 0 <= args.max_retries <= 1 or args.max_http_attempts < 1:
-        parser.error("invalid concurrency, retry or HTTP budget")
+    if args.workers < 1 or not 0 <= args.max_retries <= 1:
+        parser.error("invalid concurrency or retry setting")
     questions = load_solver_questions(args.dataset)
     if args.limit_questions is not None:
         questions = questions[:args.limit_questions]
@@ -314,7 +292,7 @@ def main():
     random.Random(args.seed).shuffle(jobs)
     metadata = {"format": "cairn-quality-agent/v1", "harness": "constrained JSON-action Agent; not native MCP",
                 "config": dataclasses.asdict(config), "workers": args.workers,
-                "max_http_attempts": args.max_http_attempts, "seed": args.seed,
+                "seed": args.seed,
                 "dataset_sha256": sha256_file(args.dataset), "kg_sha256": kg_before,
                 "raw_index_sha256": sha256_file(args.raw_db), "adapter_sha256": sha256_file(args.adapter),
                 "system_prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),
@@ -327,7 +305,7 @@ def main():
     (args.output_dir / "run-config.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n")
     request_ledger = JSONLedger(args.output_dir / "requests.jsonl")
     result_ledger = JSONLedger(args.output_dir / "results.jsonl")
-    budget = CallBudget(args.max_http_attempts)
+    budget = AttemptCounter()
     client = DeepSeekClient(config, os.environ.get("CAIRN_LLM_API_KEY", ""), budget, request_ledger)
     engines = {arm: RetrievalEngine(arm, args.kg_db, args.raw_db, args.adapter, config.top_k) for arm in args.arms}
     results = []
@@ -343,7 +321,7 @@ def main():
     finally:
         request_ledger.close()
         result_ledger.close()
-    events = [json.loads(line) for line in (args.output_dir / "requests.jsonl").read_text().splitlines()]
+    events = request_ledger.records
     requests = [event for event in events if event["event"] == "request"]
     responses = [event for event in events if event["event"] == "response"]
     incomplete = {row["http_attempt"] for row in requests} - {row["http_attempt"] for row in responses}
@@ -356,6 +334,11 @@ def main():
                "attempts_without_usage": len(incomplete) + sum(not isinstance(r.get("usage"), dict) for r in responses),
                "unmatched_request_attempts": sorted(incomplete),
                "kg_sha256_before": kg_before, "kg_sha256_after": sha256_file(args.kg_db)}
+    for field, usage_field in (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens")):
+        values = [(row.get("usage") or {}).get(usage_field) for row in responses]
+        known = [value for value in values if type(value) is int and value >= 0]
+        summary["known_" + field] = sum(known)
+        summary[field] = sum(known) if not incomplete and len(known) == len(responses) else None
     summary["kg_unchanged"] = summary["kg_sha256_before"] == summary["kg_sha256_after"]
     (args.output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     if not summary["kg_unchanged"]:

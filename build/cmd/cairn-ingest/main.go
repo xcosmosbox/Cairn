@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/xcosmosbox/cairn/build/internal/llm"
@@ -30,7 +31,9 @@ import (
 	"github.com/xcosmosbox/cairn/core/evolve"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	repositoryIdentity := flag.String("repository-identity", "", "稳定仓库身份（默认 Git origin / 本地持久标记）/ stable repository identity")
 	repo := flag.String("repo", "", "待扫描的仓库工作区路径 / workspace repo path to scan")
 	dbPath := flag.String("db", "knowledge.db", "输出 SQLite 库路径 / output .db path")
@@ -39,8 +42,8 @@ func main() {
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "单次 LLM 最大输出 token（DeepSeek 上限 393216）/ max output tokens per call")
 	timeout := flag.String("timeout", "1800s", "单请求超时 / per-request timeout")
 	maxRetries := flag.Int("max-retries", 3, "各 LLM 阶段原地重试上限 / in-place retry cap per LLM stage")
-	maxRollbacks := flag.Int("max-rollbacks", 3, "单篇文档回退重标注上限 / per-doc rollback budget")
 	minConf := flag.Float64("min-confidence", 0.0, "entity/concept 入库置信度门控 / ingest confidence gate")
+	traceDir := flag.String("trace-dir", "", "私有原始请求/响应记录目录 / private raw request and response directory")
 	dumpDir := flag.String("dump-dir", "", "把每个阶段的中间产物(标注/双门/提取/入库 JSON)写到该目录，便于逐环节观察真实产出 / dump intermediate artifacts for inspection")
 	evolutionDir := flag.String("evolution-dir", "", "演化产物目录（默认 <db 同级>/evolution）/ evolution workspace dir")
 	noEvolve := flag.Bool("no-evolve", false, "关闭演化记录旁路（默认开启）/ disable evolution sidecar recording")
@@ -49,11 +52,21 @@ func main() {
 	if *repo == "" || *dbPath == "" {
 		fmt.Fprintln(os.Stderr, "用法: cairn-ingest --repo PATH --db PATH [--dump-dir DIR] [flags]")
 		flag.PrintDefaults()
-		os.Exit(2)
+		return 2
 	}
 
 	// 构建 LLM 客户端（OpenAI 兼容端点，API Key 从 CAIRN_LLM_API_KEY 读取）。
-	client, err := llm.NewOpenAICompatClient(llm.Config{
+	var transport http.RoundTripper
+	if *traceDir != "" {
+		trace := llm.NewRawTraceTransport(*traceDir, nil)
+		transport = trace
+		defer func() {
+			if err := trace.Close(); err != nil {
+				log.Printf("WARN raw model trace unavailable: %v", err)
+			}
+		}()
+	}
+	client, err := llm.NewOpenAICompatClientWithTransport(llm.Config{
 		Provider:   "openai_compatible",
 		APIKeyEnv:  "CAIRN_LLM_API_KEY",
 		Model:      *model,
@@ -61,10 +74,10 @@ func main() {
 		MaxTokens:  *maxTokens,
 		Timeout:    *timeout,
 		MaxRetries: *maxRetries,
-	})
+	}, transport)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "创建 LLM 客户端失败: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	orch, err := pipeline.NewOrchestrator(pipeline.Options{
@@ -72,19 +85,18 @@ func main() {
 		Client:             client,
 		MaxTokens:          *maxTokens,
 		MaxRetries:         *maxRetries,
-		MaxRollbacks:       *maxRollbacks,
 		MinConfidence:      *minConf,
 		DumpDir:            *dumpDir,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "创建编排器失败: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	report, err := orch.RunFullRebuild(context.Background(), *repo, *dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "流水线执行失败: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// 打印运行摘要。
@@ -125,4 +137,5 @@ func main() {
 			fmt.Fprintf(os.Stderr, "\n══ 本次变更 / Changeset ══\n%s\n", summary)
 		}
 	}
+	return 0
 }

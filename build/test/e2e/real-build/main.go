@@ -12,8 +12,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	buildmeta "github.com/xcosmosbox/cairn/build/internal"
@@ -91,13 +93,11 @@ func run() error {
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekMaxOutputTokens, "output budget for fresh extraction and downstream stages")
 	concurrency := flag.Int("concurrency", 8, "maximum simultaneous real provider calls")
 	requestTimeout := flag.Duration("request-timeout", 30*time.Minute, "timeout per provider request")
-	stageTimeout := flag.Duration("stage-timeout", 30*time.Minute, "timeout per pipeline stage")
-	runTimeout := flag.Duration("run-timeout", 90*time.Minute, "total build timeout")
 	flag.Parse()
 	if *repo == "" || *out == "" || *acceptedDump == "" || *historicalCode == "" {
 		return errors.New("--repo, --out, --accepted-dump and --historical-code-root are required")
 	}
-	if *concurrency < 1 || *maxTokens < 1 || *maxTokens > dkconfig.DeepSeekMaxOutputTokens || *requestTimeout <= 0 || *stageTimeout <= 0 || *runTimeout <= 0 {
+	if *concurrency < 1 || *maxTokens < 1 || *maxTokens > dkconfig.DeepSeekMaxOutputTokens || *requestTimeout <= 0 {
 		return errors.New("invalid concurrency, token budget or timeout")
 	}
 	if entries, err := os.ReadDir(*out); err == nil && len(entries) != 0 {
@@ -112,7 +112,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), *runTimeout)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if *materializeFrom != "" {
 		if *allowPaid {
@@ -140,10 +140,10 @@ func run() error {
 	effective := map[string]any{
 		"provider": cfg.Provider, "model": cfg.Model, "endpoint": cfg.Endpoint,
 		"max_tokens": cfg.MaxTokens, "max_retries": cfg.MaxRetries,
-		"max_rollbacks": 3, "min_confidence": 0.7, "paid_request_concurrency": *concurrency,
-		"request_timeout_seconds": requestTimeout.Seconds(), "stage_timeout_seconds": stageTimeout.Seconds(), "run_timeout_seconds": runTimeout.Seconds(),
-		"credential_source":   "runtime environment CAIRN_LLM_API_KEY (value excluded)",
-		"repository_identity": "git:github.com/xcosmosbox/kd_manifeat", "input_git_snapshot": acceptedSourceCommit,
+		"paid_request_concurrency": *concurrency,
+		"request_timeout_seconds":  requestTimeout.Seconds(),
+		"credential_source":        "runtime environment CAIRN_LLM_API_KEY (value excluded)",
+		"repository_identity":      "git:github.com/xcosmosbox/kd_manifeat", "input_git_snapshot": acceptedSourceCommit,
 		"thinking":          map[string]string{"type": "enabled", "reasoning_effort": "provider default (not sent as override)"},
 		"annotation_reuse":  "recorded real accepted annotation and semantic-gate pass; original raw verdict not available",
 		"extraction_reused": false, "downstream_reused": false,
@@ -205,8 +205,8 @@ func run() error {
 	checkpoint.next = bounded
 	orch, err := pipeline.NewOrchestrator(pipeline.Options{
 		RepositoryIdentity: "git:github.com/xcosmosbox/kd_manifeat", Client: checkpoint,
-		MaxTokens: cfg.MaxTokens, MaxRetries: 2, MaxRollbacks: 3, MinConfidence: 0.7,
-		DumpDir: filepath.Join(*out, "stages"), StageTimeout: *stageTimeout,
+		MaxTokens: cfg.MaxTokens, MaxRetries: 1,
+		DumpDir: filepath.Join(*out, "stages"),
 	})
 	if err != nil {
 		return err

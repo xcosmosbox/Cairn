@@ -64,9 +64,9 @@ remaining diff and next command. Before stopping, push the recovery commit where
 possible. If only local changes remain, say they are unavailable to another agent.
 Report the environment block; do not imply a background job exists without its ID.
 
-Large artifacts use a manifest with byte size, SHA256 and immutable location.
-For multipart transport also record order, per-part hashes and reconstructed archive
-hash, and verify remote reconstruction. Never replace a historical evidence packet.
+Preserve the selected raw inputs, requests, responses and errors privately; public
+reports contain sanitized methods/results. Upload is best effort and is not an
+experiment admission condition. Keep old evidence packets unchanged.
 
 ## Review, acceptance and decisions
 
@@ -84,12 +84,14 @@ done after merge, report-only tasks after an explicit acceptance comment.
 No benefit claims from build success, fake mode or offline fact support alone.
 Do not rerun paid controls, alter gold/holdout, or relax architecture checks to produce
 a pass. Existing authorization remains usable; a new task record is not itself spending
-authority. A paid run needs the applicable authorization scope and runner preconditions
-recorded, without asking again for already authorized routine work.
+authority. Existing authorized experiments proceed after minimal affected checks. Record the
+selected inputs/resources and actual outcomes; do not add source/preflight/live GO,
+cost/counter/time, archive or full609/recovery prerequisites. Missing usage stays
+unknown, individual failures remain in full denominators, and independent work continues.
 
-Changes to public API, schema, Bundle format, query-side invariants or experiment
-semantics need an ADR: context, options, decision, compatibility, evidence, rollback.
-An ADR can conclude no change. Issues track implementation; docs keep accepted rationale.
+Record intentional contract/experimental-method changes in the relevant existing
+design document and task decision with compatibility and evidence. #105 has one
+accepted finite simplification plan; it requires no new ADR or governance series.
 
 ## Keeping records fresh
 

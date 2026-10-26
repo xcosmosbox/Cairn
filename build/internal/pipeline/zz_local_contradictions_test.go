@@ -41,11 +41,13 @@ func (c *localContradictionPipelineClient) Complete(ctx context.Context, req llm
 		d.Subdomains[0].Concepts = append(d.Subdomains[0].Concepts, d.Subdomains[1].Concepts...)
 		d.Subdomains[0].Relations[0].Kind = "contradicts"
 		d.Subdomains = d.Subdomains[:1]
-		raw, err := json.Marshal(result)
+		raw, err := json.Marshal(map[string]any{"domains": result.Domains})
 		if err != nil {
 			return nil, err
 		}
 		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, nil
+	case strings.Contains(req.System, "知识融合重写专家"):
+		return &llm.CompleteResponse{Text: `{"descriptions":[{"node_id":"admission","description":"Admission source detail."},{"node_id":"quota","description":"Quota source detail."}]}`, FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "领域知识关系识别专家"):
 		return &llm.CompleteResponse{Text: `{"relations":[]}`, FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "跨子域关系的原文验证专家"):

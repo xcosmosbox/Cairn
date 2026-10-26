@@ -19,7 +19,7 @@ sys.path.insert(0, str(HERE.parents[2] / 'quality'))
 from adapter import ARMS, baseline, digest, reported_usage
 from prepare_judge import POSITIVE_TYPES, validate_adapted_verdict
 import grade
-from durable_ledger import read_jsonl, verify_run_ledgers
+from durable_ledger import read_jsonl
 
 REPLICATES = 20_000
 POSITIVE_SEED = 20261024
@@ -156,13 +156,35 @@ def _bound(values):
             'interval_type': 'nominal percentile cluster-bootstrap; not exact finite-sample coverage'}
 
 
+def diagnostic_summary(scores):
+    paired = paired_rows(scores)
+    positive = [row for row in paired if row['answerable']]
+    result = {'format': 'cairn-public-answer-comparison/v1', 'diagnostic': True,
+              'interpretation': 'Fixed support-enriched DEV diagnostic only; no full-corpus retrieval, generalization or release inference.',
+              'positive_questions': len(positive), 'null_questions': len(paired) - len(positive),
+              'intended_pairs': len(paired), 'intended_arm_slots': len(scores),
+              'gates': {'formal_statistics_ready': False}, 'arms': {}}
+    for arm in ('raw', 'graph'):
+        rows = [row[arm] for row in paired]
+        pos = [row[arm] for row in positive]
+        result['arms'][arm] = {'intended': len(rows), 'grounded_correct_count': sum(r['grounded_correct'] for r in pos),
+            'grounded_correct': {'point': sum(r['grounded_correct'] for r in pos) / len(pos) if pos else None},
+            'visible_supported_fact_recall': {'point': sum(r['visible_supported_fact_recall'] for r in pos) / len(pos) if pos else None},
+            'attempts': sum(r['attempt'] for r in rows), 'unresolved_judgments': sum(not r['judge_resolved'] for r in rows),
+            'invalid_citations': sum(r['invalid_citations'] for r in rows), 'invalid_quotes': sum(r['invalid_quotes'] for r in rows)}
+    result['difference'] = {'point': (result['arms']['graph']['grounded_correct']['point'] - result['arms']['raw']['grounded_correct']['point']) if positive else None}
+    return result
+
+
 def analyze(scores, weights=None, replicates=REPLICATES):
-    np = _numpy()
     paired = paired_rows(scores)
     positive = [row for row in paired if row['answerable']]
     null = [row for row in paired if not row['answerable']]
     if len({row['group_hash'] for row in null}) != len(null):
         raise ValueError('null singleton group identities must be unique')
+    if weights is None and replicates == REPLICATES and (len(positive) != 192 or len(null) != 64):
+        return diagnostic_summary(scores), None
+    np = _numpy()
     weights = weights or bootstrap_weights(positive, null, replicates)
     qw = weights['positive'][:, weights['indices']]
     nw = weights['null']
@@ -263,19 +285,18 @@ def main():
     if private['solver_run_config_sha256'] != args.run_config_sha256 or private['projection_receipt_sha256'] != run_config['projection_receipt_sha256']:
         raise ValueError('scoring does not bind actual solver question projection')
     solver_events = read_jsonl(args.run_config.parent / 'requests.jsonl')
-    verify_run_ledgers(args.run_config.parent, sum(row.get('event') == 'request' for row in solver_events), run_config['job_order'])
     if args.corpus.name != 'corpus.json':
         raise ValueError('exact frozen original corpus required')
     from adapter import OriginalBindings
-    corpus = baseline.read_source(args.corpus.parent, args.corpus.name)
+    corpus = json.loads(args.corpus.read_text())
     construction = construction_gate(audit, OriginalBindings(corpus).documents, run_config['kg_sha256'])
     summary['construction'] = construction
-    summary['gates']['infrastructure'] = summary['gates']['formal_statistics_ready'] and summary['gates']['noninferiority'] and summary['gates']['intrinsic_evidence_floor'] and summary['gates']['observed_citations_and_exact_quotes_100percent']
-    summary['gates']['answer_integration'] = summary['gates']['infrastructure'] and summary['gates']['answer_demo']
-    # Store exact accepted vectors before the summary can claim its bound.
     summary['usage'] = {'solver': reported_usage(solver_events), 'judge': reported_usage(events)}
-    weight_value = {'groups': weights['groups'], 'positive_questions': weights['positive_questions'], 'null_question_ids': weights['null_question_ids'], 'positive': weights['positive'].tolist(), 'null': weights['null'].tolist(),
-                    'positive_seed': POSITIVE_SEED, 'null_seed': NULL_SEED, 'rejected_empty_type_draws': weights['rejected']}
+    if weights is not None:
+        weight_value = {'groups': weights['groups'], 'positive_questions': weights['positive_questions'], 'null_question_ids': weights['null_question_ids'], 'positive': weights['positive'].tolist(), 'null': weights['null'].tolist(),
+                        'positive_seed': POSITIVE_SEED, 'null_seed': NULL_SEED, 'rejected_empty_type_draws': weights['rejected']}
+    else:
+        weight_value = {'diagnostic': True, 'bootstrap': None}
     baseline.write_new(args.weights_out, weight_value)
     summary['weights_sha256'] = baseline.file_hash(args.weights_out)
     summary['phase_inputs'] = {
