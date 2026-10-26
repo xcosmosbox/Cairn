@@ -160,14 +160,7 @@ func run(args []string, out, errOut io.Writer) error {
 			if closeErr := db.Close(); err == nil {
 				err = closeErr
 			}
-			if err == nil && *indexManifest != "" {
-				after, bindErr := validateIndexBinding(binding.DatabasePath, *indexManifest, storage.FTSTextProfile(*textProfile))
-				if bindErr != nil {
-					err = bindErr
-				} else if after != binding {
-					err = errors.New("index binding changed during retrieval")
-				}
-			}
+
 		}
 	}
 	if err != nil {

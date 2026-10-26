@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 
 	"github.com/xcosmosbox/cairn/build/internal/extract"
@@ -32,10 +33,6 @@ import (
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/parallel"
 )
-
-// maxReflowRounds 是 I-6/I-7 单个 LLM 阶段的原地重试上限（与全量 relate 一致）。
-// maxReflowRounds is the in-place retry cap for the I-6/I-7 LLM stages.
-const maxReflowRounds = 2
 
 // reflowResult 是 I-6 + I-7 的联合产出（I-8 据此落库）。
 // reflowResult is the combined I-6/I-7 output (I-8 persists it).
@@ -154,11 +151,11 @@ func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *al
 }
 
 // fuseSubdomainBatch 为一个子域内的脏 node 批量重融合 description（一次 LLM 调用，
-// 门控重试：漏点/空 description 的节点进入下一轮伪 session 补写——与全量 describe 同构）。
+// 缺失/空 description 保留原值或原始 summary，不补写）。
 // LLM 只见 alias（<subdomain-slug>#<序号>），uuid 只存在代码侧映射（R1）。
 //
 // fuseSubdomainBatch re-fuses one subdomain's dirty nodes in a single LLM call
-// with a gating retry for missing/empty descriptions (full-pipeline semantics).
+// retaining old descriptions or original summaries for omitted items.
 func (r *reflower) fuseSubdomainBatch(ctx context.Context, key SubdomainKey, nodes []*reflowNode, rs *runState) map[string]string {
 	written := make(map[string]string)
 	if len(nodes) == 0 {
@@ -173,57 +170,29 @@ func (r *reflower) fuseSubdomainBatch(ctx context.Context, key SubdomainKey, nod
 		aliasByUUID[n.uuid] = alias
 	}
 
-	pending := nodes
-	var lastErr string
-	for round := 1; round <= maxReflowRounds; round++ {
-		user := buildReflowPrompt(key, pending, aliasByUUID, lastErr)
-		resp, err := r.client.Complete(ctx, llm.CompleteRequest{
-			System:    reflowSystemPrompt,
-			User:      user,
-			MaxTokens: r.maxTokens,
-		})
-		if err != nil {
-			rs.warnf(fmt.Sprintf("I-6 子域 %s LLM 调用失败（保持原 description）: %v", key, err))
-			return written
-		}
-		if resp == nil {
-			rs.warnf(fmt.Sprintf("I-6 子域 %s LLM 返回空响应（保持原 description）", key))
-			return written
-		}
-		var out reflowOutput
-		if perr := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); perr != nil {
-			lastErr = fmt.Sprintf("上一轮返回非法 JSON: %v", perr)
+	resp, err := r.client.Complete(ctx, llm.CompleteRequest{
+		System:    reflowSystemPrompt,
+		User:      buildReflowPrompt(key, nodes, aliasByUUID, ""),
+		MaxTokens: r.maxTokens,
+	})
+	if err != nil || resp == nil {
+		rs.warnf(fmt.Sprintf("I-6 子域 %s 无有效响应（保持原 description）: %v", key, err))
+		return written
+	}
+	var out reflowOutput
+	if err := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); err != nil {
+		rs.warnf(fmt.Sprintf("I-6 子域 %s 非法 JSON（保持原 description）: %v", key, err))
+		return written
+	}
+	for _, d := range out.Descriptions {
+		uuid, ok := uuidByAlias[strings.TrimSpace(d.NodeID)]
+		if !ok || strings.TrimSpace(d.Description) == "" {
 			continue
 		}
-		for _, d := range out.Descriptions {
-			alias := strings.TrimSpace(d.NodeID)
-			desc := strings.TrimSpace(d.Description)
-			uuid, ok := uuidByAlias[alias]
-			if !ok || desc == "" {
-				continue // 忽略编造 alias / 空 description（门控下轮补）
-			}
-			written[uuid] = desc
-		}
-		var still []*reflowNode
-		for _, n := range pending {
-			if _, ok := written[n.uuid]; !ok {
-				still = append(still, n)
-			}
-		}
-		if len(still) == 0 {
-			return written
-		}
-		pending = still
-		var missing []string
-		for _, n := range still {
-			missing = append(missing, aliasByUUID[n.uuid])
-		}
-		lastErr = fmt.Sprintf("以下 %d 个节点尚未给出有效 description（漏掉或为空），必须逐一补写：%s",
-			len(still), strings.Join(missing, "、"))
+		written[uuid] = strings.TrimSpace(d.Description)
 	}
-	if len(pending) > 0 {
-		rs.warnf(fmt.Sprintf("I-6 子域 %s %d 轮后仍有 %d 个节点缺 description（保持原值）",
-			key, maxReflowRounds, len(pending)))
+	if len(written) < len(nodes) {
+		rs.warnf(fmt.Sprintf("I-6 子域 %s 缺失 %d 个 description（保留原值，不补写）", key, len(nodes)-len(written)))
 	}
 	return written
 }
@@ -553,11 +522,11 @@ func missingProtectedEdges(internal []*dktypes.Edge, touched map[string]bool, re
 // 要求 LLM 输出「最终集合」——保留仍有效的、删除无效的（不出现在输出即删）、
 // 为涉及新节点的关系补充新条目、无关的原样保留（最小改变）。
 // 校验：6 枚举 kind（extract.IsValidRelationKind，与全量同一枚举集）+ 端点命中
-// alias + 非自环；越界 kind / 非法 JSON 原地重试。
+// alias + 非自环；越界条目局部丢弃，非法 JSON 仅使当前子域不可用。
 //
 // relateOneSubdomain prune-recomputes one dirty subdomain's relations: the LLM
 // emits the final relation set over aliased nodes, validated against the 6-kind
-// enum and alias endpoints, with in-place retry.
+// enum and alias endpoints in one response.
 func (r *reflower) relateOneSubdomain(ctx context.Context, key SubdomainKey, nodes []*dktypes.Node,
 	existing []*dktypes.Edge, rs *runState) ([]extract.Relation, error) {
 
@@ -573,35 +542,39 @@ func (r *reflower) relateOneSubdomain(ctx context.Context, key SubdomainKey, nod
 		aliasByUUID[n.ID] = alias
 	}
 
-	var lastErr string
-	for round := 1; round <= maxReflowRounds; round++ {
-		user := buildRelateRecomputePrompt(key, sortedNodes, existing, aliasByUUID, lastErr)
-		resp, err := r.client.Complete(ctx, llm.CompleteRequest{
-			System:    relateRecomputeSystemPrompt,
-			User:      user,
-			MaxTokens: r.maxTokens,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("LLM 调用失败: %w", err)
-		}
-		if resp == nil {
-			return nil, fmt.Errorf("LLM 返回空响应")
-		}
-		var out relateRecomputeOutput
-		if perr := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); perr != nil {
-			lastErr = fmt.Sprintf("上一轮返回非法 JSON: %v", perr)
-			continue
-		}
-		rels, hasInvalidKind := translateRecomputedRelations(out.Relations, uuidByAlias)
-		if hasInvalidKind {
-			lastErr = "存在越界的 kind（必须是 6 个枚举之一），请修正后重试"
-			// 最后一轮也不能把过滤后的空/部分集合当作权威成功结果；继续后
-			// 由循环末尾返回 error，子域级调用方会降级保留全部现存内部边。
-			continue
-		}
-		return rels, nil
+	resp, err := r.client.Complete(ctx, llm.CompleteRequest{
+		System:    relateRecomputeSystemPrompt,
+		User:      buildRelateRecomputePrompt(key, sortedNodes, existing, aliasByUUID, ""),
+		MaxTokens: r.maxTokens,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("LLM 调用失败: %w", err)
 	}
-	return nil, fmt.Errorf("%d 轮仍未通过", maxReflowRounds)
+	if resp == nil {
+		return nil, fmt.Errorf("LLM 返回空响应")
+	}
+	var out relateRecomputeOutput
+	if err := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); err != nil {
+		return nil, fmt.Errorf("relation JSON: %w", err)
+	}
+	rels, invalid := translateRecomputedRelations(out.Relations, uuidByAlias)
+	if invalid {
+		rs.warnf(fmt.Sprintf("I-7 子域 %s 丢弃非法 relation 条目；保留有效条目及已有关系", key))
+		// 非法条目不能成为删边授权；保留旧关系，同时接受有效新增/更新。
+		// A partial malformed set does not authorize deletion of existing pairs.
+		seen := map[string]bool{}
+		for _, rel := range rels {
+			seen[rel.Source+"\x00"+rel.Target+"\x00"+rel.Kind] = true
+		}
+		for _, edge := range existing {
+			identity := edge.SourceID + "\x00" + edge.TargetID + "\x00" + string(edge.Kind)
+			if !seen[identity] {
+				rels = append(rels, extract.Relation{Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), Description: edge.Description, Confidence: edge.Confidence})
+				seen[identity] = true
+			}
+		}
+	}
+	return rels, nil
 }
 
 // relateRecomputeOutput 是 I-7 LLM 返回的 JSON。
@@ -617,10 +590,10 @@ type relateRecomputeOutput struct {
 }
 
 // translateRecomputedRelations 把 LLM 返回的 alias 端点 relation 翻译为 uuid 端点：
-// kind 越界丢弃并标记（触发重试）；端点未命中 alias（编造）或自环丢弃（绝不悬空，R5）；
+// kind 越界丢弃并告警；端点未命中 alias（编造）或自环丢弃（绝不悬空，R5）；
 // 同身份 (source,target,kind) 重复条目去重（问题 7：LLM 重复返回只落一条）。
 // translateRecomputedRelations translates alias endpoints back to uuids, dropping
-// invalid kinds (triggers retry), fabricated endpoints, self-loops (R5), and
+// invalid kinds, fabricated endpoints, self-loops (R5), and
 // duplicate (source,target,kind) triples.
 func translateRecomputedRelations(rels []struct {
 	Source      string  `json:"source"`
@@ -631,13 +604,14 @@ func translateRecomputedRelations(rels []struct {
 }, uuidByAlias map[string]string) (out []extract.Relation, hasInvalidKind bool) {
 	seen := make(map[string]bool)
 	for _, r := range rels {
-		if !extract.IsValidRelationKind(r.Kind) {
+		if !extract.IsValidRelationKind(r.Kind) || math.IsNaN(r.Confidence) || math.IsInf(r.Confidence, 0) {
 			hasInvalidKind = true
 			continue
 		}
 		src, okS := uuidByAlias[r.Source]
 		tgt, okT := uuidByAlias[r.Target]
 		if !okS || !okT || src == tgt {
+			hasInvalidKind = true
 			continue // 编造端点 / 自环 → 丢弃（R5）
 		}
 		identity := src + "\x00" + tgt + "\x00" + r.Kind

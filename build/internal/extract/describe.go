@@ -22,14 +22,14 @@ import (
 	"log"
 	"strings"
 
+	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/parallel"
-	"github.com/xcosmosbox/cairn/build/internal/llm"
 )
 
 // maxDescribeRounds 是单个 subdomain description 融合的最大轮数：
 // 首轮全量重写 + 后续针对「漏点 / 空 description」节点的伪 session 补写重试，直至全部补齐或耗尽。
-const maxDescribeRounds = 3
+const maxDescribeRounds = 1
 
 // DescribeReport 是 description 融合阶段的结果摘要（可观测，写盘到 05d）。
 // DescribeReport summarizes the description-fusion stage (written to 05d).
@@ -63,10 +63,14 @@ func buildDetailIndex(docs []*dktypes.AnnotatedDocument) map[string][]sourceDeta
 			continue
 		}
 		for _, it := range d.Items {
-			if it.ID == "" || strings.TrimSpace(it.Detail) == "" {
+			if it.ID == "" {
 				continue
 			}
-			idx[it.ID] = append(idx[it.ID], sourceDetail{Path: d.FilePath, Detail: strings.TrimSpace(it.Detail)})
+			detail := strings.TrimSpace(it.Detail)
+			if detail == "" {
+				detail = strings.TrimSpace(it.Content)
+			}
+			idx[it.ID] = append(idx[it.ID], sourceDetail{Path: d.FilePath, Detail: detail})
 		}
 	}
 	return idx
@@ -202,83 +206,57 @@ func (e *Extractor) fuseSubdomainDescriptions(ctx context.Context, domainName st
 		return res
 	}
 
-	// matByID 供门控按 id 反查素材，对漏点 / 空 description 的节点做针对性伪 session 补写。
-	matByID := make(map[string]nodeMat, len(mats))
+	declared := map[string]bool{}
+	promptNodes := make([]describePromptNode, 0, len(mats))
 	for _, m := range mats {
-		matByID[m.id] = m
+		declared[m.id] = true
+		promptNodes = append(promptNodes, describePromptNode{ID: m.id, Label: m.label, Name: m.name, Summary: m.summary, Material: m.material})
 	}
-
-	// 门控 + 伪 session 重试：确保每个有素材节点都写出非空 description。
-	//   - 每轮只投喂 pending（首轮为全部有素材节点，其后为上一轮漏掉 / 返回空的节点）；
-	//   - LLM 批量返回易漏节点或给空串，门控据此逐轮收敛，直到全部补齐或耗尽 maxDescribeRounds；
-	//   - written 累积已确认的非空 description，避免重复重写、也便于耗尽时一次性写回。
-	written := make(map[string]string, len(mats)) // node_id → 已确认非空的 description
-	pending := mats
-	var lastErr string
-	for round := 1; round <= maxDescribeRounds; round++ {
-		promptNodes := make([]describePromptNode, 0, len(pending))
-		for _, m := range pending {
-			promptNodes = append(promptNodes, describePromptNode{
-				ID: m.id, Label: m.label, Name: m.name, Summary: m.summary, Material: m.material,
-			})
+	if err := ctx.Err(); err != nil {
+		res.failure = err.Error()
+		return res
+	}
+	resp, err := e.client.Complete(ctx, llm.CompleteRequest{System: describeSystemPrompt, User: buildDescribePrompt(domainName, sd.Name, sd.Summary, promptNodes, ""), MaxTokens: e.maxTokens})
+	if err != nil {
+		res.failure = err.Error()
+		return res
+	}
+	if ctx.Err() != nil {
+		res.failure = ctx.Err().Error()
+		return res
+	}
+	if resp == nil || resp.FinishReason == "length" || resp.FinishReason == "max_tokens" {
+		res.failure = "missing or incomplete description response"
+		return res
+	}
+	var envelope struct {
+		Descriptions []json.RawMessage `json:"descriptions"`
+	}
+	if err := json.Unmarshal([]byte(stripCodeFence(strings.TrimSpace(resp.Text))), &envelope); err != nil {
+		res.failure = err.Error()
+		return res
+	}
+	written := map[string]string{}
+	for _, raw := range envelope.Descriptions {
+		var d struct {
+			NodeID      string `json:"node_id"`
+			Description string `json:"description"`
 		}
-
-		userMsg := buildDescribePrompt(domainName, sd.Name, sd.Summary, promptNodes, lastErr)
-		resp, err := e.client.Complete(ctx, llm.CompleteRequest{
-			System:    describeSystemPrompt,
-			User:      userMsg,
-			MaxTokens: e.maxTokens,
-		})
-		if err != nil {
-			res.failure = fmt.Sprintf("subdomain %q description 融合 LLM 调用失败: %v", sd.Name, err)
-			break
-		}
-		var out describeOutput
-		if perr := json.Unmarshal([]byte(stripCodeFence(strings.TrimSpace(resp.Text))), &out); perr != nil {
-			lastErr = fmt.Sprintf("上一轮返回非法 JSON: %v", perr)
+		if err := json.Unmarshal(raw, &d); err != nil || !declared[d.NodeID] || strings.TrimSpace(d.Description) == "" {
+			log.Printf("[extract-describe] omitted invalid/unknown description row")
 			continue
 		}
-		// 收集本轮有效返回：node_id 属于本 subdomain 有素材集合、且 description 非空。
-		for _, d := range out.Descriptions {
-			id := strings.TrimSpace(d.NodeID)
-			desc := strings.TrimSpace(d.Description)
-			if id == "" || desc == "" {
-				continue // 空 description 视为未写，交由门控下一轮补
-			}
-			if _, ok := matByID[id]; !ok {
-				continue // 忽略不属于有素材集合的 id（LLM 编造 / 越界）
-			}
-			written[id] = desc
+		if _, duplicate := written[d.NodeID]; duplicate {
+			delete(written, d.NodeID)
+			declared[d.NodeID] = false
+			continue
 		}
-		// 门控：重算仍缺 description 的节点。
-		var still []nodeMat
-		for _, m := range pending {
-			if _, ok := written[m.id]; !ok {
-				still = append(still, m)
-			}
-		}
-		if len(still) == 0 {
-			res.nodesRewritten += applyDescriptions(sd, written)
-			res.ok = true
-			return res
-		}
-		// 仍有漏点 / 空 description → 伪 session 只重试这些节点，并把漏点显式反馈给 LLM。
-		pending = still
-		missingIDs := make([]string, 0, len(still))
-		for _, m := range still {
-			missingIDs = append(missingIDs, m.id)
-		}
-		lastErr = fmt.Sprintf("以下 %d 个节点尚未给出有效 description（漏掉或为空），必须为每一个都补写非空、语义完整的 description：%s",
-			len(still), strings.Join(missingIDs, "、"))
+		written[d.NodeID] = strings.TrimSpace(d.Description)
 	}
-
-	// 耗尽：写回已确认的，剩余缺失记为失败（可观测）。这些节点 description 仍为空，ingest 侧由 summary 兜底。
-	res.nodesRewritten += applyDescriptions(sd, written)
-	if len(written) < len(mats) {
-		res.failure = fmt.Sprintf("subdomain %q description 融合 %d 轮后仍有 %d/%d 个节点缺少 description",
-			sd.Name, maxDescribeRounds, len(mats)-len(written), len(mats))
-	} else {
-		res.ok = true
+	res.nodesRewritten = applyDescriptions(sd, written)
+	res.ok = len(written) == len(mats)
+	if !res.ok {
+		res.failure = fmt.Sprintf("subdomain %q missing %d/%d descriptions", sd.Name, len(mats)-len(written), len(mats))
 	}
 	return res
 }

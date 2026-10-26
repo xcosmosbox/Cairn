@@ -15,7 +15,7 @@ help:
 	@echo ""
 	@echo "  make build      构建全部 8 个二进制到 bin/"
 	@echo "  make all        下载依赖 → 构建 → 门禁检查"
-	@echo "  make verify     提 PR 前必跑：vet + 构建 + 架构不变量检查"
+	@echo "  make verify     可选完整检查：vet + 构建 + 架构不变量检查"
 	@echo "  make fmt        goimports + gofmt -s"
 	@echo "  make vet        go vet"
 	@echo "  make test       跑单元与缺陷回归测试（见 CONTRIBUTING.md）"
@@ -65,7 +65,7 @@ build-service:
 # ═══════════════════════════════════════════════════════════════════
 # 测试
 #
-# 单元与缺陷回归；完整竞态验收见 CONTRIBUTING.md。
+# 单元与缺陷回归；按变更选择竞态检查，见 CONTRIBUTING.md。
 # Unit and defect regressions; see CONTRIBUTING.md for race validation.
 # ═══════════════════════════════════════════════════════════════════
 test:
@@ -90,7 +90,7 @@ clean:
 	rm -rf bin/ coverage.out coverage.html
 
 # ═══════════════════════════════════════════════════════════════════
-# verify — 提 PR 前的完整门禁：vet + 构建 + 架构不变量检查
+# verify — 可选本地完整检查：vet + 构建 + 架构不变量检查
 # ═══════════════════════════════════════════════════════════════════
 verify: vet build check-invariants
 	@echo "✅ verify 全绿 / all checks passed"

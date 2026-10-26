@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -66,9 +67,6 @@ func PullRemoteContext(parent context.Context, spec PullRemoteSpec) (*PullResult
 	}
 	if spec.APIBaseURL == "" {
 		spec.APIBaseURL = "https://api.github.com"
-	}
-	if spec.Token == "" {
-		return nil, fmt.Errorf("kbbundle.PullRemote: token 不可为空")
 	}
 
 	// 1. 读 stable manifest。
@@ -128,7 +126,21 @@ func PullRemoteContext(parent context.Context, spec PullRemoteSpec) (*PullResult
 		os.RemoveAll(tmpDir)
 		return nil, fmt.Errorf("kbbundle.PullRemote: verify Bundle: %w", err)
 	}
-	if *actual != cm.Manifest {
+	// Missing descriptive catalog fields do not change the digest-bound artifact.
+	// 缺失描述元数据只告警；已提供的来源/身份字段仍必须匹配。
+	expected := cm.Manifest
+	for _, pair := range []struct {
+		dst    *string
+		actual string
+	}{
+		{&expected.BuilderVersion, actual.BuilderVersion}, {&expected.BuilderCommit, actual.BuilderCommit},
+		{&expected.PromptSetVersion, actual.PromptSetVersion}, {&expected.Model, actual.Model}, {&expected.CreatedAt, actual.CreatedAt},
+	} {
+		if *pair.dst == "" {
+			*pair.dst = pair.actual
+		}
+	}
+	if *actual != expected {
 		os.RemoveAll(tmpDir)
 		return nil, fmt.Errorf("kbbundle.PullRemote: verified artifact provenance differs from stable catalog pointer")
 	}
@@ -168,7 +180,9 @@ func FetchCatalogManifestContext(parent context.Context, apiBase, owner, repo, b
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "token "+token)
+	if token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
 	req.Header.Set("Accept", "application/vnd.github.raw") // 直接返回文件内容
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -360,7 +374,7 @@ func validateStableCatalog(cm *CatalogManifest, expectedKG string) error {
 	if cm.Format != ManifestFormat || cm.KG == "" || cm.KG != expectedKG {
 		return fmt.Errorf("catalog format or KG identity differs")
 	}
-	if cm.SourceRepo == "" || cm.SourceRef == "" || cm.BuilderVersion == "" || cm.BuilderCommit == "" || cm.PromptSetVersion == "" || cm.Model == "" || cm.KBVersion == "" || cm.SchemaVersion < 4 {
+	if cm.SourceRepo == "" || cm.SourceRef == "" || cm.KBVersion == "" || cm.SchemaVersion < 4 {
 		return fmt.Errorf("catalog provenance is incomplete; republish a complete Bundle")
 	}
 	if len(cm.SourceCommit) != 40 && len(cm.SourceCommit) != 64 {
@@ -377,11 +391,10 @@ func validateStableCatalog(cm *CatalogManifest, expectedKG string) error {
 			return fmt.Errorf("catalog digest is invalid")
 		}
 	}
-	if _, err := time.Parse(time.RFC3339, cm.CreatedAt); err != nil {
-		return fmt.Errorf("catalog creation time is invalid")
-	}
-	if _, err := time.Parse(time.RFC3339, cm.PublishedAt); err != nil {
-		return fmt.Errorf("catalog publication time is invalid")
+	for name, value := range map[string]string{"builder_version": cm.BuilderVersion, "builder_commit": cm.BuilderCommit, "prompt_set_version": cm.PromptSetVersion, "model": cm.Model, "created_at": cm.CreatedAt, "published_at": cm.PublishedAt} {
+		if value == "" {
+			log.Printf("kbbundle: WARN catalog %s is unknown", name)
+		}
 	}
 	if strings.TrimSpace(cm.ReleaseTag) == "" || strings.TrimSpace(cm.AssetName) == "" {
 		return fmt.Errorf("catalog Release or asset pointer is missing; republish a complete Bundle")

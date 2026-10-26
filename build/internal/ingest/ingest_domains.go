@@ -457,9 +457,6 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 			// 先全部入库，其后再连 composes / 语义边，保证端点存在。
 			// Step 4: entity/concept nodes (confidence-gated; source_refs backfilled).
 			for _, ent := range sd.Entities {
-				if ent.Confidence < opts.MinConfidence {
-					continue
-				}
 				entID := ent.ID         // UUID 主键（由 extract.AssignNodeUUIDs 分配）
 				ed := ent.ToEntityDef() // 复用 extract 转换（DRY）
 				node := &dktypes.Node{
@@ -493,9 +490,6 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 				}
 			}
 			for _, con := range sd.Concepts {
-				if con.Confidence < opts.MinConfidence {
-					continue
-				}
 				conID := con.ID          // UUID 主键（由 extract.AssignNodeUUIDs 分配）
 				cd := con.ToConceptDef() // 复用 extract 转换（DRY）
 				node := &dktypes.Node{

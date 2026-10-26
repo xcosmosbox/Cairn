@@ -1,74 +1,61 @@
 # Current evidence snapshot
 
-As of **2026-10-25 00:10 Asia/Shanghai (2026-10-24 16:10 UTC)**.
-Integrated baseline: `1f49dc0af50bc4619ae8b2a888f6589351f7a144`.
-This is a dated evidence index; latest task comments, PR heads and run receipts take
-precedence. See [live report #9](https://github.com/xcosmosbox/Cairn/issues/9),
-[EVIDENCE.md](EVIDENCE.md) and the [initial snapshot](https://github.com/xcosmosbox/Cairn/blob/c6a2b16f21434147947f4ed30d65a06321571546/docs/coordination/CURRENT_STATE.md).
-Cairn remains **Alpha**. Packaging targets `1.0.0` / `1.0.0-rc.1` are planned
-identities, not a created tag, final candidate, published release or support guarantee.
+As of **2026-10-26 UTC**. Starting main baseline:
+`b850ee4e4bf1074713c10b58b2a963b50640b1b9`.
+Live [#105](https://github.com/xcosmosbox/Cairn/issues/105), task comments/PR heads and raw
+outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
+answer-utility result is implied by code acceptance/CI.
 
-## Accepted and integrated, within their recorded scope
+## Current work
 
-| Scope | Evidence | Accepted boundary |
-| --- | --- | --- |
-| Free environment and example | #10 / PR23; #16 / PR31, PR38, PR46, PR58, PR61 | Clean free fixed-fake path and real two-reference consumption, facts, source lineage, stored/MCP dependency and one targeted positive/negative verifier replay |
-| Runner repair | #12 / PR25 | Offline authorization-stop, durable admission/drain/recovery repairs; historical pilot remains separate |
-| Public lexical baseline | #21 / PR28; #27 / PR30 | Frozen full609 corpus lexical DEV baseline and retained negative source-cap2 result; no graph/answer benefit |
-| Source metadata | #26 / PR29 | Opt-in stored metadata, no original-text hydration or fabricated original span |
-| Native App | #15 / PR34 | Real JWT/install/cache/permission/revocation and accelerated refresh plus bounded HTTPForge replay; all-repository installation intentionally unchanged |
-| Performance/resource baseline | #17 / PR32, PR39 | Bounded synthetic timing/source `bf5d7ec` and identity-bound memory/source `18e7e7b`; no SLO, hard2GiB enforcement or production capacity |
-| Release contract and local recovery | #18 / PR35; #40 / PR43 | Contract design and real local schema4/5 A→B→A immutable Bundle/CLI/MCP replay, invalid-generation rejection |
-| Private distribution/recovery | #47 / PR51; #44 / PR48, PR55 | Authenticated API asset routing/redirect correction and actual one-installation Linux stdio private watcher update→bad-checksum retention→original rollback on source `5d99a24` |
-| Cross-subdomain mechanism | #45 / PR53; #16 / PR58, PR61 | Source-grounded explicit candidate validation/two-pass ingest; finite actual positive path and known false-absence rejection, not general semantic accuracy |
-| Offline capacity preparation | #41 / PR49; #56 / PR60 | Durable exact-wire trace, official-token guard, corpus-only12 selection and corrected source/edge/incidence audit; not an actual capacity pass |
-| Fixture and software identity | #50 / PR52; #59 / PR62 | Deterministic test-clock correction; truthful stamp/devel/buildinfo with source fingerprint, MCP protocol and Viewer component versions kept separate |
+[#105 adopted one complete simplification plan](reports/2026-10-26-simplification-plan.md)
+after four read-only contexts voted YES on all38 rows. The same-account/model limit is
+explicit; votes are decisions, not scientific measurements. Fresh executors have isolated
+build, runtime, evaluation, incremental, service and documentation/integration scopes.
+They delete nonessential gates and inactive experimental frameworks, preserve concrete
+identity/source/human/atomic/query/credential safeguards, run affected checks, then execute
+the fixed diagnostic. Normal CI and optional product features remain.
 
-Every acceptance links exact source/heads, independent review and applicable checks in
-the task thread. Historical negative runs and reviewer findings remain preserved.
-A later successful run does not erase an earlier failure or prove causal improvement.
+[Fixed selection](reports/diagnostic105-selection.json): first two existing selected DEV
+qids, complete six-original support-document union. Builder sees originals only; solver
+qid/question; judge selected gold. This is a support-enriched given-source diagnostic,
+not full-corpus retrieval, generalization, HOLDOUT or release evidence. All four intended
+question×arm slots remain even if construction/retrieval/model/judge fails. The [actual diagnostic](reports/diagnostic105-results.md) completed:43build+4solver+7judge
+requests. Five of6originals materialized; all4solver slots completed, but4judge validation
+errors plus2ambiguous judgments leave every pair unresolved. No reliable paired utility
+estimate or graph benefit was established. No post-outcome rerun or tuning occurred.
 
-## Actual calibration and active implementation
+## Historical evidence and paused work
 
-- **#63:** one corpus-only12 calibration actually ran on this baseline, built with
-  pinned official Go1.27.3. The invocation completed according to the executor/root
-  handoff; final public/private packet and independent review are pending. It **fails
-  the all12 requirement**: all12 originals were presented, but only11 were accepted
-  and materialized; the largest78-offer document exhausted three annotation/GateB
-  rounds. This is a construction/coverage failure, not an observed context overflow,
-  output-length or provider transport failure. No rerun, full609 or QA was admitted.
-  [Failure checkpoint](https://github.com/xcosmosbox/Cairn/issues/63#issuecomment-6386370522)
-  records the first hard failure while downstream work was still running; final
-  receipts must establish the completed denominator and detailed dispositions.
-- **#54:** synthetic-only paired-answer evaluator, scientific ADR and transport/ledger
-  corrections are being prepared. Final engineering/scientific reviews, exact-head CI
-  and root acceptance remain pending. No actual QA/gold/HOLDOUT was read or scored.
-- **#14:** umbrella source-quality/retrieval research remains open. The prior negative
-  cap2 candidate is not reopened for same-DEV tuning. The next construction decision
-  follows #63 diagnosis and a separate bounded implementation/admission, not a retry.
+| Record | Actual boundary |
+| --- | --- |
+| #21/#27 public lexical baseline | Full609 lexical DEV and negative cap2; no graph/answer benefit |
+| #63 calibration | Actual all12 coverage failure:11 materialized, one exhausted semantic rewrites; preserved packet |
+| #64/#68/#74 implementations | Typed revision/local contradiction/human-edge protections were source evidence; old revision method now superseded |
+| #99/PR101 | Source accepted at starting main; original-only qualification/zero-key preflight, no actual provider experiment |
+| #103/PR104 | Earlier original609 timeout remains failure; later original609 regression user-stopped, neither pass nor code-defect failure; draft optimization not measured speedup |
+| #11/#13 | Optional historical archive/control review backlog, not completed and not prerequisites for a new experiment |
 
-Labels/leases describe ownership, not perpetual background jobs. Read current task
-checkpoints before dispatch. No model job is presumed from this document.
+Old source/packets/comments remain unchanged. The orphan staged/history/bounded experimental
+route is retired by #105; reproducing it is not required to measure the ordinary pipeline.
+A label/lease does not prove an agent or job is still running.
 
-## Unresolved and deliberately limited
+Service changes preserve healthy federated results with additive `partial`/`failed_kbs`
+metadata in MCP structuredContent and REST. Public bundle pulls need no token; empty
+Authorization is omitted. Missing descriptive metadata warns, while actual KG/source/
+asset/digest identity and explicit malformed-configuration errors remain enforced.
 
-#33's original SQLITE_BUSY cause remains UNKNOWN/unfixed. Bounded negative reproduction
-is retained; root accepted only the documented local risk that nonfatal evolution
-sidecar Record failure may omit a history entry. No complete concurrent-history or
-general failure-safety guarantee follows.
+## Product and release limits
 
-#11 full historical archive byte/reconstruction audit is deferred. #13 old Source
-Backfill pilot stays disabled/no-go: offline runner repairs are complete, but historical
-control identity/access, a new executable freeze and independent pilot decision are
-not accepted. These are not universal gates for a new public experiment; using those
-old controls still requires their validation. Current permanent ordinary DeepSeek
-experiment authorization is recorded in [EXECUTION_POLICY.md](EXECUTION_POLICY.md)
-and is distinct from these technical prerequisites.
+Existing immutable Bundle, read-only query, curated data, native App/distribution and free
+example evidence is indexed in [EVIDENCE.md](EVIDENCE.md) and historical task/PR receipts.
+It establishes only those tested scopes. No general graph recall, cited-answer/refusal
+quality, new HOLDOUT outcome, full609 production capacity, full daemon lifecycle, remote
+SLO or stable-release readiness is established here. Optional evolution failures remain
+history-local; no blanket concurrency/recovery guarantee follows.
 
-The real two-document MCP metadata has unknown original span hints; exact original
-quotes were checked separately against frozen originals. Live UUID masking was not
-exercised. No general graph recall, answer/refusal quality, fresh HOLDOUT outcome,
-full609 capacity, natural token-expiry/transparent401, full daemon lifecycle or remote
-SLO has been established. Final candidate/free/Viewer/compatibility/recovery replay
-waits for a frozen candidate. Release support, quality and final maintainer decision
-remain unaccepted; CI alone does not publish stable.
+Standing authorized DeepSeek/network/public-data egress and sanitized publication are in
+[EXECUTION_POLICY.md](EXECUTION_POLICY.md). Missing usage is unknown, upload is best effort,
+independent failures continue, and small experiments require no renewed technical GO,
+fullrace/verify, archival/full609 or recovery/Viewer preparation. Release publication is a
+separate support/compatibility/recovery/resource evidence and maintainer decision.

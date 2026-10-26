@@ -6,17 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
-
-const corpusSHA = "20b61b5ab84de84a927420c5d265b7ec8d859ae49980699958a787ade9e4d28f"
-const corpusBytes = 6785567
 
 func sha(raw []byte) string { v := sha256.Sum256(raw); return hex.EncodeToString(v[:]) }
 
@@ -77,9 +72,6 @@ type selectedDoc struct {
 	BodySHA            string `json:"body_sha256"`
 	BodyBytes          int    `json:"body_bytes"`
 	BodyCodepoints     int    `json:"body_codepoints"`
-	WhitespaceTokens   int    `json:"whitespace_tokens"`
-	Stratum            int    `json:"stratum"`
-	Rank               int    `json:"rank"`
 	WrapperSHA         string `json:"wrapper_sha256"`
 	WrapperBytes       int    `json:"wrapper_bytes"`
 	BodyStartByte      int    `json:"body_start_byte"`
@@ -87,73 +79,52 @@ type selectedDoc struct {
 }
 
 type selection struct {
-	Format      string        `json:"format"`
-	CorpusSHA   string        `json:"corpus_sha256"`
-	ProtocolSHA string        `json:"protocol_sha256"`
-	Documents   []selectedDoc `json:"documents"`
-	SkillSHA    string        `json:"skill_sha256"`
+	Format            string        `json:"format"`
+	CorpusSHA         string        `json:"corpus_sha256"`
+	IntendedDocuments int           `json:"intended_documents"`
+	Documents         []selectedDoc `json:"documents"`
+	SkillSHA          string        `json:"skill_sha256"`
 }
 
-// Python re \S treats U+001C..U+001F as whitespace in addition to Unicode White_Space.
-// Match the frozen selection rule rather than substituting model tokens.
-func whitespaceCount(s string) int {
-	return len(strings.FieldsFunc(s, func(r rune) bool { return unicode.IsSpace(r) || (r >= 0x1c && r <= 0x1f) }))
+// Source rows are local units: malformed documents remain in the preparation
+// outcome roster without discarding independent originals.
+type sourceOutcome struct {
+	Index    int             `json:"index"`
+	Document string          `json:"document_id,omitempty"`
+	Status   string          `json:"status"`
+	Reason   string          `json:"reason,omitempty"`
+	Raw      json.RawMessage `json:"raw_source"`
 }
 
-func parseCorpus(raw []byte) ([]corpusDoc, error) {
-	var rows []map[string]json.RawMessage
+func parseCorpus(raw []byte) ([]corpusDoc, []sourceOutcome, error) {
+	var rows []json.RawMessage
 	if err := json.Unmarshal(raw, &rows); err != nil {
-		return nil, fmt.Errorf("corpus JSON: %w", err)
+		return nil, nil, fmt.Errorf("corpus JSON: %w", err)
 	}
 	seen := map[string]bool{}
-	docs := make([]corpusDoc, 0, len(rows))
-	for _, row := range rows {
-		if len(row) != 7 {
-			return nil, fmt.Errorf("corpus exact seven-column schema required")
-		}
-		for _, key := range []string{"title", "author", "source", "published_at", "category", "url", "body"} {
-			if _, ok := row[key]; !ok {
-				return nil, fmt.Errorf("corpus schema missing %s", key)
-			}
-		}
-		b, _ := json.Marshal(row)
+	var docs []corpusDoc
+	outcomes := make([]sourceOutcome, 0, len(rows))
+	for index, row := range rows {
 		var d corpusDoc
-		if err := json.Unmarshal(b, &d); err != nil {
-			return nil, fmt.Errorf("corpus fields must be strings")
+		outcome := sourceOutcome{Index: index, Status: "invalid", Raw: append(json.RawMessage(nil), row...)}
+		decoder := json.NewDecoder(bytes.NewReader(row))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&d); err != nil {
+			outcome.Reason = "invalid_document_schema"
+		} else if d.URL == "" || strings.TrimSpace(d.Body) == "" {
+			outcome.Reason = "missing_url_or_body"
+		} else if seen[d.URL] {
+			outcome.Document = sha([]byte(d.URL))
+			outcome.Reason = "duplicate_url"
+		} else {
+			seen[d.URL] = true
+			outcome.Document = sha([]byte(d.URL))
+			outcome.Status = "prepared"
+			docs = append(docs, d)
 		}
-		if d.URL == "" || strings.TrimSpace(d.Body) == "" || seen[d.URL] {
-			return nil, fmt.Errorf("empty or duplicate corpus document")
-		}
-		seen[d.URL] = true
-		docs = append(docs, d)
+		outcomes = append(outcomes, outcome)
 	}
-	return docs, nil
-}
-
-func choose(docs []corpusDoc) ([]corpusDoc, []selectedDoc, error) {
-	if len(docs) < 12 {
-		return nil, nil, fmt.Errorf("four strata require at least twelve documents")
-	}
-	docs = append([]corpusDoc(nil), docs...)
-	sort.Slice(docs, func(i, j int) bool {
-		a, b := whitespaceCount(docs[i].Body), whitespaceCount(docs[j].Body)
-		if a != b {
-			return a < b
-		}
-		return sha([]byte(docs[i].URL)) < sha([]byte(docs[j].URL))
-	})
-	var chosen []corpusDoc
-	var entries []selectedDoc
-	for k := 0; k < 4; k++ {
-		lo, hi := k*len(docs)/4, (k+1)*len(docs)/4
-		for _, offset := range []int{0, (hi - lo - 1) / 2, hi - lo - 1} {
-			d := docs[lo+offset]
-			id := sha([]byte(d.URL))
-			chosen = append(chosen, d)
-			entries = append(entries, selectedDoc{ID: id, URL: d.URL, Path: "references/" + id + ".md", BodySHA: sha([]byte(d.Body)), BodyBytes: len(d.Body), BodyCodepoints: utf8.RuneCountInString(d.Body), WhitespaceTokens: whitespaceCount(d.Body), Stratum: k, Rank: lo + offset})
-		}
-	}
-	return chosen, entries, nil
+	return docs, outcomes, nil
 }
 
 func wrap(d corpusDoc) ([]byte, int, int) {
@@ -167,42 +138,28 @@ func wrap(d corpusDoc) ([]byte, int, int) {
 	return []byte(header + d.Body), len(header), utf8.RuneCountInString(header)
 }
 
-const skill = "---\nname: multihop-public\ndescription: Fixed public article corpus for corpus-only capacity calibration.\n---\n\n# Public articles\n\nOriginal article references; no question or answer data.\n"
+const skill = "---\nname: multihop-public\ndescription: Declared source-only article corpus for construction diagnostics.\n---\n\n# Public articles\n\nOriginal article references; no question or answer data.\n"
 
-func prepare(corpusPath, out, protocolPath string) error {
+func prepare(corpusPath, out string) error {
 	raw, err := os.ReadFile(corpusPath)
 	if err != nil {
 		return err
 	}
-	if len(raw) != corpusBytes || sha(raw) != corpusSHA {
-		return fmt.Errorf("frozen corpus identity mismatch")
-	}
-	docs, err := parseCorpus(raw)
-	if err != nil {
-		return err
-	}
-	if len(docs) != 609 {
-		return fmt.Errorf("expected609 corpus documents")
-	}
-	chosen, entries, err := choose(docs)
-	if err != nil {
-		return err
-	}
-	protocol, err := os.ReadFile(protocolPath)
+	docs, outcomes, err := parseCorpus(raw)
 	if err != nil {
 		return err
 	}
 	if err = os.Mkdir(out, 0700); err != nil {
 		return fmt.Errorf("new output required: %w", err)
 	}
-	for i, d := range chosen {
+	entries := make([]selectedDoc, 0, len(docs))
+	for _, d := range docs {
 		wrapped, start, runes := wrap(d)
-		entries[i].WrapperSHA = sha(wrapped)
-		entries[i].WrapperBytes = len(wrapped)
-		entries[i].BodyStartByte = start
-		entries[i].BodyStartCodepoint = runes
+		id := sha([]byte(d.URL))
+		entry := selectedDoc{ID: id, URL: d.URL, Path: "references/" + id + ".md", BodySHA: sha([]byte(d.Body)), BodyBytes: len(d.Body), BodyCodepoints: utf8.RuneCountInString(d.Body), WrapperSHA: sha(wrapped), WrapperBytes: len(wrapped), BodyStartByte: start, BodyStartCodepoint: runes}
+		entries = append(entries, entry)
 		for _, tree := range []string{"source", "original"} {
-			if err = writeBytesNew(filepath.Join(out, tree, entries[i].Path), wrapped); err != nil {
+			if err = writeBytesNew(filepath.Join(out, tree, entry.Path), wrapped); err != nil {
 				return err
 			}
 		}
@@ -212,87 +169,81 @@ func prepare(corpusPath, out, protocolPath string) error {
 			return err
 		}
 	}
-	s := selection{Format: "cairn-capacity-selection/v1", CorpusSHA: corpusSHA, ProtocolSHA: sha(protocol), Documents: entries, SkillSHA: sha([]byte(skill))}
-	if err = writeBytesNew(filepath.Join(out, "protocol.json"), protocol); err != nil {
+	if err = writeNew(filepath.Join(out, "preparation-outcomes.json"), outcomes); err != nil {
 		return err
 	}
-	return writeNew(filepath.Join(out, "selection.json"), s)
+	return writeNew(filepath.Join(out, "selection.json"), selection{Format: "cairn-capacity-selection/v2", CorpusSHA: sha(raw), Documents: entries, SkillSHA: sha([]byte(skill)), IntendedDocuments: len(outcomes)})
 }
 
-func verifyPrepared(out string, mutable bool) (*selection, error) {
+// bindPrepared checks current sources once. An unavailable document only removes
+// its own derived input; independent originals keep their declared denominator.
+func bindPrepared(out string) (*selection, error) {
 	var s selection
 	if err := readJSON(filepath.Join(out, "selection.json"), &s); err != nil {
 		return nil, err
 	}
-	if s.Format != "cairn-capacity-selection/v1" || s.CorpusSHA != corpusSHA || len(s.Documents) != 12 || s.SkillSHA != sha([]byte(skill)) {
+	if s.Format != "cairn-capacity-selection/v2" || len(s.CorpusSHA) != 64 || s.IntendedDocuments < len(s.Documents) || s.SkillSHA != sha([]byte(skill)) {
 		return nil, fmt.Errorf("selection identity mismatch")
 	}
-	protocol, err := os.ReadFile(filepath.Join(out, "protocol.json"))
-	if err != nil || sha(protocol) != s.ProtocolSHA {
-		return nil, fmt.Errorf("protocol identity mismatch")
+	expected := map[string]bool{"SKILL.md": true}
+	for _, d := range s.Documents {
+		expected["references/"+sha([]byte(d.URL))+".md"] = true
 	}
-	for _, tree := range []string{"original", "source"} {
-		if mutable && tree == "source" {
-			continue
+	var outcomes []sourceOutcome
+	if err := filepath.WalkDir(filepath.Join(out, "source"), func(path string, entry os.DirEntry, e error) error {
+		if e != nil {
+			return e
 		}
-		expected := map[string]string{"SKILL.md": s.SkillSHA}
-		for _, d := range s.Documents {
-			if d.ID != sha([]byte(d.URL)) || d.Path != "references/"+d.ID+".md" || expected[d.Path] != "" {
-				return nil, fmt.Errorf("invalid selected document identity")
-			}
-			expected[d.Path] = d.WrapperSHA
-			raw, e := os.ReadFile(filepath.Join(out, tree, d.Path))
-			if e != nil || len(raw) != d.WrapperBytes || d.BodyStartByte < 0 || d.BodyStartByte > len(raw) || sha(raw[d.BodyStartByte:]) != d.BodySHA {
-				return nil, fmt.Errorf("original body identity mismatch")
-			}
-		}
-		found := 0
-		err = filepath.WalkDir(filepath.Join(out, tree), func(path string, entry os.DirEntry, e error) error {
-			if e != nil {
-				return e
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return fmt.Errorf("linked source forbidden")
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			rel, e := filepath.Rel(filepath.Join(out, tree), path)
-			if e != nil {
-				return e
-			}
-			want, ok := expected[filepath.ToSlash(rel)]
-			if !ok {
-				return fmt.Errorf("unexpected source file")
-			}
-			raw, e := os.ReadFile(path)
-			if e != nil {
-				return e
-			}
-			if sha(raw) != want {
-				return fmt.Errorf("source hash mismatch")
-			}
-			found++
+		if entry.IsDir() {
 			return nil
-		})
-		if err != nil {
-			return nil, err
 		}
-		if found != len(expected) {
-			return nil, fmt.Errorf("source file missing")
+		rel, e := filepath.Rel(filepath.Join(out, "source"), path)
+		if e != nil {
+			return e
 		}
+		if !expected[filepath.ToSlash(rel)] || entry.Type()&os.ModeSymlink != 0 {
+			outcomes = append(outcomes, sourceOutcome{Status: "invalid", Reason: "unrostered_or_linked_source", Document: filepath.ToSlash(rel)})
+			return os.Remove(path)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "source", "SKILL.md"))
+	if err != nil || sha(raw) != s.SkillSHA {
+		return nil, fmt.Errorf("source discovery identity unavailable")
+	}
+	valid := make([]selectedDoc, 0, len(s.Documents))
+	seen := map[string]bool{}
+	for index, d := range s.Documents {
+		safePath := "references/" + sha([]byte(d.URL)) + ".md"
+		outcome := sourceOutcome{Index: index, Document: d.ID, Status: "unavailable"}
+		if d.ID != sha([]byte(d.URL)) || d.Path != safePath || seen[safePath] {
+			outcome.Reason = "invalid_document_identity"
+		} else {
+			for _, tree := range []string{"original", "source"} {
+				raw, e := os.ReadFile(filepath.Join(out, tree, safePath))
+				if e != nil || sha(raw) != d.WrapperSHA || len(raw) != d.WrapperBytes || d.BodyStartByte < 0 || d.BodyStartByte > len(raw) || sha(raw[d.BodyStartByte:]) != d.BodySHA {
+					outcome.Reason = "source_identity_unavailable"
+					break
+				}
+			}
+			if outcome.Reason == "" {
+				outcome.Status = "available"
+				seen[safePath] = true
+				valid = append(valid, d)
+			}
+		}
+		if outcome.Status != "available" && !seen[safePath] {
+			if e := os.Remove(filepath.Join(out, "source", safePath)); e != nil && !os.IsNotExist(e) {
+				return nil, e
+			}
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	s.Documents = valid
+	if err := writeNew(filepath.Join(out, "source-outcomes.json"), outcomes); err != nil {
+		log.Printf("WARN source outcome sink unavailable: %v", err)
 	}
 	return &s, nil
-}
-
-func decodeStrict(raw []byte, value any) error {
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(value); err != nil {
-		return err
-	}
-	if err := d.Decode(new(any)); err != io.EOF {
-		return fmt.Errorf("trailing JSON")
-	}
-	return nil
 }

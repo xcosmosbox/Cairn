@@ -29,6 +29,17 @@ def stage_roster(freeze, stage):
     raise ValueError('unknown frozen stage')
 
 
+def validate_roster(freeze, stage):
+    """Explicit diagnostics may select DEV members, without opening HOLDOUT."""
+    checked = json.loads((HERE.parent / 'split-freeze.json').read_text())
+    selected = stage_roster(freeze, stage)
+    if stage == 'holdout':
+        raise ValueError('HOLDOUT is not part of this diagnostic')
+    if not selected or not selected <= stage_roster(checked, 'dev'):
+        raise ValueError('diagnostic roster must be a nonempty existing DEV subset')
+    return selected
+
+
 def fact_units(question, bindings):
     """Deduplicate original(URL,fact) within one retrieval question's targets."""
     units, seen = [], set()
@@ -50,7 +61,8 @@ def fact_units(question, bindings):
 
 def question_projections(qa_rows, corpus, freeze, stage):
     documents = baseline.validate_corpus(corpus)
-    prepared = baseline.prepare_questions(qa_rows, documents)
+    selected = stage_roster(freeze, stage)
+    prepared = baseline.prepare_questions([row for row in qa_rows if baseline.query_id(row["query"]) in selected], documents)
     bindings = OriginalBindings(corpus)
     selected = stage_roster(freeze, stage)
     by_id = {question['qid']: question for question in prepared}
@@ -125,24 +137,37 @@ def blind_cases(questions, results, snapshots, bindings, seed=20261024):
     for row in results:
         key = row['question_id'], row['arm']
         if key in rmap:
-            raise ValueError('duplicate result pair identity')
+            row = {**row, 'status': 'error', 'failure_kind': 'duplicate_pair_identity'}
         rmap[key] = row
     for row in snapshots:
         key = row['question_id'], row['arm']
         if key in cmap:
-            raise ValueError('duplicate context pair identity')
+            row = {**row, 'retrieval_status': 'error'}
         cmap[key] = row
     expected = {(identity, arm) for identity in qmap for arm in ARMS}
-    if set(rmap) != expected or set(cmap) != expected:
-        raise ValueError('paired fixed result/context denominator incomplete')
+    from adapter import pack_context
+    for identity, arm in expected:
+        question = qmap[identity]
+        context = pack_context([])
+        cmap.setdefault((identity, arm), {'question_id': identity, 'arm': arm, 'question': question['question'],
+                                        'retrieval_status': 'error', 'context': context})
+        rmap.setdefault((identity, arm), {'question_id': identity, 'arm': arm, 'status': 'error',
+                    'question_sha256': digest(question['question']),
+                    'context_sha256': cmap[identity, arm]['context']['context_sha256'], 'failure_kind': 'missing_pair'})
     cases, mapping, pairs = [], {}, []
     pending = []
     for identity, arm in sorted(expected):
         question, result, snapshot = qmap[identity], rmap[identity, arm], cmap[identity, arm]
         context = snapshot['context']
-        validate_visible(context, bindings)
-        if result.get('context_sha256') != context['context_sha256'] or result.get('question_sha256') != digest(question['question']):
-            raise SourceBindingError('result question/context binding mismatch')
+        try:
+            validate_visible(context, bindings)
+            if result.get('context_sha256') != context['context_sha256'] or result.get('question_sha256') != digest(question['question']):
+                raise SourceBindingError('result question/context binding mismatch')
+        except (ValueError, KeyError, TypeError):
+            result = {**result, 'status': 'error'}
+            snapshot = {**snapshot, 'retrieval_status': 'error'}
+            context = {'evidence': [], 'serialized': canonical({'evidence': [], 'truncated': False})}
+
         mechanical = {'solver_ok': result.get('status') == 'ok', 'answer': result.get('answer', ''),
                       'abstain': result.get('abstain') is True, 'citations_valid': False, 'quotes_valid': False}
         if mechanical['solver_ok']:
@@ -261,34 +286,41 @@ def validate_solver_artifacts(results, snapshots, config):
         raise ValueError('solver prompt differs from actual run freeze')
     contexts = {(row['question_id'], row['arm']): row for row in snapshots}
     for result in results:
-        job = contexts[result['question_id'], result['arm']]
-        if job['question_id'] != baseline.query_id(job['question']) or result.get('question') != job['question'] or result.get('question_sha256') != digest(job['question']):
-            raise SourceBindingError('actual snapshot/result literal question identity mismatch')
-        expected = canonical(payload_for(job, frozen))
-        calls = result.get('model_calls', [])
-        if len(calls) > 1:
-            raise ValueError('one-shot case has more than one HTTP attempt')
-        for call in calls:
-            if call['request_sha256'] != digest(expected) or call['request_bytes'] != len(expected.encode('utf-8')):
-                raise SourceBindingError('retained request does not bind literal question/context payload')
-        if result.get('status') == 'ok':
-            if len(calls) != 1 or calls[0].get('status') != 'ok' or calls[0].get('finish_reason') != 'stop':
-                raise ValueError('successful answer lacks its single retained completed response')
-            message = calls[0]['assistant_message']
-            if message.get('tool_calls') not in (None, []):
-                raise ValueError('one-shot retained response unexpectedly calls tools')
-            candidate = strict_json(message['content'])
-            if canonical(candidate) != canonical(result.get('candidate')) or canonical({key: result[key] for key in ('answer', 'abstain', 'citations', 'quotes')}) != canonical({key: candidate[key] for key in ('answer', 'abstain', 'citations', 'quotes')}):
-                raise SourceBindingError('final answer/candidate differs from actual retained response')
-        elif calls and calls[0].get('status') == 'ok' and isinstance(calls[0].get('assistant_message', {}).get('content'), str):
-            try:
-                candidate = strict_json(calls[0]['assistant_message']['content'])
-            except ValueError:
-                continue
-            if 'candidate' in result and canonical(result['candidate']) != canonical(candidate):
-                raise SourceBindingError('failed candidate was edited outside retained response')
-            result['candidate'] = candidate
-    return results
+        try:
+            _validate_solver_artifact(result, contexts, frozen)
+        except (ValueError, KeyError, TypeError):
+            result.update(status='error', failure_kind='artifact_source_binding')
+
+
+def _validate_solver_artifact(result, contexts, frozen):
+    from run import payload_for, strict_json
+    job = contexts[result['question_id'], result['arm']]
+    if job['question_id'] != baseline.query_id(job['question']) or result.get('question') != job['question'] or result.get('question_sha256') != digest(job['question']):
+        raise SourceBindingError('actual snapshot/result literal question identity mismatch')
+    expected = canonical(payload_for(job, frozen))
+    calls = result.get('model_calls', [])
+    if len(calls) > 1:
+        raise ValueError('one-shot case has more than one HTTP attempt')
+    for call in calls:
+        if call['request_sha256'] != digest(expected) or call['request_bytes'] != len(expected.encode('utf-8')):
+            raise SourceBindingError('retained request does not bind literal question/context payload')
+    if result.get('status') == 'ok':
+        if len(calls) != 1 or calls[0].get('status') != 'ok' or calls[0].get('finish_reason') != 'stop':
+            raise ValueError('successful answer lacks its single retained completed response')
+        message = calls[0]['assistant_message']
+        if message.get('tool_calls') not in (None, []):
+            raise ValueError('one-shot retained response unexpectedly calls tools')
+        candidate = strict_json(message['content'])
+        if canonical(candidate) != canonical(result.get('candidate')) or canonical({key: result[key] for key in ('answer', 'abstain', 'citations', 'quotes')}) != canonical({key: candidate[key] for key in ('answer', 'abstain', 'citations', 'quotes')}):
+            raise SourceBindingError('final answer/candidate differs from actual retained response')
+    elif calls and calls[0].get('status') == 'ok' and isinstance(calls[0].get('assistant_message', {}).get('content'), str):
+        try:
+            candidate = strict_json(calls[0]['assistant_message']['content'])
+        except ValueError:
+            return
+        if 'candidate' in result and canonical(result['candidate']) != canonical(candidate):
+            raise SourceBindingError('failed candidate was edited outside retained response')
+        result['candidate'] = candidate
 
 
 def execute_judge(args):
@@ -340,8 +372,6 @@ def main():
     project.add_argument('--corpus', type=Path, required=True)
     project.add_argument('--roster', type=Path, required=True)
     project.add_argument('--stage', choices=('smoke', 'dev', 'holdout'), required=True)
-    project.add_argument('--stage-admitted', action='store_true')
-    project.add_argument('--open-holdout', action='store_true')
     project.add_argument('--out', type=Path, required=True)
     blind = sub.add_parser('blind')
     for name in ('judge-questions', 'results', 'contexts', 'corpus', 'out', 'private-map'):
@@ -358,23 +388,17 @@ def main():
         judge.add_argument('--' + name, type=Path, required=True)
     judge.add_argument('--blind-sha256', required=True)
     judge.add_argument('--private-map-sha256', required=True)
-    judge.add_argument('--allow-paid', action='store_true')
-    judge.add_argument('--max-calls', type=int, required=True)
-    judge.add_argument('--max-total-tokens', type=int, required=True)
     judge.add_argument('--max-input-chars', type=int, default=500000)
     judge.add_argument('--max-tokens', type=int, default=32768)
     judge.add_argument('--timeout', type=float, default=180)
     judge.add_argument('--concurrency', type=int, default=8)
     args = parser.parse_args()
     if args.command == 'project':
-        if not args.stage_admitted or (args.stage == 'holdout' and not args.open_holdout):
-            parser.error('separate stage opening required; no QA opened')
         if args.qa.name != 'MultiHopRAG.json' or args.corpus.name != 'corpus.json':
             raise ValueError('exact frozen original dataset filenames required')
-        if baseline.file_hash(args.roster) != baseline.file_hash(HERE.parent / 'split-freeze.json'):
-            raise ValueError('unchanged frozen roster required')
+        validate_roster(json.loads(args.roster.read_text()), args.stage)
         qa = baseline.read_source(args.qa.parent, args.qa.name)
-        corpus = baseline.read_source(args.corpus.parent, args.corpus.name)
+        corpus = json.loads(args.corpus.read_text())
         solver, questions = question_projections(qa, corpus, json.loads(args.roster.read_text()), args.stage)
         args.out.mkdir(parents=True, exist_ok=False)
         baseline.write_new(args.out / 'solver-questions.json', solver)
@@ -385,7 +409,7 @@ def main():
             'judge_questions_sha256': baseline.file_hash(args.out / 'judge-questions.json'), 'adapter_source_sha256': baseline.file_hash(Path(__file__))})
     elif args.command == 'blind':
         sys.path.insert(0, str(HERE.parents[2] / 'quality'))
-        from durable_ledger import verify_run_ledgers, read_jsonl
+        from durable_ledger import read_jsonl
         config_path = args.run_dir / 'run-config.json'
         if baseline.file_hash(config_path) != args.run_config_sha256 or baseline.file_hash(args.projection_receipt) != args.projection_receipt_sha256:
             raise ValueError('solver config/projection pin mismatch')
@@ -396,7 +420,6 @@ def main():
         if args.results.resolve() != (args.run_dir / 'results.jsonl').resolve() or args.contexts.resolve() != (args.run_dir / 'contexts.json').resolve():
             raise ValueError('judge must consume actual frozen solver run files')
         events = read_jsonl(args.run_dir / 'requests.jsonl')
-        verify_run_ledgers(args.run_dir, sum(row.get('event') == 'request' for row in events), config['job_order'])
         if config['contexts_sha256'] != args.contexts_sha256:
             raise ValueError('judge contexts differ from actual solver snapshot')
         for path, expected in ((args.judge_questions, args.judge_questions_sha256), (args.results, args.results_sha256), (args.contexts, args.contexts_sha256)):
@@ -404,7 +427,7 @@ def main():
                 raise ValueError('frozen question/result/context hash mismatch')
         if args.corpus.name != 'corpus.json':
             raise ValueError('exact frozen original corpus required')
-        corpus = baseline.read_source(args.corpus.parent, args.corpus.name)
+        corpus = json.loads(args.corpus.read_text())
         questions = json.loads(args.judge_questions.read_text())
         results = [json.loads(line) for line in args.results.read_text().splitlines()]
         snapshots = json.loads(args.contexts.read_text())['jobs']
@@ -416,8 +439,6 @@ def main():
         private['projection_receipt_sha256'] = args.projection_receipt_sha256
         baseline.write_new(args.private_map, private)
     else:
-        if not args.allow_paid:
-            parser.error('separate judge admission required; no model request made')
         extra = json.loads(args.extra_body.read_text())
         if extra != {'thinking': {'type': 'disabled'}}:
             raise ValueError('judge must use the frozen disabled-thinking body only')

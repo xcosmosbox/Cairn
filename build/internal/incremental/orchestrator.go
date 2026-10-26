@@ -4,7 +4,7 @@
 //	I-1 变化检测（file_states 粗筛 + sidecar 块级细判 → 四分类变更集）
 //	I-2 变更分派（C1/C2/C3 → 旁路；C4 → 管道 P）
 //	旁路 R/D/C3（直改 KG / 引用计数软删 / 告警还原）
-//	I-3 标注（仅 C4 文档的块外新增片段；复用全量 annotator + 双门 + 回退）
+//	I-3 标注（仅 C4 文档的块外新增片段；复用全量 annotator + 双门一次）
 //	I-4 增量对齐（FTS5 召回 + alias 判归属，R1 零 uuid prompt，R2 uuid 钉死）
 //	I-5 脏集收敛（旁路 + 管道的脏标记合并）
 //	I-6 脏 node description 重融合（human_curated 跳过，R8）
@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,11 +53,9 @@ type Options struct {
 	MaxTokens int
 	// MaxRetries 是标注/语义门的原地重试上限；≤0 取各自默认。
 	MaxRetries int
-	// MaxRollbacks 是单篇文档回退重标注上限；≤0 取默认 3。
-	MaxRollbacks int
 	// MaxNameRunes 是 Gate A 的名称长度上限；≤0 取默认。
 	MaxNameRunes int
-	// MinConfidence 是新建 entity/concept 的置信度门控（与全量一致）。
+	// MinConfidence retained for config compatibility; finite confidence is not a validity threshold.
 	MinConfidence float64
 	// RecallK 是 FTS5 召回 top-K；≤0 取默认 15。
 	RecallK int
@@ -72,9 +71,7 @@ type IncrementalOrchestrator struct {
 	client             llm.Client
 	maxTokens          int
 	maxRetries         int
-	maxRollbacks       int
 	maxNameRunes       int
-	minConf            float64
 	recallK            int
 	rules              discovery.DiscoveryRules
 	// beforeWriteback is a package-test fault-injection hook. Production
@@ -88,10 +85,6 @@ func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) 
 	if opts.Client == nil {
 		return nil, fmt.Errorf("incremental: llm client is nil")
 	}
-	maxRollbacks := opts.MaxRollbacks
-	if maxRollbacks <= 0 {
-		maxRollbacks = 3
-	}
 	recallK := opts.RecallK
 	if recallK <= 0 {
 		recallK = defaultRecallK
@@ -102,9 +95,7 @@ func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) 
 		client:             opts.Client,
 		maxTokens:          opts.MaxTokens,
 		maxRetries:         opts.MaxRetries,
-		maxRollbacks:       maxRollbacks,
 		maxNameRunes:       opts.MaxNameRunes,
-		minConf:            opts.MinConfidence,
 		recallK:            recallK,
 		rules:              opts.Rules,
 	}, nil
@@ -169,7 +160,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	preflightStores := newStores(preflightDB)
 	identity, adopting, preflightErr := o.preflightKG(ctx, preflightStores, repoPath)
 	if preflightErr == nil {
-		preflightErr = recoverOwnedWritebacks(ctx, preflightStores, repoPath, identity)
+		preflightErr = recoverIndependentWritebacks(ctx, preflightStores, repoPath, identity, rs)
 	}
 	closeErr := preflightDB.Close()
 	if preflightErr != nil {
@@ -208,6 +199,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	if err != nil {
 		return nil, err
 	}
+	changesets = excludeFailedChanges(changesets, scanned, rs)
 	if len(scanned.moves) > 0 {
 		if err := applyManagedMoves(ctx, st, repoPath, repoURL, scanned.moves, report); err != nil {
 			return report, err
@@ -218,6 +210,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		if err != nil {
 			return report, err
 		}
+		changesets = excludeFailedChanges(changesets, scanned, rs)
 		if len(scanned.moves) > 0 {
 			return report, fmt.Errorf("incremental: document moves did not converge")
 		}
@@ -268,7 +261,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	var ao *alignOutcome
 	if len(pp.C4ByDoc) > 0 {
 		log.Printf("══════════ I-3 标注 / annotate（%d 篇）══════════", len(pp.C4ByDoc))
-		ant := newAnnotator(o.client, o.maxTokens, o.maxRetries, o.maxRollbacks, o.maxNameRunes)
+		ant := newAnnotator(o.client, o.maxTokens, o.maxRetries, o.maxNameRunes)
 		c4TextByDoc := make(map[string]string, len(pp.C4ByDoc))
 		for _, cs := range changed {
 			if len(cs.C4) > 0 {
@@ -292,15 +285,15 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 				return report, fmt.Errorf("incremental: align: %w", err)
 			}
 			logAlignStats(ao)
-			// 置信度门控：新建 node 低于 MinConfidence 的不落库（与全量一致）；
-			// 同步清理其 sourceRows（问题 6：绝不产生孤儿 node_sources）。
-			o.gateByConfidence(ao, rs)
+			// 只拒绝无效数值，并移除孤儿来源行。
+			filterNonfinitePending(ao, rs)
+			if err := omitBlockedPending(ctx, st, ao, rs); err != nil {
+				return report, err
+			}
 		}
 
-		// ══════════ C4 per-doc 提交闭包（问题 2，真正 all-or-nothing）══════════
-		// 先判定并裁剪，再生成任何 dirty/report 计数。某文档任一单元未接受时，
-		// 该文档贡献的全部 pending/sourceRows 都不得进入 I-6/I-8；若一个 pending
-		// 跨文档融合，失败会沿该 pending 传播到所有参与文档，避免半提交共享节点。
+		// ══════════ C4 有效单元提交与原文保留 ══════════
+		// 保留已验证单元；未吸收部分原文与 baseline 留在本篇。
 		resolved, unresolved := resolveAndPruneC4Docs(pp, annotated, ao)
 		report.UnresolvedDocs = unresolved
 		if ao != nil {
@@ -354,9 +347,31 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		rr.relations, rr.keptCross = rf.recomputeRelations(ctx, rs.dirty, ao, rr.descriptions, rs)
 		report.SubdomainsReflow = len(rs.dirty.Subdomains)
 	}
-	if err := requirePendingRelationResults(ao, rr); err != nil {
+	if err := omitFailedRelationNodes(ao, rr, rs, c4ProseByDoc); err != nil {
 		return report, fmt.Errorf("incremental: reflow: %w", err)
 	}
+	// 计数只包含实际进入 I-8 的节点，并显式列出后来失败的 C4 文档。
+	// Report committed candidates after local I-7 omissions, not the preflight plan.
+	report.NodesCreated, report.NodesMerged = 0, 0
+	if ao != nil {
+		for _, pn := range ao.pending {
+			if pn.IsNew {
+				report.NodesCreated++
+			} else {
+				report.NodesMerged++
+			}
+		}
+	}
+	unresolved := map[string]bool{}
+	for _, doc := range report.UnresolvedDocs {
+		unresolved[doc.Path] = true
+	}
+	for path := range rs.failedDocsSnapshot() {
+		if _, c4 := pp.C4ByDoc[path]; c4 && !unresolved[path] {
+			report.UnresolvedDocs = append(report.UnresolvedDocs, UnresolvedDoc{Path: path, Reason: "dependent relation result unavailable; source and baseline retained"})
+		}
+	}
+	sort.Slice(report.UnresolvedDocs, func(i, j int) bool { return report.UnresolvedDocs[i].Path < report.UnresolvedDocs[j].Path })
 
 	// ══════════ I-8 增量入库（局部 upsert，非全量重建）══════════
 	// C2 survivor 只改变来源引用，dirty 可为空，但仍必须进入 I-8 执行
@@ -379,6 +394,9 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		}
 		log.Printf("══════════ I-9 增量回写 / rewrite（受影响文档 %d）══════════", len(rs.affectedDocs))
 		wrpt, werr := applyIncrementalWriteback(ctx, st, rs, ao, bp.DeletedDocs, repoPath)
+		if werr != nil && wrpt == nil {
+			return report, werr
+		}
 		if werr != nil {
 			// 部分失败：不中断（成功文档照常推进 baseline），但向上报告（问题 5：
 			// 不得以 warning 掩盖失败）。
@@ -395,13 +413,12 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	}
 
 	// ══════════ file_states baseline + 累计改动量（kg_manifest）══════════
-	// Any I-9 error may be a fatal read/build failure that did not reach the
-	// per-file failedDocs bookkeeping. Do not advance *any* baseline in that
-	// run: successful files will be rechecked idempotently next round, while a
-	// failed file cannot be swallowed by a newly recorded hash.
-	if writebackErr != nil {
-		log.Printf("[incremental] ⚠ I-9 有错误，跳过本轮全部 file_states baseline 推进（下轮重试）")
-	} else if err := o.syncFileStates(ctx, st, repoURL, scanned, bp.DeletedDocs, repoPath, rs); err != nil {
+	// 已知失败只阻止其文档和共享节点依赖；独立成功文档照常推进。
+	// failedDocs protects failed/dependent baselines without stopping unrelated files.
+	if err := expandFailedSourceDocs(ctx, st, rs); err != nil {
+		return report, err
+	}
+	if err := o.syncFileStates(ctx, st, repoURL, scanned, bp.DeletedDocs, repoPath, rs); err != nil {
 		return report, err
 	}
 	recordManifestStats(ctx, st, report.DocsChanged, scanned.sidecarDocs, rs)
@@ -423,6 +440,9 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 			break
 		}
 		log.Printf("[incremental] ⚠ %s", w)
+	}
+	if writebackErr == nil && len(rs.failedDocsSnapshot()) > 0 {
+		writebackErr = fmt.Errorf("incremental: %d failed/dependent documents retained their baselines", len(rs.failedDocsSnapshot()))
 	}
 	return report, writebackErr
 }
@@ -1281,137 +1301,40 @@ func canonicalPrimaryKey(relPath string) string {
 	return strings.TrimSuffix(clean, ".kg.yaml")
 }
 
-// resolveAndPruneC4Docs 建立 C4 文档提交闭包并原地裁剪 ao：任何文档只要有一个
-// 单元未接受，其全部 pending/sourceRows 都不提交；跨文档 pending 把失败传播到
-// 所有参与文档，直到固定点。返回后 ao 只包含可原子提交的 resolved 文档贡献。
+// resolveAndPruneC4Docs 保留有效单元；未吸收单元只保留本篇原文与 baseline。
+// Valid sibling nodes survive missing units; unresolved prose must not be erased.
 func resolveAndPruneC4Docs(pp *PipelinePlan, annotated *annotateOutput, ao *alignOutcome) (map[string]bool, []UnresolvedDoc) {
-	resolved := make(map[string]bool)
-	invalid := make(map[string]bool)
-	reasons := make(map[string]string)
-
-	// 每篇文档的单元，以及每个单元涉及的全部来源文档（04 id 可跨文档复用）。
-	unitsByDoc := make(map[string][]string)
-	docsByUnit := make(map[string]map[string]bool)
-	for _, d := range annotated.Docs {
-		for _, it := range d.Items {
-			if it.ID != "" {
-				unitsByDoc[d.FilePath] = append(unitsByDoc[d.FilePath], it.ID)
-				if docsByUnit[it.ID] == nil {
-					docsByUnit[it.ID] = make(map[string]bool)
-				}
-				docsByUnit[it.ID][d.FilePath] = true
+	resolved := map[string]bool{}
+	reasons := map[string]string{}
+	for _, skip := range annotated.Skipped {
+		reasons[skip.Path] = skip.Reason
+	}
+	accepted := map[string]bool{}
+	if ao != nil {
+		rows := ao.sourceRows[:0]
+		for _, row := range ao.sourceRows {
+			if ao.pending[row.NodeUUID] != nil {
+				accepted[row.MemberID+"\x00"+row.FilePath] = true
+				rows = append(rows, row)
 			}
 		}
+		ao.sourceRows = rows
 	}
-	for _, s := range annotated.Skipped {
-		invalid[s.Path] = true
-		reasons[s.Path] = s.Reason
+	for _, doc := range annotated.Docs {
+		for _, item := range doc.Items {
+			if !accepted[item.ID+"\x00"+doc.FilePath] {
+				reasons[doc.FilePath] = "部分标注单元未吸收；有效单元已保留，原文保留"
+			}
+		}
 	}
 	paths := make([]string, 0, len(pp.C4ByDoc))
-	for p := range pp.C4ByDoc {
-		paths = append(paths, p)
+	for path := range pp.C4ByDoc {
+		paths = append(paths, path)
 	}
-	sortStrings(paths)
-	for _, path := range paths {
-		if ao != nil && ao.llFailed {
-			invalid[path] = true
-			reasons[path] = "I-4 增量对齐 LLM 失败（降级，未吸收任何单元）"
-		} else if !invalid[path] && len(unitsByDoc[path]) == 0 {
-			invalid[path] = true
-			reasons[path] = "标注零产出（新增文本未含可吸收的 entity/concept 单元）"
-		}
-	}
-
-	droppedPending := make(map[string]bool)
-	for changed := true; changed; {
-		changed = false
-		accepted := make(map[string]bool)
-		persistableSource := make(map[string]bool) // member\x00file
-		if ao != nil {
-			for uuid, pn := range ao.pending {
-				if droppedPending[uuid] {
-					continue
-				}
-				for _, member := range pn.NewMembers {
-					accepted[member] = true
-				}
-			}
-			for _, row := range ao.sourceRows {
-				if !droppedPending[row.NodeUUID] {
-					persistableSource[row.MemberID+"\x00"+row.FilePath] = true
-				}
-			}
-		}
-		// 未被当前可提交 pending 覆盖的任一单元使整篇文档失败。
-		for _, path := range paths {
-			if invalid[path] {
-				continue
-			}
-			var missing []string
-			for _, id := range unitsByDoc[path] {
-				if !accepted[id] || !persistableSource[id+"\x00"+path] {
-					missing = append(missing, id)
-				}
-			}
-			if len(missing) > 0 {
-				invalid[path] = true
-				reasons[path] = fmt.Sprintf("%d/%d 个单元未被吸收（低置信拒绝/未物化）: %s",
-					len(missing), len(unitsByDoc[path]), strings.Join(missing, "、"))
-				changed = true
-			}
-		}
-		// 一个 pending 只要涉及失败文档，就整体丢弃，并把同 pending 的其它文档
-		// 也纳入失败闭包；下一轮会作为整体重新对齐，绝不半提交共享融合。
-		if ao != nil {
-			for uuid, pn := range ao.pending {
-				if droppedPending[uuid] {
-					continue
-				}
-				pendingDocs := make(map[string]bool)
-				for _, member := range pn.NewMembers {
-					for path := range docsByUnit[member] {
-						pendingDocs[path] = true
-					}
-				}
-				bad := false
-				for path := range pendingDocs {
-					bad = bad || invalid[path]
-				}
-				if !bad {
-					continue
-				}
-				droppedPending[uuid] = true
-				changed = true
-				for path := range pendingDocs {
-					if !invalid[path] {
-						invalid[path] = true
-						reasons[path] = "与未解决文档共享同一融合提交组（闭包回滚，下轮整体重试）"
-					}
-				}
-			}
-		}
-	}
-
-	if ao != nil {
-		for uuid := range droppedPending {
-			delete(ao.pending, uuid)
-		}
-		filteredRows := ao.sourceRows[:0]
-		for _, row := range ao.sourceRows {
-			if ao.pending[row.NodeUUID] != nil && !invalid[row.FilePath] {
-				filteredRows = append(filteredRows, row)
-			}
-		}
-		ao.sourceRows = filteredRows
-	}
-
+	sort.Strings(paths)
 	var unresolved []UnresolvedDoc
 	for _, path := range paths {
-		if invalid[path] {
-			reason := reasons[path]
-			if reason == "" {
-				reason = "C4 文档提交闭包未满足"
-			}
+		if reason := reasons[path]; reason != "" {
 			unresolved = append(unresolved, UnresolvedDoc{Path: path, Reason: reason})
 		} else {
 			resolved[path] = true
@@ -1420,32 +1343,67 @@ func resolveAndPruneC4Docs(pp *PipelinePlan, annotated *annotateOutput, ao *alig
 	return resolved, unresolved
 }
 
-// gateByConfidence 置信度门控：新建 node 低于 MinConfidence 的不落库（与全量 ingest
-// 的门控语义一致）。问题 6：必须同步删除其 sourceRows（绝不产生孤儿 node_sources）；
-// 被移除单元的来源文档由 resolveC4Docs 按「未被接受」标为未解决（散文保留）。
-// gateByConfidence filters new nodes below MinConfidence and removes their
-// source rows too (never orphan node_sources).
-func (o *IncrementalOrchestrator) gateByConfidence(ao *alignOutcome, rs *runState) {
-	rejected := make(map[string]bool)
+// omitFailedRelationNodes 缺失关系响应不是空替换；只延迟该子域待提交节点。
+// Missing relation output retains only its dependent pending source baselines.
+func omitFailedRelationNodes(ao *alignOutcome, rr *reflowResult, rs *runState, prose map[string]string) error {
+	if ao == nil {
+		return nil
+	}
 	for uuid, pn := range ao.pending {
-		if pn.IsNew && pn.Confidence < o.minConf {
-			rs.warnf(fmt.Sprintf("新建 node %s（%s）置信度 %.2f < 门控 %.2f，不落库",
-				uuid, pn.Name, pn.Confidence, o.minConf))
-			delete(ao.pending, uuid)
-			rejected[uuid] = true
+		if pn == nil {
+			return fmt.Errorf("nil pending node %s", uuid)
+		}
+		key := SubdomainKey{Domain: pn.Domain, Subdomain: pn.Subdomain}
+		okRels, okCross := false, false
+		if rr != nil {
+			_, okRels = rr.relations[key]
+			_, okCross = rr.keptCross[key]
+		}
+		if okRels && okCross {
+			continue
+		}
+		for _, row := range ao.sourceRows {
+			if row.NodeUUID == uuid {
+				rs.failDoc(row.FilePath)
+				rs.c4Preserve[row.FilePath] = prose[row.FilePath]
+			}
+		}
+		delete(ao.pending, uuid)
+		delete(rs.dirty.NodesFused, uuid)
+		if rr != nil {
+			delete(rr.descriptions, uuid)
+		}
+		rs.warnf(fmt.Sprintf("I-7 %s has no authoritative relation result; omitted pending node %s", key, uuid))
+	}
+	rows := ao.sourceRows[:0]
+	for _, row := range ao.sourceRows {
+		if ao.pending[row.NodeUUID] != nil {
+			rows = append(rows, row)
 		}
 	}
-	if len(rejected) == 0 {
+	ao.sourceRows = rows
+	return nil
+}
+
+// filterNonfinitePending 拒绝无效数值；置信度不作为事实真假的阈值。
+// Keep finite confidence values without an uncalibrated materialization threshold.
+func filterNonfinitePending(ao *alignOutcome, rs *runState) {
+	if ao == nil {
 		return
 	}
-	// 同步清理被拒绝 node 的 sourceRows（问题 6）。
-	filtered := ao.sourceRows[:0]
-	for _, row := range ao.sourceRows {
-		if !rejected[row.NodeUUID] {
-			filtered = append(filtered, row)
+	for uuid, pn := range ao.pending {
+		if pn == nil || math.IsNaN(pn.Confidence) || math.IsInf(pn.Confidence, 0) {
+			rs.warnf(fmt.Sprintf("invalid pending node/confidence: %s", uuid))
+			delete(ao.pending, uuid)
 		}
 	}
-	ao.sourceRows = filtered
+	rows := ao.sourceRows[:0]
+	for _, row := range ao.sourceRows {
+		if ao.pending[row.NodeUUID] != nil {
+			rows = append(rows, row)
+		}
+	}
+	ao.sourceRows = rows
 }
 
 // syncFileStates 同步 file_states baseline：对本轮全部候选文档，文件存在 →

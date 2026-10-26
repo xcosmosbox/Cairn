@@ -97,12 +97,10 @@ type PipelineRunner interface {
 
 // Runner 是真实 PipelineRunner 实现，调用现有 pipeline/incremental/rebalance 编排器。
 type Runner struct {
-	client       llm.Client
-	maxTokens    int
-	maxRetries   int
-	maxRollbacks int
-	recallK      int
-	stageTimeout time.Duration // 从 config.llm.timeout 传入，统一用于每个 pipeline 阶段
+	client     llm.Client
+	maxTokens  int
+	maxRetries int
+	recallK    int
 }
 
 // NewRunner 从 dkconfig.LLMConfig 构造真实 Runner。
@@ -121,24 +119,20 @@ func NewRunner(cfg dkconfig.LLMConfig) (*Runner, error) {
 		return nil, fmt.Errorf("runner: 创建 LLM client: %w", err)
 	}
 	return &Runner{
-		client:       client,
-		maxTokens:    cfg.MaxTokens,
-		maxRetries:   cfg.MaxRetries,
-		maxRollbacks: 3,
-		recallK:      5,
-		stageTimeout: time.Duration(cfg.Timeout),
+		client:     client,
+		maxTokens:  cfg.MaxTokens,
+		maxRetries: cfg.MaxRetries,
+		recallK:    5,
 	}, nil
 }
 
 // NewRunnerWithClient 用给定 LLM client 构造 Runner（测试/自定义用）。
 func NewRunnerWithClient(client llm.Client, cfg dkconfig.LLMConfig) *Runner {
 	return &Runner{
-		client:       client,
-		maxTokens:    cfg.MaxTokens,
-		maxRetries:   cfg.MaxRetries,
-		maxRollbacks: 3,
-		recallK:      5,
-		stageTimeout: time.Duration(cfg.Timeout),
+		client:     client,
+		maxTokens:  cfg.MaxTokens,
+		maxRetries: cfg.MaxRetries,
+		recallK:    5,
 	}
 }
 
@@ -147,10 +141,8 @@ func (r *Runner) Full(ctx context.Context, req FullRequest) (BuildResult, error)
 		Client:             r.client,
 		MaxTokens:          r.maxTokens,
 		MaxRetries:         r.maxRetries,
-		MaxRollbacks:       r.maxRollbacks,
 		MinConfidence:      req.MinConfidence,
 		RepositoryIdentity: req.RepositoryIdentity,
-		StageTimeout:       r.stageTimeout,
 	})
 	if err != nil {
 		return BuildResult{}, err
@@ -167,7 +159,6 @@ func (r *Runner) Incremental(ctx context.Context, req IncrementalRequest) (Build
 		Client:             r.client,
 		MaxTokens:          r.maxTokens,
 		MaxRetries:         r.maxRetries,
-		MaxRollbacks:       r.maxRollbacks,
 		MinConfidence:      req.MinConfidence,
 		RepositoryIdentity: req.RepositoryIdentity,
 		RecallK:            r.recallK,

@@ -89,6 +89,10 @@ func applyIncrementalWriteback(ctx context.Context, st *stores, rs *runState,
 
 	// —— 2. 整篇删除的文档：删 sidecar（md 人已删），不重写 ——
 	for _, p := range deletedDocs {
+		if rs.failedDocsSnapshot()[p] {
+			delete(affected, p)
+			continue
+		}
 		// A deleted md must never enter the ordinary rewrite loop, even when
 		// sidecar cleanup fails. Keeping it in affected would resurrect the
 		// human-deleted document from KG during the same failed run.
@@ -115,9 +119,14 @@ func applyIncrementalWriteback(ctx context.Context, st *stores, rs *runState,
 	}
 	sort.Strings(paths)
 	for _, docPath := range paths {
+		if rs.failedDocsSnapshot()[docPath] {
+			continue
+		}
 		updates, err := buildDocNodeUpdates(ctx, st, docPath, names)
 		if err != nil {
-			return nil, fmt.Errorf("I-9 build views for %s: %w", docPath, err)
+			rs.failDoc(docPath)
+			rs.warnf(fmt.Sprintf("I-9 build views for %s: %v", docPath, err))
+			continue
 		}
 		rendered := writeback.RenderDoc(updates)
 		// 问题 2：C4 未解决文档若有其它变更需重写，未吸收散文原样追加保留
@@ -238,6 +247,15 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 	}
 
 	for uuid := range candidates {
+		blocked := false
+		for path, id := range primaryUUIDByPath {
+			if id == uuid && rs.failedDocsSnapshot()[path] {
+				blocked = true
+			}
+		}
+		if blocked {
+			continue
+		}
 		if del, ok := rs.deleted[uuid]; ok {
 			// 真删：shared node 的 primary 删除（镜像文档已在文档通道重写）。
 			if del.WasShared {

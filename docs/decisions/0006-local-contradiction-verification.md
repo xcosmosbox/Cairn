@@ -32,13 +32,13 @@ requires same subject, attribute, time, conditions and incompatible explicit cla
 
 The full-build candidate selector now includes every cross candidate and every new
 local `contradicts` candidate, with cross contradictions processed once. It uses the
-same complete, frozen endpoint-member original neighborhood, byte budget, UUID
-masking, exact quote ownership/offset checks, five typed contradiction predicates,
+same complete, frozen endpoint-member original neighborhood, request-local aliases,
+exact quote ownership/offset checks, five typed contradiction predicates,
 cancellation handling and fail-closed dispositions. It neither truncates sources nor
 substitutes descriptions, adds new relation kinds, relaxes gates or relabels a reject.
 The extra prompt sentence makes local scope explicit while retaining the existing
 stage-identification prefix. Extra local candidates incur additional build-side
-verifier calls; actual wire token/output admission still applies. No model call or
+verifier calls; actual request overflow fails that candidate locally. No model call or
 capacity/quality improvement is established by the offline implementation/tests.
 
 ## Evidence format and compatibility
@@ -57,8 +57,7 @@ cross-only v1, labeled with the local-verification gap. They remain byte-for-byt
 unchanged and cannot earn local-verification credit. Unknown policies fail closed.
 Existing frozen profiles, rosters, offline v1/v2 runtime receipts and #63 packets
 remain historical evidence; their older `v2` receipt filename is not this report's
-validation-policy version. A future admitted run requires a new exact source/runtime
-freeze that records its actual method. There is no storage-schema, Bundle, query-side,
+validation-policy version. A future run records its actual source/runtime and method. There is no storage-schema, Bundle, query-side,
 public CLI, retry-cap, concurrency, dependency or existing input/profile change.
 
 ## Scope and limitations
@@ -83,14 +82,13 @@ establish a general incremental preservation guarantee.
 
 Offline fixtures exercise an accepted same-context contradiction; compatible-dimension
 and changed-condition rejections; incomplete predicates, invalid quotes/member ownership,
-missing originals, budget overflow and cancellation; other local kinds unchanged and
+missing originals, actual request overflow and cancellation; other local kinds unchanged and
 cross contradictions once. Production full-build integration checks actual SQLite
 persistence/absence and frozen-source reuse after disk changes. Adversarial audit
 fixtures cover missing pre/decision/post/final/DB evidence, scope/kind lies, rejected
 identity retention and immutable historical interpretation. Semantic decisions remain
-model-judged; mechanical tests prove enforcement, not model accuracy. Full race tests,
-`make verify`, exact-head CI and separate engineering/security and scientific reviews
-are required before acceptance.
+model-judged; mechanical tests prove enforcement, not model accuracy. Run affected checks/builds and preserve normal CI. #105 removes universal local
+fullrace/verify, archive/counter and repeated live-admission prerequisites.
 
 Rollback reverts this bounded code change and returns new builds to cross-only
 verification; preserve all already emitted reports with their original policies.

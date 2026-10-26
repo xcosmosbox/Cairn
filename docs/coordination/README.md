@@ -24,18 +24,18 @@ The maintainer's [execution policy](EXECUTION_POLICY.md) records the Alpha-to-st
 goal, model defaults and reuse-first evaluation approach. It supplements this entry;
 live task assignment and acceptance still come from Issue/PR records.
 
-## Initial parallel work
+## Current execution
 
-- #10 environment restoration: documentation/report only; defects become separate Issues.
-- #11 archive audit: evidence index and audit report.
-- #12 runner repair: exclusive write scope over evaluation solver/judge/ledger code.
-- #14 retrieval research: analysis/ADR, read-only inspection of production code.
-- #16 synthetic public example: new example assets; coordinate RESTORE.md sections with #10.
-- #17 performance baseline: new benchmark harness; no optimization in this task.
+[#105](https://github.com/xcosmosbox/Cairn/issues/105) owns the accepted simplification
+and first fixed small real paired DEV diagnostic. Read its latest claims and
+[decision table](reports/2026-10-26-simplification-plan.md) before editing.
+#11 archive audit and #13 old-control review are optional backlog; #99 old indexed
+preflight and #103 replay optimization no longer block ordinary experiments. Historical
+receipts remain unchanged. No label implies a running job or a completed result.
 
-#13 reviews #12 after its implementation is ready; #15 needs a dedicated App environment;
-#18 plans release gates. Check live Issues before selecting work: this list describes
-boundaries and does not assert that any session is running.
+Use minimal affected checks and actual raw outcomes. Normal CI remains; small experiments
+need no full609/recovery/archive admission or repeated technical GO. Release publication
+has its own evidence and decision. Current snapshots belong in CURRENT_STATE.md.
 
 ## Board automation and limitations
 

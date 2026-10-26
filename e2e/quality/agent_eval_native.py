@@ -28,9 +28,9 @@ from typing import Any
 from retrieval import RetrievalEngine, json_text, sha256_file
 
 
-from agent_eval import (EvalConfig, CallBudget, CallBudgetExceeded,
+from agent_eval import (EvalConfig, AttemptCounter,
                         ModelCallError, DeepSeekClient, load_solver_questions)
-from durable_ledger import JSONLedger, LedgerIntegrityError, verify_run_ledgers
+from durable_ledger import JSONLedger, LedgerIntegrityError
 from safe_http import urlopen, is_redirect_status
 
 
@@ -147,85 +147,40 @@ def safe_assistant_message(message: Any) -> dict:
     return result
 
 
-class DurabilityAbort(ModelCallError):
-    """A run-level persistence failure, never a provider/protocol retry."""
-
-
 class AuthorizationAbort(ModelCallError):
-    """鉴权失败停止整个运行的新准入；already admitted calls still drain."""
+    """Only requests sharing this client's endpoint and credential are unavailable."""
 
 
-class RunDurability:
-    """Serialize request admission with result appends and latch any failure.
-
-    Already admitted HTTP calls remain in flight and must persist their response
-    even after the latch trips. Queued jobs and retries check both ledgers before
-    reserving another HTTP attempt. This does not serialize provider response
-    waits, alter solver messages, or close the request ledger prematurely.
-    """
-    def __init__(self, result_ledger: JSONLedger | None = None):
+class RunRecorder:
+    def __init__(self, result_ledger=None):
         self.result_ledger = result_ledger
         self.lock = threading.Lock()
-        self.failure = None
         self.authorization_failure = None
+        self.results = []
 
     def stop_authorization(self, status):
         with self.lock:
-            if self.authorization_failure is None:
-                self.authorization_failure = f"provider HTTP {status}"
+            self.authorization_failure = f"provider HTTP {status}"
 
-    def _fail_locked(self, error):
-        if self.failure is None:
-            self.failure = str(error)
-
-    def fail(self, error):
-        with self.lock:
-            self._fail_locked(error)
-
-    def admit(self, ledger: JSONLedger, budget: CallBudget, record: dict, attempts: list[dict]) -> dict:
+    def record_request(self, ledger, counter, record, attempts):
         with self.lock:
             if self.authorization_failure is not None:
-                raise AuthorizationAbort("run stopped after authorization failure: " + self.authorization_failure, attempts)
-            if self.failure is not None:
-                raise DurabilityAbort("run stopped after ledger failure: " + self.failure, attempts)
-            try:
-                if self.result_ledger is not None:
-                    self.result_ledger.verify()
-                ledger.verify()
-            except (LedgerIntegrityError, OSError) as exc:
-                self._fail_locked(exc)
-                raise DurabilityAbort(str(exc), attempts) from exc
-            try:
-                call_id = budget.reserve()
-            except CallBudgetExceeded as exc:
-                exc.attempts = attempts
-                raise
-            record = {**record, "http_attempt": call_id}
-            try:
-                ledger.append({**record, "event": "request", "status": "in_flight"})
-            except (LedgerIntegrityError, OSError) as exc:
-                self._fail_locked(exc)
-                raise DurabilityAbort(str(exc), attempts) from exc
-            # The durable request event is the admission boundary. Calls
-            # admitted before a concurrent failure are drained, not discarded.
+                raise AuthorizationAbort("endpoint credential unavailable: " + self.authorization_failure, attempts)
+            record = {**record, "http_attempt": counter.next_id()}
+            ledger.append({**record, "event": "request", "status": "in_flight"})
             return record
 
-    def append_result(self, result: dict):
-        with self.lock:
-            try:
-                # JSONLedger emits an independent failure receipt for every
-                # failed append, including subsequent results after failure.
-                self.result_ledger.append(result)
-            except (LedgerIntegrityError, OSError) as exc:
-                self._fail_locked(exc)
-                raise
+    def append_result(self, result):
+        self.results.append(result)
+        if self.result_ledger is not None:
+            self.result_ledger.append(result)
 
 
 class NativeDeepSeekClient(DeepSeekClient):
-    def __init__(self, config: EvalConfig, api_key: str, budget: CallBudget, ledger: JSONLedger,
+    def __init__(self, config: EvalConfig, api_key: str, budget: AttemptCounter, ledger: JSONLedger,
                  result_ledger: JSONLedger | None = None):
         super().__init__(config, api_key, budget, ledger)
-        self.durability = RunDurability(result_ledger)
+        self.recorder = RunRecorder(result_ledger)
         if config.thinking != "disabled":
             raise ValueError("native-v3 evaluation requires thinking disabled")
 
@@ -257,11 +212,11 @@ class NativeDeepSeekClient(DeepSeekClient):
             record = {**context, "attempt_for_turn": attempt + 1,
                       "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                       "request_sha256": hashlib.sha256(body).hexdigest(), "request_bytes": len(body),
-                      "request_max_tokens": config.max_tokens, "model": config.model, "thinking": "disabled",
+                      "request_body": payload, "request_max_tokens": config.max_tokens, "model": config.model, "thinking": "disabled",
                       "tool_choice": tool_choice, "protocol": protocol}
             if attempts:
                 record["retry_of_http_attempt"] = attempts[-1]["http_attempt"]
-            record = self.durability.admit(self.ledger, self.budget, record, attempts)
+            record = self.recorder.record_request(self.ledger, self.counter, record, attempts)
             started = time.monotonic()
             message = None
             try:
@@ -272,6 +227,7 @@ class NativeDeepSeekClient(DeepSeekClient):
                     raw = response.read()
                 record["response_sha256"] = hashlib.sha256(raw).hexdigest()
                 record["response_bytes"] = len(raw)
+                record["response_body"] = raw.decode("utf-8", errors="replace").replace(self._api_key, "[REDACTED]")
                 response_json = json.loads(raw)
                 usage = response_json.get("usage")
                 record["usage"] = usage if isinstance(usage, dict) else None
@@ -293,7 +249,7 @@ class NativeDeepSeekClient(DeepSeekClient):
                 if exc.code in (401, 403) or is_redirect_status(exc.code):
                     # 先封住跨 worker 准入，再读取/持久化响应；无需等待调度器。
                     # Latch before response handling so another worker cannot retry meanwhile.
-                    self.durability.stop_authorization(exc.code)
+                    self.recorder.stop_authorization(exc.code)
                 if is_redirect_status(exc.code):
                     record["redirect_refused"] = True
                 try:
@@ -302,6 +258,7 @@ class NativeDeepSeekClient(DeepSeekClient):
                     # HTTP 状态已经收到，错误体读取失败也必须留下响应事件。
                     # An unreadable error body does not erase the observed HTTP status.
                     raw = b""
+                record["response_body"] = raw.decode("utf-8", errors="replace").replace(self._api_key, "[REDACTED]")
                 record.update(http_status=exc.code, response_sha256=hashlib.sha256(raw).hexdigest(),
                               response_bytes=len(raw), status="error", error=f"provider HTTP {exc.code}",
                               usage=None, usage_unknown=True)
@@ -311,14 +268,7 @@ class NativeDeepSeekClient(DeepSeekClient):
             record["latency_ms"] = round((time.monotonic() - started) * 1000, 3)
             record["event"] = "response"
             attempts.append(record)
-            try:
-                self.ledger.append(record)
-            except (LedgerIntegrityError, OSError) as exc:
-                # Preserve received usage in the result even when the primary
-                # ledger fails. The ledger also emits an explicit recovery
-                # receipt and blocks later requests; no retry hides the loss.
-                self.durability.fail(exc)
-                raise DurabilityAbort(str(exc), attempts) from exc
+            self.ledger.append(record)
             if record["status"] == "ok":
                 return message, attempts
             if record.get("http_status") in (401, 403) or is_redirect_status(record.get("http_status")):
@@ -402,10 +352,10 @@ def evaluate_question(question_id: str, question: str, arm: str, engine: Retriev
                 force_submit = True
         else:
             raise ValueError("model-turn budget exhausted without a final answer")
-    except (DurabilityAbort, AuthorizationAbort) as exc:
+    except AuthorizationAbort as exc:
         calls.extend(exc.attempts)
         result["error"] = str(exc)
-        result["failure_kind"] = "authorization_abort" if isinstance(exc, AuthorizationAbort) else "ledger_durability_abort"
+        result["failure_kind"] = "endpoint_credential_unavailable"
         result["execution_state"] = "partial" if calls else "not_started"
         result["network_attempted"] = bool(calls)
         # No attempt is reserved for jobs blocked by the run latch. A failed
@@ -416,10 +366,6 @@ def evaluate_question(question_id: str, question: str, arm: str, engine: Retriev
         calls.extend(exc.attempts)
         result["error"] = str(exc)
         result["failure_kind"] = "provider_error"
-    except CallBudgetExceeded as exc:
-        calls.extend(getattr(exc, "attempts", []))
-        result["error"] = str(exc)
-        result["failure_kind"] = "global_call_budget"
     except (ValueError, RuntimeError, OSError) as exc:
         result["error"] = str(exc)[:1500]
         result["failure_kind"] = "protocol_or_retrieval_error"
@@ -443,7 +389,6 @@ def main():
     parser.add_argument("--arms", nargs="+", choices=("raw", "fts", "graph"), default=["raw", "fts", "graph"])
     parser.add_argument("--limit-questions", type=int)
     parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--max-http-attempts", type=int, default=700)
     parser.add_argument("--seed", type=int, default=20261004)
     parser.add_argument("--model", default="deepseek-flash")
     parser.add_argument("--thinking", choices=("disabled",), default="disabled")
@@ -452,13 +397,10 @@ def main():
     parser.add_argument("--max-retries", type=int, default=1)
     parser.add_argument("--per-search-chars", type=int, default=10000)
     parser.add_argument("--total-context-chars", type=int, default=20000)
-    parser.add_argument("--allow-paid", action="store_true", help="required to execute real solver requests")
     args = parser.parse_args()
-    if not args.allow_paid:
-        parser.error("--allow-paid is required; no provider requests made")
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
         parser.error("output directory must be new/empty")
-    if args.workers < 1 or not 0 <= args.max_retries <= 1 or args.max_http_attempts < 1:
+    if args.workers < 1 or not 0 <= args.max_retries <= 1:
         parser.error("invalid concurrency, retry or HTTP budget")
     questions = load_solver_questions(args.dataset)
     if args.limit_questions is not None:
@@ -474,8 +416,8 @@ def main():
                 "tools_sha256": hashlib.sha256(json_text(TOOLS).encode()).hexdigest(),
                 "tool_policy": "first search forced; ordered search batches; each call gets a tool response and independently consumes unchanged budgets; submit_answer forced on exhaustion or fourth round; mixed/multiple final calls fail",
                 "config": dataclasses.asdict(config), "workers": args.workers,
-                "ledger_instrumentation": "short-open append with inode/size guards and fsync; shared fail-stop admission verifies result/request ledgers before each HTTP reservation; drain all in-flight responses and collect every result with independent failure receipts; solver protocol unchanged",
-                "max_http_attempts": args.max_http_attempts, "seed": args.seed,
+                "ledger_instrumentation": "raw JSONL requests/outcomes and in-memory fallback; endpoint credential errors affect this client only",
+                "seed": args.seed,
                 "dataset_sha256": sha256_file(args.dataset), "kg_sha256": kg_before,
                 "raw_index_sha256": sha256_file(args.raw_db), "adapter_sha256": sha256_file(args.adapter),
                 "system_prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),
@@ -488,7 +430,7 @@ def main():
     (args.output_dir / "run-config.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n")
     request_ledger = JSONLedger(args.output_dir / "requests.jsonl")
     result_ledger = JSONLedger(args.output_dir / "results.jsonl")
-    budget = CallBudget(args.max_http_attempts)
+    budget = AttemptCounter()
     client = NativeDeepSeekClient(config, os.environ.get("CAIRN_LLM_API_KEY", ""), budget, request_ledger, result_ledger)
     engines = {arm: RetrievalEngine(arm, args.kg_db, args.raw_db, args.adapter, config.top_k) for arm in args.arms}
     results = []
@@ -500,7 +442,7 @@ def main():
                 result = future.result()
                 results.append(result)
                 try:
-                    client.durability.append_result(result)
+                    client.recorder.append_result(result)
                 except (LedgerIntegrityError, OSError) as exc:
                     # Do not unwind the executor on the first failed append:
                     # keep collecting admitted responses and explicit zero-HTTP
@@ -509,28 +451,13 @@ def main():
                     persistence_errors.append(str(exc))
                 print(json_text({"completed": len(results), "total": len(jobs), "question_id": result["question_id"],
                                  "arm": result["arm"], "status": result["status"], "http_attempts": budget.used}), flush=True)
-        for ledger in (request_ledger, result_ledger):
-            try:
-                ledger.verify()
-            except (LedgerIntegrityError, OSError) as exc:
-                client.durability.fail(exc)
-                persistence_errors.append(str(exc))
     finally:
         request_ledger.close()
         result_ledger.close()
-    try:
-        if client.durability.failure is not None:
-            raise LedgerIntegrityError("run stopped after ledger failure: " + client.durability.failure)
-        integrity = verify_run_ledgers(args.output_dir, budget.used, metadata["job_order"])
-    except (LedgerIntegrityError, ValueError, KeyError, OSError) as exc:
-        failure = {"format": "cairn-ledger-integrity/v1", "status": "failed", "error": str(exc),
-                   "summary_written": False, "collected_jobs": len(results), "planned_jobs": len(jobs),
-                   "http_attempts_reserved": budget.used, "result_persistence_errors": persistence_errors,
-                   "note": "No reconstruction performed; original evidence and independent failure receipts retained. Admitted HTTP responses were drained; blocked jobs did not send new requests."}
-        (args.output_dir / "ledger-integrity.json").write_text(json.dumps(failure, ensure_ascii=False, indent=2) + "\n")
-        raise
-    (args.output_dir / "ledger-integrity.json").write_text(json.dumps(integrity, ensure_ascii=False, indent=2) + "\n")
-    events = [json.loads(line) for line in (args.output_dir / "requests.jsonl").read_text().splitlines()]
+    integrity = {"status": "observed", "completed_jobs": len(results), "http_attempts": budget.used,
+                 "persistence_unavailable": [ledger.failure for ledger in (request_ledger, result_ledger) if ledger.failure]}
+    (args.output_dir / "ledger-integrity.json").write_text(json.dumps(integrity) + "\n")
+    events = request_ledger.records
     requests = [event for event in events if event["event"] == "request"]
     responses = [event for event in events if event["event"] == "response"]
     incomplete = {row["http_attempt"] for row in requests} - {row["http_attempt"] for row in responses}
@@ -543,14 +470,17 @@ def main():
                "attempts_without_usage": len(incomplete) + sum(not isinstance(r.get("usage"), dict) for r in responses),
                "unmatched_request_attempts": sorted(incomplete),
                "kg_sha256_before": kg_before, "kg_sha256_after": sha256_file(args.kg_db)}
+    for field, usage_field in (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens")):
+        values = [(row.get("usage") or {}).get(usage_field) for row in responses]
+        known = [value for value in values if type(value) is int and value >= 0]
+        summary["known_" + field] = sum(known)
+        summary[field] = sum(known) if not incomplete and len(known) == len(responses) else None
     summary["kg_unchanged"] = summary["kg_sha256_before"] == summary["kg_sha256_after"]
-    summary["ledger_integrity"] = "verified against all persisted result model_calls; zero reconstructed events"
-    summary["authorization_stop"] = client.durability.authorization_failure
+    summary["ledger_integrity"] = "observed raw outcome records; no replay admission"
+    summary["authorization_stop"] = client.recorder.authorization_failure
     (args.output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     if not summary["kg_unchanged"]:
         raise RuntimeError("evaluation changed the knowledge database")
-    if client.durability.authorization_failure is not None:
-        raise AuthorizationAbort("run stopped after authorization failure: " + client.durability.authorization_failure, [])
 
 
 if __name__ == "__main__":

@@ -114,11 +114,11 @@ func (c *alignValidationSequence) Complete(_ context.Context, req llm.CompleteRe
 
 // Exercise the real align -> judge -> validate -> materialize boundary with a
 // SQLite-backed alias book. Only provider responses are scripted: no live calls.
-func TestAlignInvalidAliasRetriesBeforeAnyMaterialization(t *testing.T) {
+func TestAlignInvalidAliasRetainsValidSiblingWithoutRetry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	for _, repaired := range []bool{true, false} {
-		t.Run(map[bool]string{true: "repaired", false: "exhausted"}[repaired], func(t *testing.T) {
+	for _, badTarget := range []string{"sd#1 缓存策略", "11111111-1111-4111-8111-111111111111"} {
+		t.Run(badTarget, func(t *testing.T) {
 			db, err := storage.NewDB(storage.DBOptions{Path: filepath.Join(t.TempDir(), "kg.db")})
 			if err != nil {
 				t.Fatal(err)
@@ -145,40 +145,26 @@ func TestAlignInvalidAliasRetriesBeforeAnyMaterialization(t *testing.T) {
 				}
 				return string(data)
 			}
-			// First reproduce the observed display-name suffix. The exhausted
-			// case uses a fabricated UUID to prove feedback never reflects it.
-			bad := makeResponse("sd#1 缓存策略")
-			second := makeResponse("sd#1")
-			if !repaired {
-				bad = makeResponse("11111111-1111-4111-8111-111111111111")
-				second = bad
-			}
-			client := &alignValidationSequence{responses: []string{bad, second}}
+			// Display suffixes and invented persistent IDs are both invalid aliases.
+			client := &alignValidationSequence{responses: []string{makeResponse(badTarget)}}
 			docs := []*dktypes.AnnotatedDocument{{Skill: "service", FilePath: "service/references/cache.md", Items: []dktypes.AnnotatedItem{
 				{ID: "u1", Tag: dktypes.TagEntity, Name: "查询编号", Content: "关联查询", Detail: "查询编号关联一次请求。", Confidence: 1},
 				{ID: "u2", Tag: dktypes.TagConcept, Name: "编号保留时间", Content: "编号保留规则", Detail: "编号按固定周期保留。", Confidence: 1},
 			}}}
 			rs := newRunState()
 			out, err := newAligner(client, 65536, st, 15).align(ctx, docs, rs)
-			if err != nil || len(client.requests) != maxAlignRounds {
-				t.Fatalf("expected validation retry: calls=%d err=%v", len(client.requests), err)
-			}
-			if !strings.Contains(client.requests[1].User, "attach.target 必须逐字引用") {
-				t.Fatal("retry did not receive actionable fixed alias feedback")
+			if err != nil || len(client.requests) != 1 {
+				t.Fatalf("expected one alignment call: calls=%d err=%v", len(client.requests), err)
 			}
 			for _, req := range client.requests {
 				for _, private := range []string{"hidden-sub-uuid", "hidden-domain-uuid", "11111111-1111-4111-8111-111111111111"} {
 					if strings.Contains(req.User+req.System, private) {
-						t.Fatal("private identity or invalid raw model reference leaked into retry prompt")
+						t.Fatal("private identity or invalid raw model reference leaked into prompt")
 					}
 				}
 			}
-			if repaired {
-				if out.llFailed || len(out.pending) != 2 || len(out.sourceRows) != 2 || len(rs.warningsSnapshot()) != 0 {
-					t.Fatalf("corrected response lost units: %+v warnings=%v", out, rs.warningsSnapshot())
-				}
-			} else if !out.llFailed || len(out.pending) != 0 || len(out.sourceRows) != 0 || len(rs.warningsSnapshot()) != 1 {
-				t.Fatalf("invalid batch partially materialized or unresolved failure hidden: %+v warnings=%v", out, rs.warningsSnapshot())
+			if out.llFailed || len(out.pending) != 1 || len(out.sourceRows) != 1 || len(rs.warningsSnapshot()) == 0 {
+				t.Fatalf("bad alias discarded independent valid sibling: %+v warnings=%v", out, rs.warningsSnapshot())
 			}
 		})
 	}

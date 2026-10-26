@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from agent_eval_native import NativeDeepSeekClient, EvalConfig, CallBudget, JSONLedger, TOOLS
+from agent_eval_native import NativeDeepSeekClient, EvalConfig, AttemptCounter, JSONLedger, TOOLS
 from retrieval import json_text
 
 
@@ -24,7 +24,7 @@ class PublicPayloadTransportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             ledger = JSONLedger(Path(root) / 'requests.jsonl')
             config = EvalConfig(max_retries=0)
-            client = NativeDeepSeekClient(config, 'synthetic-secret', CallBudget(1), ledger)
+            client = NativeDeepSeekClient(config, 'synthetic-secret', AttemptCounter(), ledger)
             messages = [{'role': 'system', 'content': 'Synthetic JSON'}, {'role': 'user', 'content': 'Synthetic question'}]
             choice = {'type': 'function', 'function': {'name': 'search'}}
             expected = json_text({'model': config.model, 'messages': messages, 'max_tokens': config.max_tokens,
@@ -46,7 +46,7 @@ class PublicPayloadTransportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             ledger = JSONLedger(Path(root) / 'requests.jsonl')
             config = EvalConfig(max_retries=0)
-            client = NativeDeepSeekClient(config, 'synthetic-secret', CallBudget(1), ledger)
+            client = NativeDeepSeekClient(config, 'synthetic-secret', AttemptCounter(), ledger)
             payload = {'model': config.model, 'messages': [{'role': 'user', 'content': 'JSON'}],
                        'max_tokens': 4096, 'thinking': {'type': 'disabled'}, 'response_format': {'type': 'json_object'}}
             response = {'model': config.model, 'choices': [{'finish_reason': 'stop', 'message': {'content': '{}'}}]}

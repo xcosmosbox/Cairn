@@ -12,7 +12,7 @@ import (
 // 抽出此工具是为了 DRY：Anthropic / OpenAI 兼容等实现只需提供一次真正的
 // HTTP 调用（doFn），重试策略（退避、可重试判定、次数上限）在此统一。
 //   - provider：用于错误信息前缀（如 "anthropic" / "openai_compatible"）
-//   - maxRetries：≤0 时回退为默认 3
+//   - maxRetries：0 时默认 3；负值表示不重试（一次诊断请求）。
 //   - doFn：执行单次补全；返回可重试错误（见 isRetryable）时才会重试
 func retryComplete(
 	ctx context.Context,
@@ -20,8 +20,10 @@ func retryComplete(
 	maxRetries int,
 	doFn func(context.Context) (*CompleteResponse, error),
 ) (*CompleteResponse, error) {
-	if maxRetries <= 0 {
+	if maxRetries == 0 {
 		maxRetries = 3
+	} else if maxRetries < 0 {
+		maxRetries = 0
 	}
 
 	var lastErr error

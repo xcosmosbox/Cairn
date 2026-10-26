@@ -20,15 +20,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 
+	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/parallel"
-	"github.com/xcosmosbox/cairn/build/internal/llm"
 )
 
 // maxRelateRounds 是单个 subdomain relation 识别的原地重试上限（kind 越界 / JSON 非法时重试）。
-const maxRelateRounds = 2
+const maxRelateRounds = 1
 
 // RelateReport 是 relation 补充阶段的结果摘要（可观测，写盘到 05e）。
 // RelateReport summarizes the relation-identification stage (written to 05e).
@@ -111,39 +112,44 @@ func (e *Extractor) relateSubdomain(ctx context.Context, domainName string, sd *
 		declared[n.ID] = true
 	}
 
-	var lastErr string
-	for round := 1; round <= maxRelateRounds; round++ {
-		userMsg := buildRelatePrompt(domainName, sd.Name, sd.Summary, nodes, lastErr)
-		resp, err := e.client.Complete(ctx, llm.CompleteRequest{
-			System:    relateSystemPrompt,
-			User:      userMsg,
-			MaxTokens: e.maxTokens,
-		})
-		if err != nil {
-			res.failure = fmt.Sprintf("subdomain %q relation 识别 LLM 调用失败: %v", sd.Name, err)
-			return res
-		}
-
-		var out relateOutput
-		if perr := json.Unmarshal([]byte(stripCodeFence(strings.TrimSpace(resp.Text))), &out); perr != nil {
-			lastErr = fmt.Sprintf("上一轮返回非法 JSON: %v", perr)
-			continue
-		}
-
-		valid, dropped, hasInvalidKind := validateRelations(out.Relations, declared)
-		// kind 越界必须原地重试（除非已是最后一轮，则用已过滤的合法部分降级）。
-		if hasInvalidKind && round < maxRelateRounds {
-			lastErr = "存在越界的 kind（必须是 6 个枚举之一），请修正后重试"
-			continue
-		}
-
-		sd.Relations = appendDedupRelations(sd.Relations, valid)
-		res.added = len(valid)
-		res.dropped = dropped
-		res.ok = true
+	if err := ctx.Err(); err != nil {
+		res.failure = err.Error()
 		return res
 	}
-	res.failure = fmt.Sprintf("subdomain %q relation 识别 %d 轮仍未通过", sd.Name, maxRelateRounds)
+	resp, err := e.client.Complete(ctx, llm.CompleteRequest{System: relateSystemPrompt, User: buildRelatePrompt(domainName, sd.Name, sd.Summary, nodes, ""), MaxTokens: e.maxTokens})
+	if err != nil {
+		res.failure = err.Error()
+		return res
+	}
+	if ctx.Err() != nil {
+		res.failure = ctx.Err().Error()
+		return res
+	}
+	if resp == nil || resp.FinishReason == "length" || resp.FinishReason == "max_tokens" {
+		res.failure = "missing or incomplete relation response"
+		return res
+	}
+	var envelope struct {
+		Relations []json.RawMessage `json:"relations"`
+	}
+	if err := json.Unmarshal([]byte(stripCodeFence(strings.TrimSpace(resp.Text))), &envelope); err != nil {
+		res.failure = err.Error()
+		return res
+	}
+	var rows []Relation
+	for _, raw := range envelope.Relations {
+		var r Relation
+		if err := json.Unmarshal(raw, &r); err != nil {
+			res.dropped++
+			continue
+		}
+		rows = append(rows, r)
+	}
+	valid, dropped, _ := validateRelations(rows, declared)
+	sd.Relations = appendDedupRelations(sd.Relations, valid)
+	res.added = len(valid)
+	res.dropped += dropped
+	res.ok = true
 	return res
 }
 
@@ -187,7 +193,8 @@ func collectRelateNodes(sd *Subdomain) []relateNode {
 // validateRelations validates relations against the declared node set and the kind enum.
 func validateRelations(rels []Relation, declared map[string]bool) (valid []Relation, dropped int, hasInvalidKind bool) {
 	for _, r := range rels {
-		if !validRelationKinds[r.Kind] {
+		if !validRelationKinds[r.Kind] || math.IsNaN(r.Confidence) || math.IsInf(r.Confidence, 0) || r.Confidence < 0 || r.Confidence > 1 {
+			dropped++
 			hasInvalidKind = true
 			continue
 		}

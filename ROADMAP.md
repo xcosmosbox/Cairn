@@ -11,10 +11,10 @@ Success means reliable operation and measurable usefulness on new tasks.
 | --- | --- | --- | --- |
 | M0 Reproducible development | A fresh agent can understand and restore the project | Free end-to-end report, accessible evidence index, public synthetic example | #10 #11 #16 |
 | M1 Reliable operation | Correct identities, recovery, publication and consumption | Existing regressions retained; real App permissions/JWT/refresh verified | #15; historical #1 #2 #5 |
-| M2 Useful retrieval | Diagnose retrieval/summary loss and test bounded improvements | Reviewed runner durability; fixed protocols; honest paired results on new tasks | #12 #13 #14 |
+| M2 Useful retrieval | Diagnose retrieval/summary loss and test bounded improvements | Fair declared resources; source/gold isolation; honest paired results | #12 #13 #14 |
 | M3 Community release | Operable, compatible and measurable distribution | Resource baseline, release/rollback matrix and evidence-based release decision | #17 #18 |
 
-Stages are evidence gates, not promised dates or blanket claims of completion.
+Stages describe evidence for their claims, not a mandatory execution ladder.
 Research, restoration, audit and measurement may proceed independently; production
 promotion follows the relevant dependencies. Negative results can justify redesign,
 simplification or stopping a candidate. More graph structure is not itself a benefit.
@@ -26,10 +26,12 @@ goal, module boundaries, dependencies, compatibility impact and an acceptance te
 ## 2026-10-24 maintainer direction: Alpha toward first stable release
 
 The goal is the first stable release; no version number is assigned and stable readiness
-has not been established. Keep the M0–M3 gates above. Require a reproducible engineering
-baseline, same-resource retrieval controls and a new holdout with source provenance,
-and verified critical update/recovery/authentication/MCP scenarios before the relevant
-release decision. CI success alone is insufficient.
+has not been established. Keep the M0–M3 outcomes above. The release decision needs reproducible engineering,
+comparable quality and critical product-path evidence. Small exploratory experiments
+proceed independently after affected checks; archival/all609/recovery/fullsuite work
+and repeated technical approvals are not prerequisites. #105 owns the current
+finite simplification and fixed support-enriched DEV diagnostic. CI alone does not
+establish a release or benefit.
 
 Research should first assess mature benchmarks and reusable environments, then justify
 small supplements for Cairn-specific gaps. [Quality benchmark task #21](https://github.com/xcosmosbox/Cairn/issues/21)

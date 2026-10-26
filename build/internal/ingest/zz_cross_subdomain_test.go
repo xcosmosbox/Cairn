@@ -38,7 +38,7 @@ func TestIngestDomainsDefersCrossSemanticEdgesUntilAllNodesExist(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.SemanticEdges != 1 || got.EdgesSkipped != 2 || got.NodeSourcesInserted != 2 {
+			if got.SemanticEdges != 2 || got.EdgesSkipped != 1 || got.NodeSourcesInserted != 2 {
 				t.Fatalf("wrong persistence: %+v", got)
 			}
 			var source, target, kind, description, provenance string

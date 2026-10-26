@@ -77,3 +77,115 @@ func recoverOwnedWritebacks(ctx context.Context, st *stores, root, identity stri
 	}
 	return nil
 }
+
+// recoverIndependentWritebacks 保留冲突 journal 与后来人工改动，仅标记已有来源依赖。
+// A conflicted pair blocks its source-sharing documents, not unrelated documents.
+func recoverIndependentWritebacks(ctx context.Context, st *stores, root, identity string, rs *runState) error {
+	journals, err := collectOwnedWritebacks(ctx, st, root, identity)
+	if err != nil {
+		return err
+	}
+	for _, doc := range journals {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := writeback.RecoverDocPairContext(ctx, root, doc); err != nil {
+			rs.failDoc(doc)
+			rs.warnf(fmt.Sprintf("recover owned writeback %s: %v", doc, err))
+		}
+	}
+	return expandFailedSourceDocs(ctx, st, rs)
+}
+
+// expandFailedSourceDocs 使用 node_sources 已有共享关系闭包；不引入恢复状态。
+// Reuse source ownership to retain baselines of documents sharing failed nodes.
+func expandFailedSourceDocs(ctx context.Context, st *stores, rs *runState) error {
+	if len(rs.failedDocsSnapshot()) == 0 {
+		return nil
+	}
+	sources, err := st.sources.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+	_, primaryByPath, err := listExpectedSharedPrimaryDocs(ctx, st)
+	if err != nil {
+		return err
+	}
+	failed := rs.failedDocsSnapshot()
+	for changed := true; changed; {
+		changed = false
+		nodes := map[string]bool{}
+		for path := range failed {
+			if id := primaryByPath[path]; id != "" {
+				nodes[id] = true
+			}
+		}
+		for _, src := range sources {
+			if failed[src.FilePath] {
+				nodes[src.NodeUUID] = true
+			}
+		}
+		for path, id := range primaryByPath {
+			if nodes[id] && !failed[path] {
+				failed[path] = true
+				changed = true
+			}
+		}
+		for _, src := range sources {
+			if nodes[src.NodeUUID] && !failed[src.FilePath] {
+				failed[src.FilePath] = true
+				changed = true
+			}
+		}
+	}
+	for path := range failed {
+		rs.failDoc(path)
+	}
+	return nil
+}
+
+func excludeFailedChanges(changes []*DocChangeSet, sr *scanResult, rs *runState) []*DocChangeSet {
+	failed := rs.failedDocsSnapshot()
+	out := changes[:0]
+	for _, cs := range changes {
+		if !failed[cs.Path] {
+			out = append(out, cs)
+		}
+	}
+	moves := sr.moves[:0]
+	for _, move := range sr.moves {
+		if !failed[move.OldPath] && !failed[move.NewPath] {
+			moves = append(moves, move)
+		}
+	}
+	sr.moves = moves
+	return out
+}
+
+func omitBlockedPending(ctx context.Context, st *stores, ao *alignOutcome, rs *runState) error {
+	if ao == nil || len(rs.failedDocsSnapshot()) == 0 {
+		return nil
+	}
+	failed := rs.failedDocsSnapshot()
+	for uuid := range ao.pending {
+		sources, err := st.sources.ListByNode(ctx, uuid)
+		if err != nil {
+			return err
+		}
+		blocked := false
+		for _, src := range sources {
+			blocked = blocked || failed[src.FilePath]
+		}
+		if !blocked {
+			continue
+		}
+		for _, row := range ao.sourceRows {
+			if row.NodeUUID == uuid {
+				rs.failDoc(row.FilePath)
+			}
+		}
+		delete(ao.pending, uuid)
+		rs.warnf(fmt.Sprintf("pending node %s shares a conflicted source; leaving node unchanged", uuid))
+	}
+	return nil
+}

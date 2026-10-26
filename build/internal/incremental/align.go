@@ -35,10 +35,6 @@ import (
 	"github.com/xcosmosbox/cairn/core/storage"
 )
 
-// maxAlignRounds 是增量对齐 LLM 调用的原地重试上限（JSON 非法 / 校验不过时重试）。
-// maxAlignRounds is the in-place retry cap for the alignment LLM call.
-const maxAlignRounds = 2
-
 // defaultRecallK 是 FTS5 召回的默认 top-K（设计定稿 K=10~20）。
 // defaultRecallK is the default FTS5 recall size (spec: 10~20).
 const defaultRecallK = 15
@@ -241,7 +237,7 @@ func (a *aligner) align(ctx context.Context, docs []*dktypes.AnnotatedDocument, 
 	// —— 4. LLM 判归属（一次调用，含 batch 内互聚全局视野）——
 	decisions, groups, err := a.judge(ctx, units, promptSections, book, rs)
 	if err != nil {
-		// 重试耗尽：降级为空 outcome + 告警（不阻断旁路已完成的修改）。
+		// 本次响应不可用：降级为空 outcome + 告警（不阻断旁路已完成的修改）。
 		// llFailed=true：调用方必须把全部 C4 文档标记为未解决（问题 2）。
 		rs.warnf(fmt.Sprintf("I-4 增量对齐 LLM 失败（新单元未对齐，降级跳过）: %v", err))
 		return &alignOutcome{pending: map[string]*pendingNode{}, unitsByID: outcome.unitsByID, llFailed: true}, nil
@@ -439,47 +435,68 @@ type alignLLMOutput struct {
 	Groups    []alignGroup    `json:"groups"`
 }
 
-// judge 调用 LLM 对全部新单元判归属（含校验与原地重试）。
-// judge calls the LLM to place every new unit, with validation and in-place retry.
+// judge 一次判定归属，非法条目仅影响对应单元。
+// judge places units once, retaining valid siblings after local validation.
 func (a *aligner) judge(ctx context.Context, units []*alignUnit, ps *promptSections,
 	book *aliasBook, rs *runState) ([]alignDecision, map[string]*alignGroup, error) {
-	user := buildAlignPrompt(units, ps, "")
-	var lastErr error
-	for round := 1; round <= maxAlignRounds; round++ {
-		resp, err := a.client.Complete(ctx, llm.CompleteRequest{
-			System:    alignSystemPrompt,
-			User:      user,
-			MaxTokens: a.maxTokens,
-		})
-		if err != nil {
-			lastErr = fmt.Errorf("第 %d 次对齐调用: %w", round, err)
-			continue
-		}
-		var out alignLLMOutput
-		if perr := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); perr != nil {
-			// Do not echo parser text into the next prompt. Although the standard
-			// JSON parser currently reports only an offset, keeping feedback as a
-			// fixed category prevents future parser changes from reflecting raw LLM
-			// values (including a node UUID).
-			lastErr = fmt.Errorf("第 %d 次解析失败", round)
-			user = buildAlignPrompt(units, ps, "JSON 格式无效，请仅返回符合 schema 的对象")
-			continue
-		}
-		groups, verr := validateAlignOutput(&out, units, book)
-		if verr != nil {
-			lastErr = verr
-			// Only fixed validation categories may enter feedback. In particular,
-			// never reflect an invalid model-supplied alias (possibly a UUID).
-			feedback := "输出结构校验失败，请按 schema 修正"
-			if referenceErr, ok := verr.(alignReferenceError); ok {
-				feedback = referenceErr.Error()
-			}
-			user = buildAlignPrompt(units, ps, feedback)
-			continue
-		}
-		return out.Decisions, groups, nil
+	resp, err := a.client.Complete(ctx, llm.CompleteRequest{
+		System: alignSystemPrompt, User: buildAlignPrompt(units, ps, ""), MaxTokens: a.maxTokens,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("增量对齐调用: %w", err)
 	}
-	return nil, nil, fmt.Errorf("增量对齐 %d 轮仍未通过: %w", maxAlignRounds, lastErr)
+	if resp == nil {
+		return nil, nil, fmt.Errorf("增量对齐空响应")
+	}
+	var out alignLLMOutput
+	if err := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); err != nil {
+		return nil, nil, fmt.Errorf("增量对齐 JSON 无效")
+	}
+	// 复用严格结构/alias 校验，但每个组和单元分别处理；坏条目不拖累同批兄弟。
+	// Validate each group/decision against its actual aliases without a paid retry.
+	groups := map[string]*alignGroup{}
+	groupCounts := map[string]int{}
+	for _, group := range out.Groups {
+		groupCounts[group.Group]++
+	}
+	for _, group := range out.Groups {
+		candidate := alignLLMOutput{Groups: []alignGroup{group}}
+		valid, err := validateAlignOutput(&candidate, nil, book)
+		if err != nil || groupCounts[group.Group] != 1 {
+			rs.warnf("I-4 skipped invalid/ambiguous fusion group")
+			continue
+		}
+		groups[group.Group] = valid[group.Group]
+	}
+	unitsByID := map[string]*alignUnit{}
+	counts := map[string]int{}
+	for _, unit := range units {
+		unitsByID[unit.ID] = unit
+	}
+	for _, decision := range out.Decisions {
+		counts[decision.Unit]++
+	}
+	var decisions []alignDecision
+	for _, decision := range out.Decisions {
+		unit := unitsByID[decision.Unit]
+		if unit == nil || counts[decision.Unit] != 1 {
+			rs.warnf("I-4 skipped unknown/ambiguous unit decision")
+			continue
+		}
+		candidate := alignLLMOutput{Decisions: []alignDecision{decision}}
+		if group := groups[decision.Group]; decision.Action == "fuse" && group != nil {
+			candidate.Groups = []alignGroup{*group}
+		}
+		if _, err := validateAlignOutput(&candidate, []*alignUnit{unit}, book); err != nil {
+			rs.warnf(fmt.Sprintf("I-4 skipped invalid decision for unit %s: %v", unit.ID, err))
+			continue
+		}
+		decisions = append(decisions, candidate.Decisions[0])
+	}
+	if len(decisions) < len(units) {
+		rs.warnf(fmt.Sprintf("I-4 %d/%d units accepted; missing/invalid units remain in source", len(decisions), len(units)))
+	}
+	return decisions, groups, nil
 }
 
 // validateAlignOutput 校验 LLM 输出：每个单元恰好一条合法 decision；新 node

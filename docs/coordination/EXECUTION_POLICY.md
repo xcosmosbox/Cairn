@@ -1,87 +1,56 @@
 # Maintainer execution policy
 
-Accepted direction: [2026-10-24 decision in #8](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6382509063).
-This records the maintainer's execution preferences; live assignments, claims and results
-remain in task Issues and PRs. It does not introduce a second task database or change
-the existing [claim/review protocol](PROTOCOL.md).
+Current direction: [#105](https://github.com/xcosmosbox/Cairn/issues/105#issuecomment-6406294894),
+2026-10-26. The [accepted finite plan](reports/2026-10-26-simplification-plan.md)
+replaces older experiment-admission instructions. Live ownership/results stay in Issues and PRs.
 
-## Goal and evidence gates
+## Work and validation
 
-Advance the Alpha toward its first stable release. Stable release is a goal, not a
-status already achieved; no version number or release date is assigned by this policy.
-Preserve the M0–M3 roadmap and require evidence for the relevant gates:
+Keep source/member/alias identity, human edits, atomic writes and query-side read-only,
+zero-LLM, zero-embedding behavior. Preserve all intended experimental cases and actual
+raw requests, responses and errors. Validate changed behavior with affected tests/builds;
+normal CI remains enabled. Then execute the declared experiment. No local fullrace/verify,
+full609, archive completion, recovery/Viewer rehearsal, counter equality, repeated technical
+GO or cost/time ceiling is a universal prerequisite for a small real experiment.
+Missing usage/fees are unknown, never fabricated zero. Missing descriptive metadata or
+failed upload is a warning. Malformed model output and source contamination fail their
+actual dependent item/arm/graph scope; independent cases continue. A possibly committed
+state mutation is not blindly reapplied. Retain negative or inconclusive results without
+automatically tuning or repeating the experiment.
 
-- A credible, reproducible engineering baseline, including the free end-to-end path.
-- Retrieval comparisons with the same resources, a new holdout and intact source
-  provenance; distinguish retrieval support from answer quality and retain negative results.
-- Verified critical update, recovery, authentication and MCP scenarios, plus the
-  applicable compatibility, resource and rollback evidence.
-- A maintainer release decision after the required evidence is accepted. Passing CI
-  alone does not establish stable-release readiness.
+Research selected one 38-row simplification plan; fresh executors implement it and run
+one fixed small DEV support-enriched diagnostic. No further governance/recovery framework
+or recursive preparation phase is requested. Release publication is a separate decision.
 
-Existing query-side read-only, zero-LLM and zero-embedding constraints, immutable Bundle
-identity and human-curated/source provenance protections remain applicable. Architecture
-changes still need an ADR and an explicit decision.
+## Reuse and fair evaluation
 
-## Division of work and model defaults
+Reuse mature benchmarks and existing production adapters. Declare selected source bytes,
+DEV roster, paired resources and metrics before outcomes. Originals go to the builder;
+qid/question to the solver; gold to the judge. HOLDOUT stays closed unless separately
+requested. Support-enriched samples measure exploratory given-source utility, not full-
+corpus retrieval or generalization. Larger studies and release claims need their own evidence.
 
-For work dispatched under this maintainer policy, the main coordinator makes decisions
-and delegates research, implementation, documentation and verification to execution agents.
-It checks dependencies and evidence rather than directly writing product changes.
+## Standing authorization
 
-| Work | Model | Reasoning |
-| --- | --- | --- |
-| Research | `gpt-6-astra` | `xhigh` |
-| Other execution, including implementation, environment recovery, records and review | `gpt-6.1-sol` | `high` |
+The maintainer permanently authorizes ordinary paid DeepSeek API use and network access
+for Cairn at official `https://api.deepseek.com` with `deepseek-flash`, including authorized
+public originals, machine annotations and model-derived critiques/feedback. Scoped public
+code/sanitized reports may be published to `xcosmosbox/Cairn`; restricted raw evidence may
+be archived to private `xcosmosbox/kd_manifeat`. Do not ask again for these permissions.
+[Original authorization](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656)
+and [data-egress confirmation](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6396678380).
+Credentials and unrelated private data are excluded. Actual platform safeguards/rejections
+remain effective; do not route around a rejection or rewrite an unknown historical outcome.
 
-These defaults apply to this maintainer's dispatched agents. They are not prerequisites
-for outside contributors and do not grant credentials, model spending or permission to
-override repository constraints. Separate sessions and reviews retain the independence
-limits required by PROTOCOL.md.
+## Collaboration and release
 
-## Reuse before building an evaluation environment
+Use bounded claims, isolated branches, exact commits and truthful checkpoints under
+[PROTOCOL.md](PROTOCOL.md). Review the actual changed high-risk behavior once, disclosing
+shared-account/model limits. Existing authorization needs no new source/preflight/live
+approval. Do not infer a running job or accepted result from a label or plan.
 
-Research mature benchmarks, official implementations and reusable environments first.
-Compare coverage, licensing/access, reproducibility, adaptation cost and the cost of a
-new environment. Use a small supplemental suite for Cairn-specific scenarios that an
-existing benchmark does not cover. A custom benchmark or framework needs a concrete
-gap and cost justification, not merely a preference for a local implementation.
-
-Freeze the data revision and identity, split/holdout boundary, resource budgets, metrics
-and provenance mapping before implementation or results are interpreted. A dataset's
-per-question gold contexts are an oracle input, not a complete retrieval corpus. Store
-download instructions and hashes when publishing source text is outside the intended
-scope. Quality evaluation and performance/resource measurement are separate tasks.
-
-## Durable state and authorized continuation
-
-The maintainer's explicit instruction permanently authorizes ordinary paid DeepSeek
-API use, network access and Cairn experiments at the official
-`https://api.deepseek.com` endpoint with `deepseek-flash`. The subsequent specific
-confirmation expressly includes sending authorized public source text, machine
-annotations and model-derived verification critiques or feedback to that endpoint.
-It also authorizes scoped public code and sanitized report publication to
-`xcosmosbox/Cairn`, and restricted evidence archives to the existing authorized private
-`xcosmosbox/kd_manifeat` repository. Do not repeatedly request spending, network or
-these specific data-egress permissions within that scope. See the [original
-authorization](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6384918656)
-and [explicit data-egress confirmation](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6396678380).
-
-Model, endpoint, profile, task, input and budget freezes, independent review and exact
-live admission remain technical execution controls, not renewed user authorization.
-Authorization does not disable, evade or override platform safeguards or a tool's
-approval review. Preserve any actual rejection and do not bypass it through indirect
-execution. It does not authorize disclosure of credentials or unrelated private data,
-waive correctness or provenance, change an unknown historical outcome, or publish a
-release without its required evidence and decision. This policy records no secret
-value or private credential path.
-
-The repository's current Issues, PRs, commits and evidence are the sole dynamic project
-state. Chat context can convey a maintainer decision, but record that decision and the
-task's CLAIM/ACK before shared writes. A started session is not proof of continued
-background work; a plan is not an execution receipt. Use recoverable checkpoints and
-handoffs, and do not repeat an already satisfied approval merely to proceed with routine
-authorized work.
-
-This policy does not start agents or publish a release by itself. New scope, architecture
-changes and acceptance remain explicit decisions supported by the existing protocol.
+The Alpha-to-stable goal and M0–M3 roadmap remain. Publishing a release still needs its
+actual support/compatibility/recovery/resource evidence and maintainer decision; that
+checklist does not precede an exploratory experiment. For explicitly delegated work,
+research defaults are gpt-6-astra/xhigh and execution gpt-6.1-sol/high; outside contributors
+need neither these models nor private orchestration. This policy itself starts no agents.

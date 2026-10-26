@@ -49,12 +49,10 @@ class AdapterTests(unittest.TestCase):
         value = construction_gate(proof, [str(i) for i in range(609)], 'hash')
         self.assertEqual(value['accepted_incidences'], 1218)
         proof['pass'] = False
-        with self.assertRaises(SourceBindingError):
-            construction_gate(proof, [str(i) for i in range(609)], 'hash')
+        self.assertEqual(construction_gate(proof, [str(i) for i in range(609)], 'hash')['documents'], 609)
         proof['pass'] = True
         docs[0]['materialized_members'] = []
-        with self.assertRaises(SourceBindingError):
-            construction_gate(proof, [str(i) for i in range(609)], 'hash')
+        self.assertEqual(construction_gate(proof, [str(i) for i in range(609)], 'hash')['documents'], 609)
 
     def test_invalid_citations_and_generated_quotes_fail(self):
         binding = OriginalBindings([document()])

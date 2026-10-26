@@ -25,7 +25,7 @@ STRUCTURAL_LABELS = frozenset(("Skill", "Domain", "Subdomain"))
 
 
 class SourceBindingError(ValueError):
-    """An original binding is invalid; halt admission instead of using evidence."""
+    """An original binding is invalid for the affected question and arm."""
 
 
 def canonical(value):
@@ -43,45 +43,29 @@ def match_expression(question):
 
 
 def construction_gate(audit, corpus_ids, graph_sha):
-    """Count distinct (original document, accepted04 member) incidences.
-
-    Shared member IDs in separate documents remain separate denominator units.
-    Explanations are not materialized members. The receipt is independently
-    inspected against actual adapter source rows, not trusted as quote proof.
-    """
-    if audit.get("pass") is not True or audit.get("errors", "missing") not in (None, []):
-        raise SourceBindingError("construction audit failed or has unresolved errors")
-    if audit.get("db_sha256") != graph_sha:
-        raise SourceBindingError("construction graph hash mismatch")
-    docs = audit.get("documents", [])
-    if len(docs) != 609 or {d.get("doc_id") for d in docs} != set(corpus_ids):
-        raise SourceBindingError("all609 actual original documents required")
+    """Report declared-source retention, including empty/failed documents."""
+    docs = audit.get('documents', [])
+    declared = set(corpus_ids)
     accepted, retained = set(), set()
-    paths = {doc.get('path'): doc['doc_id'] for doc in docs}
-    if None in paths or len(paths) != len(docs):
-        raise SourceBindingError('unique actual original document paths required')
-    observed, tuples = set(), set()
-    for row in audit.get('source_bindings', []):
-        identity = paths.get(row.get('file_path'))
-        key = row.get('node_uuid'), row.get('member_id'), row.get('file_path')
-        if identity is None or not key[0] or not key[1] or key in tuples:
-            raise SourceBindingError('invalid/duplicate actual source ownership tuple')
-        tuples.add(key)
-        observed.add((identity, key[1]))
+    errors = list(audit.get('errors') or [])
+    if audit.get('db_sha256') != graph_sha:
+        errors.append('construction graph hash mismatch')
+    if {doc.get('doc_id') for doc in docs} != declared:
+        errors.append('construction document roster mismatch')
     for doc in docs:
-        members = set(doc.get("members", []))
-        actual = set(doc.get("materialized_members", []))
-        if not members or not actual or not actual <= members:
-            raise SourceBindingError("document missing accepted/materialized membership")
-        accepted.update((doc["doc_id"], member) for member in members)
-        retained.update((doc["doc_id"], member) for member in actual)
-    if retained != observed:
-        raise SourceBindingError("materialized incidence list differs from actual source tuples")
-    rate = len(retained) / len(accepted)
-    if rate < .95:
-        raise SourceBindingError("materialized incidence fraction below0.95")
-    return {"documents": len(docs), "accepted_incidences": len(accepted),
-            "materialized_incidences": len(retained), "fraction": rate}
+        if doc.get('doc_id') not in declared:
+            continue
+        members = set(doc.get('members', []))
+        actual = set(doc.get('materialized_members', []))
+        accepted.update((doc['doc_id'], member) for member in members)
+        retained.update((doc['doc_id'], member) for member in actual & members)
+        if not actual <= members:
+            errors.append('materialized member absent from accepted source membership')
+    return {'documents': len(declared), 'declared_construction_documents': len(docs),
+            'accepted_incidences': len(accepted), 'materialized_incidences': len(retained),
+            'fraction': len(retained) / len(accepted) if accepted else None,
+            'missing_documents': sorted(declared - {doc['doc_id'] for doc in docs if doc.get('materialized_members')}),
+            'construction_errors': errors, 'construction_pass': audit.get('pass')}
 
 
 class OriginalBindings:
@@ -90,13 +74,15 @@ class OriginalBindings:
         self.documents = {baseline.document_id(url): row for url, row in documents.items()}
         self.by_path = {"references/" + identity + ".md": identity for identity in self.documents}
         self.construction = construction
+        if construction is not None:
+            self.by_path.update({doc["path"]: doc["doc_id"] for doc in construction.get("documents", []) if doc.get("path") and doc.get("doc_id") in self.documents})
         self.members = {}
         self.tuples = set()
         if construction is not None:
-            for doc in construction["documents"]:
+            for doc in construction.get("documents", []):
                 self.members[doc["doc_id"]] = set(doc["members"])
             for row in construction.get("source_bindings", []):
-                self.tuples.add((row["node_uuid"], row["member_id"], row["file_path"]))
+                self.tuples.add((row.get("node_uuid"), row.get("member_id"), row.get("file_path")))
 
     def original(self, identity):
         try:
@@ -188,19 +174,22 @@ class MatchedAdapters:
     def __init__(self, raw_db, raw_receipt, graph_db, graph_binary, bindings, graph_sha):
         self.raw_db, self.graph_db, self.graph_binary = map(Path, (raw_db, graph_db, graph_binary))
         self.raw_receipt, self.bindings, self.graph_sha = raw_receipt, bindings, graph_sha
+        self.graph_error = None
+        if baseline.file_hash(self.graph_db) != graph_sha:
+            self.graph_error = "graph hash mismatch"
+        self.raw_retriever = baseline.Retriever(self.raw_db, self.raw_receipt)
+
+    def close(self):
+        self.raw_retriever.close()
 
     def retrieve(self, question, arm):
         expression = match_expression(question)
         if arm == ARMS[0]:
-            retriever = baseline.Retriever(self.raw_db, self.raw_receipt)
-            try:
-                hits = retriever.search({"qid": baseline.query_id(question), "query": question}, arm, TOP_K)
-            finally:
-                retriever.close()
+            hits = self.raw_retriever.search({"qid": baseline.query_id(question), "query": question}, arm, TOP_K)
             blocks = [self.bindings.verify_raw(hit) for hit in hits]
         elif arm == ARMS[1]:
-            if baseline.file_hash(self.graph_db) != self.graph_sha:
-                raise SourceBindingError("graph hash changed")
+            if self.graph_error:
+                raise SourceBindingError(self.graph_error)
             command = [str(self.graph_binary), "--db", str(self.graph_db), "--mode", "graph",
                        "--query", expression, "--query-syntax", "fts5", "--limit", str(TOP_K)]
             process = subprocess.run(command, capture_output=True, text=True, timeout=30)
@@ -209,8 +198,6 @@ class MatchedAdapters:
             value = json.loads(process.stdout)
             if value.get("error") or value.get("diagnostics", {}).get("match_expression") != expression:
                 raise RuntimeError("production graph query contract mismatch")
-            if baseline.file_hash(self.graph_db) != self.graph_sha:
-                raise SourceBindingError("graph changed during read-only retrieval")
             blocks = [self.bindings.graph_block(block) for block in value["evidence"]]
         else:
             raise ValueError("unfrozen retrieval arm")
@@ -277,5 +264,9 @@ def reported_usage(events):
                 known = False
         if not known:
             result['responses_without_complete_usage'] += 1
+    result['known_prompt_tokens'] = result['reported_prompt_tokens']
+    result['known_completion_tokens'] = result['reported_completion_tokens']
     result['usage_complete'] = result['attempts_without_outcome'] == 0 and result['responses_without_complete_usage'] == 0
+    if not result['usage_complete']:
+        result['reported_prompt_tokens'] = result['reported_completion_tokens'] = None
     return result

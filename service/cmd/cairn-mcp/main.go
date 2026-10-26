@@ -36,6 +36,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -89,8 +90,9 @@ type jsonRPCError struct {
 // toolResult 是 tools/call 的返回结果。
 // toolResult is the return value of tools/call.
 type toolResult struct {
-	Content []toolContent `json:"content"`
-	IsError bool          `json:"isError,omitempty"`
+	Content           []toolContent `json:"content"`
+	IsError           bool          `json:"isError,omitempty"`
+	StructuredContent interface{}   `json:"structuredContent,omitempty"`
 }
 
 // toolContent 是工具调用结果的内容项。
@@ -141,6 +143,16 @@ type serverState struct {
 	rewriter *service.QueryRewriter
 }
 
+// 显式配置失败不能转到不相关的默认库；仅隐式缺文件保留单库默认值。
+// Only an absent implicit config uses the documented ./knowledge.db default.
+func loadServerConfig(path string, explicit bool) (*config.Config, error) {
+	cfg, err := config.Load(path)
+	if !explicit && errors.Is(err, os.ErrNotExist) {
+		return config.DefaultConfig(), nil
+	}
+	return cfg, err
+}
+
 func main() {
 	// 解析命令行参数 / Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "配置文件路径 / Path to config YAML file")
@@ -158,10 +170,16 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Cairn MCP Server %s (multi-DB)\n", buildversion.Current())
 
 	// 加载配置 / Load configuration
-	cfg, err := config.Load(*configPath)
+	explicitConfig := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "config" {
+			explicitConfig = true
+		}
+	})
+	cfg, err := loadServerConfig(*configPath, explicitConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "加载配置失败，使用默认配置 / Failed to load config, using defaults: %v\n", err)
-		cfg = config.DefaultConfig()
+		fmt.Fprintf(os.Stderr, "加载配置失败 / Failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 
 	// 加载缩写映射表（可选增强项）。
@@ -539,10 +557,6 @@ func (s *serverState) checkAndPullUpdate(parent context.Context, name string, kb
 	} else if kbCfg.TokenEnv != "" {
 		token = os.Getenv(kbCfg.TokenEnv)
 	}
-	if token == "" {
-		fmt.Fprintf(os.Stderr, "[catalog-watch] %s: 跳过（未配置 GitHub App 或 token_env）\n", name)
-		return
-	}
 
 	// 解析 catalog repo owner/name。
 	parts := strings.SplitN(kbCfg.CatalogRepo, "/", 2)
@@ -723,20 +737,26 @@ type searchHit struct {
 	KG         string  `json:"kg"`
 }
 
+type knowledgeBaseFailure struct {
+	KG    string `json:"kg"`
+	Error string `json:"error"`
+}
+
 // federatedSearch 在多个知识库上并发执行 KnowledgeService.Search，合并结果并按
 // 归一化 FinalScore 排序。联邦/归一化/合并逻辑保留在前端，仅单库查询原语
 // 委托给元能力抽象。
 //
 // federatedSearch performs concurrent KnowledgeService.Search across multiple
-// knowledge bases, merges results, and sorts by normalized FinalScore.
-func (s *serverState) federatedSearch(keyword string, limit int, syntax dktypes.QuerySyntax) ([]searchHit, error) {
+// knowledge bases, keeps healthy results with explicit failures, and sorts by FinalScore.
+func (s *serverState) federatedSearch(keyword string, limit int, syntax dktypes.QuerySyntax) ([]searchHit, []knowledgeBaseFailure, error) {
 	svcs, release := s.svcsSnapshot()
 	defer release()
 	if len(svcs) == 0 {
-		return nil, fmt.Errorf("没有可用的知识库 / No knowledge bases available")
+		return nil, nil, fmt.Errorf("没有可用的知识库 / No knowledge bases available")
 	}
 
 	type kgResult struct {
+		name string
 		hits []searchHit
 		err  error
 	}
@@ -753,7 +773,7 @@ func (s *serverState) federatedSearch(keyword string, limit int, syntax dktypes.
 			if err != nil {
 				err = fmt.Errorf("%s: %w", name, err)
 			}
-			ch <- kgResult{hits: hits, err: err}
+			ch <- kgResult{name: name, hits: hits, err: err}
 		}(kgName, svc)
 	}
 
@@ -761,16 +781,18 @@ func (s *serverState) federatedSearch(keyword string, limit int, syntax dktypes.
 	close(ch)
 
 	// 收集所有结果 / Collect all results
-	var allHits []searchHit
+	allHits := []searchHit{}
+	failures := []knowledgeBaseFailure{}
 	for res := range ch {
 		if res.err != nil {
-			return nil, fmt.Errorf("federatedSearch: knowledge base query failed: %w", res.err)
+			failures = append(failures, knowledgeBaseFailure{res.name, res.err.Error()})
+			continue
 		}
 		allHits = append(allHits, res.hits...)
 	}
-
-	if len(allHits) == 0 {
-		return nil, nil
+	sort.Slice(failures, func(i, j int) bool { return failures[i].KG < failures[j].KG })
+	if len(failures) == len(svcs) {
+		return nil, failures, fmt.Errorf("all knowledge bases failed: %v", failures)
 	}
 
 	// 按原始 FinalScore 降序排序（大=更相关，排前），分数相同按 ID 升序保证确定性。
@@ -789,7 +811,7 @@ func (s *serverState) federatedSearch(keyword string, limit int, syntax dktypes.
 		allHits = allHits[:limit]
 	}
 
-	return allHits, nil
+	return allHits, failures, nil
 }
 
 // searchServiceToHits 调用单个 KnowledgeService.Search 并将结构化结果转换为
@@ -1197,9 +1219,15 @@ func toolDomainSearch(state *serverState, args map[string]interface{}) (*toolRes
 	}
 
 	// 联邦搜索 / Federated search
-	hits, err := state.federatedSearch(keyword, limit, syntax)
+	hits, failures, err := state.federatedSearch(keyword, limit, syntax)
+	status := "complete"
+	if len(failures) > 0 {
+		status = "partial"
+	}
+	payload := map[string]interface{}{"status": status, "partial": len(failures) > 0, "failed_kbs": failures, "hits": hits}
 	if err != nil {
-		return nil, fmt.Sprintf("联邦搜索失败 / Federated search failed: %v", err)
+		payload["status"], payload["error"] = "error", err.Error()
+		return &toolResult{IsError: true, StructuredContent: payload, Content: []toolContent{{Type: "text", Text: fmt.Sprintf("联邦搜索失败 / Federated search failed: %v", err)}}}, ""
 	}
 
 	var sb strings.Builder
@@ -1210,7 +1238,11 @@ func toolDomainSearch(state *serverState, args map[string]interface{}) (*toolRes
 		formatSearchHitsFed(&sb, hits)
 	}
 
-	return &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}}, ""
+	if len(failures) > 0 {
+		sb.WriteString(fmt.Sprintf("\n部分知识库失败 / Partial results: %v\n", failures))
+	}
+	payload["markdown"] = sb.String()
+	return &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}, StructuredContent: payload}, ""
 }
 
 // formatSearchHits 格式化单库搜索结果。
@@ -1509,7 +1541,8 @@ func toolListKnowledgeBases(state *serverState, args map[string]interface{}) (*t
 		Skills      []string `json:"skills,omitempty"`
 	}
 
-	var kbs []kbInfo
+	kbs := []kbInfo{}
+	failures := []knowledgeBaseFailure{}
 	totalNodes, totalEdges := 0, 0
 
 	svcs, release := state.svcsSnapshot()
@@ -1522,7 +1555,8 @@ func toolListKnowledgeBases(state *serverState, args map[string]interface{}) (*t
 
 		res, err := svc.Status(context.Background())
 		if err != nil {
-			return nil, fmt.Sprintf("扫描知识库统计失败 / Failed to scan KB stats: %s: %v", name, err)
+			failures = append(failures, knowledgeBaseFailure{name, err.Error()})
+			continue
 		}
 
 		// Domains 从 NodesByDomain 派生（排序，排除空域以与原 DISTINCT domain ... WHERE domain != '' 对齐）
@@ -1554,12 +1588,19 @@ func toolListKnowledgeBases(state *serverState, args map[string]interface{}) (*t
 		})
 	}
 
+	if len(kbs) == 0 && len(failures) > 0 {
+		return nil, fmt.Sprintf("all knowledge bases failed: %v", failures)
+	}
+	sort.Slice(failures, func(i, j int) bool { return failures[i].KG < failures[j].KG })
+
 	// 排序保证输出确定性 / Sort for deterministic output
 	sort.Slice(kbs, func(i, j int) bool { return kbs[i].Name < kbs[j].Name })
 
 	// 构建 JSON 输出 / Build JSON output
 	resultMap := map[string]interface{}{
 		"knowledge_bases": kbs,
+		"partial":         len(failures) > 0,
+		"failed_kbs":      failures,
 		"summary": map[string]interface{}{
 			"total_kbs":   len(kbs),
 			"total_nodes": totalNodes,
@@ -1595,7 +1636,8 @@ func toolListKnowledgeBases(state *serverState, args map[string]interface{}) (*t
 	sb.WriteString(string(jsonBytes))
 
 	return &toolResult{
-		Content: []toolContent{{Type: "text", Text: sb.String()}},
+		Content:           []toolContent{{Type: "text", Text: sb.String()}},
+		StructuredContent: resultMap,
 	}, ""
 }
 
@@ -1745,7 +1787,8 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 		Domains     []string `json:"domains"`
 	}
 
-	var overviews []kbOverview
+	overviews := []kbOverview{}
+	failures := []knowledgeBaseFailure{}
 	totalNodes, totalEdges := 0, 0
 	crossKGLinksSummary := map[string]int{}
 
@@ -1759,7 +1802,13 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 
 		res, err := svc.Status(context.Background())
 		if err != nil {
-			return nil, fmt.Sprintf("读取状态失败 / Failed to read status: %s: %v", name, err)
+			failures = append(failures, knowledgeBaseFailure{name, err.Error()})
+			continue
+		}
+		links, lErr := svc.ListCrossKGLinks(context.Background())
+		if lErr != nil {
+			failures = append(failures, knowledgeBaseFailure{name, fmt.Sprintf("cross-KG links: %v", lErr)})
+			continue
 		}
 		totalNodes += res.TotalNodes
 		totalEdges += res.TotalEdges
@@ -1781,12 +1830,12 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 		})
 
 		// 统计跨 KG 链接 / Count cross-KG links
-		links, lErr := svc.ListCrossKGLinks(context.Background())
-		if lErr != nil {
-			return nil, fmt.Sprintf("读取跨KG链接失败 / Failed to read cross-KG links: %s: %v", name, lErr)
-		}
 		crossKGLinksSummary[name] = len(links)
 	}
+	if len(overviews) == 0 && len(failures) > 0 {
+		return nil, fmt.Sprintf("all knowledge bases failed: %v", failures)
+	}
+	sort.Slice(failures, func(i, j int) bool { return failures[i].KG < failures[j].KG })
 	sort.Slice(overviews, func(i, j int) bool { return overviews[i].Name < overviews[j].Name })
 
 	var sb strings.Builder
@@ -1816,17 +1865,19 @@ func toolDescribeKnowledgeLayer(state *serverState, args map[string]interface{})
 		sb.WriteString("Use describe_knowledge_layer kg=<name> to see detailed cross-KG links for a specific KB.\n")
 	}
 
-	if verbose {
-		resultMap := map[string]interface{}{
-			"overview":               overviews,
-			"cross_kg_links_summary": crossKGLinksSummary,
-		}
+	resultMap := map[string]interface{}{
+		"overview":               overviews,
+		"partial":                len(failures) > 0,
+		"failed_kbs":             failures,
+		"cross_kg_links_summary": crossKGLinksSummary,
+	}
+	if verbose || len(failures) > 0 {
 		jsonBytes, _ := json.MarshalIndent(resultMap, "", "  ")
 		sb.WriteString("\n---\n")
 		sb.WriteString(string(jsonBytes))
 	}
 
-	return &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}}, ""
+	return &toolResult{Content: []toolContent{{Type: "text", Text: sb.String()}}, StructuredContent: resultMap}, ""
 }
 
 // ——————————————————————————————————————————————————————————————————————————————

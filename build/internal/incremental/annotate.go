@@ -3,25 +3,21 @@
 // 块区域已置空、行号与原档 1:1 对齐），绝不重标已有 uuid 块。
 //
 // 复用全量流水线的同一套组件与语义（契约一致）：
-//   - annotation.LLMAnnotator：per-doc LLM 标注（内部原地重试）；
+//   - annotation.LLMAnnotator：per-doc LLM 标注一次；
 //   - annotation.FormatGate（Gate A 代码门）+ annotation.SemanticGate（Gate B LLM 语义门）；
-//   - 回退重标注（Gate 不通过 → 重标，受 maxRollbacks 上限约束），耗尽降级跳过该文档
-//     （不阻塞其它文档——与全量「无失败终态」一致）；
+//   - 标注/核验失败仅影响本篇，不付费重写；
 //   - extract.AssignIDs：刷 04 id（<slug(skill)>-<tag>-<slug(name)>）。
 //
 // 产出带 04 id + SourceSpan（与原档行号对齐）的新标注单元，供 I-4 增量对齐消费。
 //
 // This file implements I-3 annotation: only docs with C4 additions are annotated,
 // and only their outside-block text (C4Text, line-aligned to the doc). It reuses
-// the full pipeline's annotator and both gates with the same rollback/degrade
-// semantics, then mints 04 ids via extract.AssignIDs.
+// the full pipeline's annotator and both gates once, then mints 04 ids via extract.AssignIDs.
 package incremental
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
@@ -44,8 +40,8 @@ type annotateOutput struct {
 	// Docs 是通过双门、刷了 04 id 的标注文档（每篇只含块外新增的单元）。
 	// Docs are gate-passed annotated docs (only outside-block units) with 04 ids.
 	Docs []*dktypes.AnnotatedDocument
-	// Skipped 是回退耗尽降级跳过（或空文本跳过）的文档及原因（可观测，不阻塞流水线）。
-	// Skipped lists docs degraded after exhausting rollbacks (observability).
+	// Skipped 是标注失败（或空文本跳过）的文档及原因（可观测，不阻塞流水线）。
+	// Skipped lists document-local annotation failures.
 	Skipped []annotateSkip
 }
 
@@ -55,26 +51,21 @@ type annotator struct {
 	llm          *annotation.LLMAnnotator
 	formatGate   *annotation.FormatGate
 	semanticGate *annotation.SemanticGate
-	maxRollbacks int
 }
 
 // newAnnotator 组装 I-3 标注器（与全量同一套组件与参数语义）。
 // newAnnotator assembles the I-3 annotator (same components as the full pipeline).
-func newAnnotator(client llm.Client, maxTokens, maxRetries, maxRollbacks, maxNameRunes int) *annotator {
-	if maxRollbacks <= 0 {
-		maxRollbacks = 3
-	}
+func newAnnotator(client llm.Client, maxTokens, maxRetries, maxNameRunes int) *annotator {
 	return &annotator{
 		llm:          annotation.NewLLMAnnotator(client, maxTokens, maxRetries),
 		formatGate:   annotation.NewFormatGate(maxNameRunes),
 		semanticGate: annotation.NewSemanticGate(client, maxTokens, maxRetries),
-		maxRollbacks: maxRollbacks,
 	}
 }
 
 // annotateC4Docs 并发标注所有含 C4 的文档（仅块外新增片段）。
 // c4TextByDoc 提供每篇文档的「块区域置空」标注输入（DocChangeSet.C4Text）。
-// 文档间完全隔离、互不阻塞；单篇回退耗尽降级跳过。
+// 文档间完全隔离、互不阻塞；单篇失败跳过。
 //
 // annotateC4Docs concurrently annotates every doc that has C4 additions, feeding
 // only the blanked outside-block text.
@@ -124,52 +115,26 @@ func (a *annotator) annotateC4Docs(ctx context.Context, pp *PipelinePlan, c4Text
 	return out
 }
 
-// annotateOne 对单篇文档的块外片段执行「标注 → Gate A → Gate B」，失败回退重标，
-// 耗尽降级跳过（与全量 processDocument 语义一致）。
-// annotateOne runs annotate→GateA→GateB for one doc's outside-block text with
-// rollback-on-failure and degrade-on-exhaustion (full-pipeline semantics).
+// annotateOne 对单篇文档的块外片段执行「标注 → Gate A → Gate B」，失败仅跳过本篇，不重写。
+// annotateOne runs annotate→GateA→GateB for one doc's outside-block text once; failures are local to this document.
 func (a *annotator) annotateOne(ctx context.Context, skill, path, text string) (*dktypes.AnnotatedDocument, string) {
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Sprintf("%s: 块外新增为空（跳过）", path)
 	}
-	var lastReason string
-	var candidate *dktypes.AnnotatedDocument
-	var feedback *annotation.SemanticRejection
-	for attempt := 1; attempt <= a.maxRollbacks; attempt++ {
-		var doc *dktypes.AnnotatedDocument
-		var err error
-		if feedback == nil {
-			doc, err = a.llm.Annotate(ctx, skill, path, text)
-		} else {
-			doc, err = a.llm.Revise(ctx, skill, path, text, candidate, feedback)
-		}
-		if err != nil {
-			lastReason = fmt.Sprintf("%s 标注失败: %v", path, err)
-			continue
-		}
-		cleaned, err := a.formatGate.Check(doc)
-		if err != nil {
-			lastReason = fmt.Sprintf("%s Gate A 未通过: %v", path, err)
-			if !errors.Is(err, annotation.ErrRollbackToAnnotate) {
-				log.Printf("[incremental-annotate] %s Gate A 非回退错误，仍回退重标注: %v", path, err)
-			}
-			continue
-		}
-		// Gate B 核验「片段原文 ↔ 标注」语义幂等（原文 = C4Text，不是全档）。
-		if err := a.semanticGate.Check(ctx, text, cleaned); err != nil {
-			// 与全量一致：暂时失败保留最近的有效语义反馈，不保存历史候选。
-			// Same latest-only feedback state as the full pipeline, local to this C4 document.
-			var rejected *annotation.SemanticRejection
-			if errors.As(err, &rejected) {
-				candidate, feedback = cleaned, rejected
-			}
-			lastReason = fmt.Sprintf("%s Gate B 未通过: %v", path, err)
-			continue
-		}
-		return cleaned, ""
+	doc, err := a.llm.Annotate(ctx, skill, path, text)
+	if err != nil {
+		return nil, fmt.Sprintf("%s 标注失败: %v", path, err)
 	}
-	log.Printf("[incremental-annotate] %s 回退 %d 次仍未通过，降级跳过（%s）", path, a.maxRollbacks, lastReason)
-	return nil, lastReason
+	cleaned, err := a.formatGate.Check(doc)
+	if err != nil {
+		return nil, fmt.Sprintf("%s Gate A 未通过: %v", path, err)
+	}
+	// 一次事实核验；遗漏不触发重写，无法核验只影响当前文档。
+	// Assess facts once; omissions never trigger annotation revision.
+	if err := a.semanticGate.Check(ctx, text, cleaned); err != nil {
+		return nil, fmt.Sprintf("%s Gate B 未通过: %v", path, err)
+	}
+	return cleaned, ""
 }
 
 // sortStrings 稳定排序（本包小工具，避免到处 import sort）。

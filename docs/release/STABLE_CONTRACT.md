@@ -53,23 +53,10 @@ or general failure-safety guarantee follows. See the
 [dated evidence register](../coordination/EVIDENCE.md) and latest task records for
 exact source/reviews and retained failures.
 
-Accepted components are **not yet an admitted bounded construction pipeline**.
-The legacy accepted cache remains 11 documents; incomplete 609-document input is
-NOT ADMISSIBLE,
-and no candidate C has been selected. #73's first attempt retains UNKNOWN delivery/
-billing after the platform block; its later three-wire attempt and #85's two-wire
-continuation both ended in explicit final semantic rejection. Larger item counts
-(163 then 193) are not accepted annotations or measured improvement. At this
-snapshot, #85 source is accepted; final acceptance of its negative execution packet
-is separate and still pending.
-Pure APIs preserve optional empty Detail, but the adopted bounded materialization
-recipe must enforce the current nonempty Detail requirement before any paid bounded
-stage. Broader empty-Detail materializer support remains unimplemented and separately
-scoped. The opt-in bounded
-requests reject canonical UUID-form business/source/display literals as unsupported
-input without masking or truncation; the original-source verifier retains its
-separate reversible UUID view. No default pipeline promotion or quality-equivalence
-claim is adopted here.
+The prior bounded/staged construction design is retired under [#105](https://github.com/xcosmosbox/Cairn/issues/105).
+Historical accepted cache, negative semantic attempts and unknown delivery/billing remain
+historical facts. They do not establish capacity/quality or block a small ordinary production
+ingest/paired diagnostic. Optional product history and immutable Bundle safeguards remain.
 
 The old SourceBackfill pilot stays disabled under #13. #11 full archive audit
 and #13 are requirements when relying on those historical controls, not automatic
@@ -156,10 +143,9 @@ machine annotations and model-derived feedback sent to official
 publication destinations in [execution policy](../coordination/EXECUTION_POLICY.md).
 Do not request these user permissions repeatedly within that scope. Preserve the
 actual earlier platform rejection/UNKNOWN attempt rather than rewriting its outcome.
-Exact source/input/profile/budget freezes, independent review, live admission and
-platform safeguards remain effective technical controls. No model run is performed
-by this document; the old #13 pilot stays disabled within its separate historical
-control boundary.
+Platform safeguards and credential/source isolation remain. The current #105 diagnostic
+uses minimal affected checks and declared fair resources, without repeated technical GO
+or full609/archive/recovery prerequisites. This release document itself runs no model.
 
 The maintainer's final decision must accept the support scope, compatibility and
 rollback results, resource/reliability disposition and preregistered quality gates

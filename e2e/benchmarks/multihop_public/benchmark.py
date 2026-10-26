@@ -451,7 +451,8 @@ def main():
     p.add_argument("--data-root", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p = sub.add_parser("build-index")
-    p.add_argument("--data-root", type=Path, required=True)
+    p.add_argument("--data-root", type=Path)
+    p.add_argument("--corpus", type=Path)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--receipt", type=Path, required=True)
     p = sub.add_parser("run-dev")
@@ -467,7 +468,9 @@ def main():
         documents = validate_corpus(read_source(args.data_root, "corpus.json"))
         write_new(args.output, freeze_rows(prepare_questions(read_source(args.data_root, "MultiHopRAG.json"), documents), load(HERE / "protocol.json")))
     elif args.command == "build-index":
-        write_new(args.receipt, build_index(read_source(args.data_root, "corpus.json"), args.output, load(HERE / "protocol.json"), file_hash(args.data_root / "corpus.json")))
+        corpus_path = args.corpus or args.data_root / "corpus.json"
+        corpus = load(corpus_path) if args.corpus else read_source(args.data_root, "corpus.json")
+        write_new(args.receipt, build_index(corpus, args.output, load(HERE / "protocol.json"), file_hash(corpus_path)))
     else:
         write_new(args.output, run_dev(args.data_root, args.index, args.receipt, args.freeze))
 

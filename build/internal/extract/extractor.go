@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"unicode"
 
@@ -202,15 +203,16 @@ func NewExtractor(client llm.Client, maxTokens int) *Extractor {
 // Extract 执行完整的领域提取：输入组装 → LLM → JSON 解析/校验 → 容错重试循环。
 //
 // 契约第六节的重试循环：
-//   状态 = 已解析 domains[]（按 slug 去重合并）+ 未解析 reference 文件列表
-//   循环（最多 maxExtractRounds 次）：
-//     1. 用「未解析文件」组装输入
-//     2. 启用全新 LLM session（每轮新建 CompleteRequest，仅含 system+user，
-//        不累积历史——llm.Client.Complete 本就无会话状态，天然满足"上下文干净"）
-//     3. 开启 JSON mode 要求返回完整 JSON
-//     4. 解析成功的并入 domains[]；其 source_skills 覆盖到的文件视为"已解析"
-//     5. 未解析（skill 未被任何领域覆盖）的文件留待下轮；为空则提前结束
-//   超过上限仍有未解析 → 记录警告（可观测，不静默丢弃），返回已解析部分
+//
+//	状态 = 已解析 domains[]（按 slug 去重合并）+ 未解析 reference 文件列表
+//	循环（最多 maxExtractRounds 次）：
+//	  1. 用「未解析文件」组装输入
+//	  2. 启用全新 LLM session（每轮新建 CompleteRequest，仅含 system+user，
+//	     不累积历史——llm.Client.Complete 本就无会话状态，天然满足"上下文干净"）
+//	  3. 开启 JSON mode 要求返回完整 JSON
+//	  4. 解析成功的并入 domains[]；其 source_skills 覆盖到的文件视为"已解析"
+//	  5. 未解析（skill 未被任何领域覆盖）的文件留待下轮；为空则提前结束
+//	超过上限仍有未解析 → 记录警告（可观测，不静默丢弃），返回已解析部分
 //
 // Extract runs the full extraction with the contract §6 retry loop (see Chinese above).
 func (e *Extractor) Extract(ctx context.Context, files []ReferenceFile) (*Result, error) {
@@ -434,9 +436,94 @@ func parseAndValidate(text string) ([]Domain, error) {
 		return nil, fmt.Errorf("空响应")
 	}
 
+	// Decode nested rows independently so one malformed node/edge does not
+	// discard valid sibling material from the same model response.
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil {
+		return nil, fmt.Errorf("extract JSON: %w", err)
+	}
+	rawDomains, ok := envelope["domains"]
+	if !ok || len(rawDomains) == 0 || rawDomains[0] != '[' {
+		return nil, fmt.Errorf("extract: missing domains array")
+	}
+	var domainRows []json.RawMessage
+	if err := json.Unmarshal(rawDomains, &domainRows); err != nil {
+		return nil, err
+	}
 	var out llmOutput
-	if err := json.Unmarshal([]byte(trimmed), &out); err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
+	for _, raw := range domainRows {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			log.Printf("[extract] dropped malformed domain")
+			continue
+		}
+		subdomains := fields["subdomains"]
+		delete(fields, "subdomains")
+		wire, _ := json.Marshal(fields)
+		var d Domain
+		if err := json.Unmarshal(wire, &d); err != nil {
+			log.Printf("[extract] dropped malformed domain fields")
+			continue
+		}
+		var subRows []json.RawMessage
+		if err := json.Unmarshal(subdomains, &subRows); err != nil {
+			log.Printf("[extract] dropped invalid subdomains")
+			continue
+		}
+		for _, subRaw := range subRows {
+			var subFields map[string]json.RawMessage
+			if err := json.Unmarshal(subRaw, &subFields); err != nil {
+				continue
+			}
+			entities, concepts, relations := subFields["entities"], subFields["concepts"], subFields["relations"]
+			delete(subFields, "entities")
+			delete(subFields, "concepts")
+			delete(subFields, "relations")
+			wire, _ := json.Marshal(subFields)
+			var sd Subdomain
+			if err := json.Unmarshal(wire, &sd); err != nil || strings.TrimSpace(sd.Name) == "" {
+				log.Printf("[extract] dropped malformed subdomain")
+				continue
+			}
+			decodeNodes := func(raw json.RawMessage, label string) []Node {
+				var rows []json.RawMessage
+				if len(raw) == 0 {
+					return nil
+				}
+				if err := json.Unmarshal(raw, &rows); err != nil {
+					log.Printf("[extract] unavailable %s array", label)
+					return nil
+				}
+				var nodes []Node
+				for _, r := range rows {
+					var n Node
+					if err := json.Unmarshal(r, &n); err != nil || n.Label != label || strings.TrimSpace(n.ID) == "" || strings.TrimSpace(n.Name) == "" {
+						log.Printf("[extract] dropped malformed %s node", label)
+						continue
+					}
+					nodes = append(nodes, n)
+				}
+				return nodes
+			}
+			sd.Entities = decodeNodes(entities, "Entity")
+			sd.Concepts = decodeNodes(concepts, "Concept")
+			var relRows []json.RawMessage
+			if len(relations) > 0 {
+				if err := json.Unmarshal(relations, &relRows); err != nil {
+					log.Printf("[extract] unavailable relations array")
+				}
+			}
+			for _, r := range relRows {
+				var rel Relation
+				if err := json.Unmarshal(r, &rel); err != nil {
+					log.Printf("[extract] dropped malformed relation")
+					continue
+				}
+				sd.Relations = append(sd.Relations, rel)
+			}
+			d.Subdomains = append(d.Subdomains, sd)
+		}
+		out.Domains = append(out.Domains, d)
 	}
 
 	domains := make([]Domain, 0, len(out.Domains))
@@ -469,7 +556,7 @@ func filterRelations(rels []Relation, domainName, subName string) []Relation {
 	}
 	kept := make([]Relation, 0, len(rels))
 	for _, r := range rels {
-		if !validRelationKinds[r.Kind] {
+		if !validRelationKinds[r.Kind] || math.IsNaN(r.Confidence) || math.IsInf(r.Confidence, 0) || r.Confidence < 0 || r.Confidence > 1 {
 			log.Printf("[extract] 丢弃非法 relation.kind=%q（domain=%s subdomain=%s source=%s target=%s）",
 				r.Kind, domainName, subName, r.Source, r.Target)
 			continue

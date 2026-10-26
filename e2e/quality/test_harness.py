@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from agent_eval import (CallBudget, DeepSeekClient, EvalConfig, JSONLedger,
+from agent_eval import (AttemptCounter, DeepSeekClient, EvalConfig, JSONLedger,
                         evaluate_question, load_solver_questions, parse_action)
 from retrieval import RetrievalEngine, build_raw_index, evidence_budget, json_text
 
@@ -66,7 +66,7 @@ class HarnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "requests.jsonl"
             ledger = JSONLedger(path)
-            client = DeepSeekClient(EvalConfig(), "test-credential", CallBudget(5), ledger)
+            client = DeepSeekClient(EvalConfig(), "test-credential", AttemptCounter(), ledger)
             count = 0
             class Response:
                 status = 200
@@ -83,7 +83,7 @@ class HarnessTests(unittest.TestCase):
                 return Response({"choices": [{"finish_reason": "length" if count == 1 else "stop",
                     "message": {"content": '{"action":"search","query":"test"}', "reasoning_content": "DO_NOT_STORE_REASONING"}}],
                     "usage": {"prompt_tokens": 10, "completion_tokens": 12}})
-            with mock.patch("urllib.request.urlopen", side_effect=mocked_http):
+            with mock.patch("agent_eval.urlopen", side_effect=mocked_http):
                 _, attempts = client.complete([{"role": "user", "content": "question"}], {"question_id": "q", "arm": "raw", "turn": 1})
             ledger.close()
             text = path.read_text()
@@ -92,7 +92,9 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual([a["status"] for a in attempts], ["error", "ok"])
             self.assertEqual(sum(a["usage"]["completion_tokens"] for a in attempts), 24)
             self.assertNotIn("test-credential", text)
-            self.assertNotIn("DO_NOT_STORE_REASONING", text)
+            parsed_only = [{key: value for key, value in row.items() if key != "response_body"} for row in records]
+            self.assertNotIn("DO_NOT_STORE_REASONING", json.dumps(parsed_only))
+            self.assertIn("response_body", records[1])
 
     def test_protocol_rejects_duplicate_keys_and_extra_fields(self):
         with self.assertRaises(ValueError):

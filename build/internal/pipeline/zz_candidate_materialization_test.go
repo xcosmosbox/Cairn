@@ -28,9 +28,8 @@ func materializationFixture(t *testing.T) (*Orchestrator, string, *extract.Resul
 		t.Fatal(err)
 	}
 	res := &extract.Result{Domains: []extract.Domain{{Name: "Domain", Slug: "domain", SourceSkills: []string{"test"}, Subdomains: []extract.Subdomain{{Name: "Subdomain", Slug: "subdomain", Concepts: []extract.Node{
-		{ID: "kept", Name: "authoritative", Description: "generated description", Confidence: 0.9, Members: []string{"member-a"}},
+		{ID: "kept", Name: "authoritative", Description: "generated description", Confidence: 0.69, Members: []string{"member-a"}},
 		{ID: "other", Name: "other", Description: "other description", Confidence: 0.9, Members: []string{"member-b"}},
-		{ID: "kept", Name: "excluded alias", Description: "must not overwrite", Confidence: 0, Members: []string{"member-a"}},
 		{ID: "excluded", Name: "excluded", Confidence: 0, Members: []string{"member-c"}},
 	}, Relations: []extract.Relation{
 		{Source: "kept", Target: "other", Kind: "references", Confidence: 0.9},
@@ -50,7 +49,7 @@ func TestMaterializationUsesIdenticalConfidenceCandidateForDatabaseAndSidecar(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rpt.Selection.NodesFiltered != 2 || rpt.Selection.RelationsFiltered != 1 || rpt.Ingest.ConceptNodes != 2 || rpt.Ingest.EdgesSkipped != 0 || rpt.Ingest.SemanticEdges != 1 || rpt.Writeback.NodesWritten != 2 {
+	if rpt.Selection.NodesFiltered != 1 || rpt.Selection.RelationsFiltered != 1 || rpt.Ingest.ConceptNodes != 2 || rpt.Ingest.EdgesSkipped != 0 || rpt.Ingest.SemanticEdges != 1 || rpt.Writeback.NodesWritten != 2 {
 		t.Fatalf("candidate outputs diverged: selection=%+v ingest=%+v writeback=%+v", rpt.Selection, rpt.Ingest, rpt.Writeback)
 	}
 	db, err := storage.OpenReadOnly(path)
@@ -77,18 +76,15 @@ func TestMaterializationUsesIdenticalConfidenceCandidateForDatabaseAndSidecar(t 
 	}
 }
 
-func TestMaterializationRejectsEligibleUUIDCollisionBeforeAnyOutput(t *testing.T) {
-	t.Parallel()
+func TestMaterializationKeepsIndependentNodeAfterUUIDCollision(t *testing.T) {
 	o, root, res, docs := materializationFixture(t)
-	res.Domains[0].Subdomains[0].Concepts[2].Confidence = 0.9
+	res.Domains[0].Subdomains[0].Concepts = append(res.Domains[0].Subdomains[0].Concepts, extract.Node{ID: "kept", Name: "collision", Confidence: .9, Members: []string{"member-a"}, Description: "ambiguous"})
 	path := filepath.Join(root, "candidate.db")
-	if _, err := o.MaterializeCompletedExtraction(context.Background(), root, path, res, docs, nil); err == nil || !strings.Contains(err.Error(), "duplicate eligible UUID") {
-		t.Fatalf("collision accepted: %v", err)
+	rpt, err := o.MaterializeCompletedExtraction(context.Background(), root, path, res, docs, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("database created before collision gate: %v", err)
-	}
-	if data, err := os.ReadFile(filepath.Join(root, "references", "doc.md")); err != nil || string(data) != "original source\n" {
-		t.Fatalf("source changed before collision gate: %q %v", data, err)
+	if rpt.Selection.NodesSelected != 1 || rpt.Selection.NodesFiltered != 3 || rpt.Ingest.ConceptNodes != 1 {
+		t.Fatalf("ambiguous nodes affected sibling: %+v", rpt.Selection)
 	}
 }

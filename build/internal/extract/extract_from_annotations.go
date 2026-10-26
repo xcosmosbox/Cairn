@@ -1,47 +1,16 @@
-// Package extract 实现 LLM 驱动的领域知识提取器。
-//
-// 本文件实现新 LLM 流水线的「提取阶段」入口 ExtractFromAnnotations：它接收 repo 级
-// 全部「已标注」的 entity/concept 单元（来自标注阶段 + 双门校验后的 AnnotatedDocument），
-// 一次性带标签投喂给掌握全局视野的 LLM，要求其归纳出「可跨 skill 复用的领域层级」
-// （domain → subdomain → entity/concept + entity↔entity 语义关系），返回严格 JSON。
-//
-// 与旧 Extract（输入原始 Markdown、按 skill 覆盖重试）的关键差异：
-//   - 输入是「已分类」的 entity/concept 单元（tag + name + content），而非原始全文；
-//     领域层级由本阶段 LLM 从全局视野归纳，标注阶段不涉及 domain/subdomain。
-//   - 全量一次性投喂（1M 上下文足够），不做按 skill 覆盖的分轮重试。
-//   - 原地重试（契约第 5 点）：LLM 调用失败 / 返回非法 JSON / schema 校验不通过，
-//     都以全新 session 原地重试整篇提取，最多 maxExtractRounds 次。
-//
-// This file implements ExtractFromAnnotations, the extraction-stage entry of the new
-// LLM pipeline. It takes the repo-wide set of already-annotated entity/concept items
-// and feeds them (with tags) in a single large-context request, asking the LLM to
-// infer the cross-skill reusable domain hierarchy and return strict JSON. Unlike the
-// legacy Extract (raw Markdown, per-skill coverage retry), the input is pre-classified
-// items, fed all at once, with whole-extraction in-place retry on call/JSON/schema
-// failure (contract §5).
 package extract
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
-// ExtractFromAnnotations 从 repo 级全部标注文档提取领域知识层。
-//
-// 行为：
-//   - docs 为空 → 返回空 Result，不消耗 LLM。
-//   - 否则把所有文档的 items（带 tag/name/content，按 skill 分组）拼成单个请求，
-//     一次性投喂；解析 + 校验通过则返回，失败则以全新 session 原地重试整篇提取。
-//   - 达到 maxExtractRounds 仍失败 → 返回 error（由上层状态机决定后续处理）。
-//
-// ExtractFromAnnotations extracts the domain-knowledge layer from the repo-wide set of
-// annotated documents, feeding all items in one request and retrying the whole
-// extraction in place on failure, up to maxExtractRounds.
+// ExtractFromAnnotations sends every source incidence once. Malformed output
+// fails this extraction attempt; independently valid nodes are retained.
 func (e *Extractor) ExtractFromAnnotations(ctx context.Context, docs []*dktypes.AnnotatedDocument) (*Result, error) {
 	if e.client == nil {
 		return nil, fmt.Errorf("extract: llm client is nil")
@@ -54,45 +23,25 @@ func (e *Extractor) ExtractFromAnnotations(ctx context.Context, docs []*dktypes.
 	// 04 id → skill 索引：提取阶段不再让 LLM 产出 source_skills，由 members 的 04 id 倒推。
 	skillByUnit := buildSkillIndex(docs)
 
-	var lastErr error
-	for round := 1; round <= maxExtractRounds; round++ {
-		resp, err := e.client.Complete(ctx, llm.CompleteRequest{
-			System:    annotatedSystemPrompt,
-			User:      user,
-			MaxTokens: e.maxTokens,
-		})
-		if err != nil {
-			lastErr = fmt.Errorf("第 %d 次提取调用: %w", round, err)
-			log.Printf("[extract-annot] 第 %d/%d 次调用失败，原地重试: %v", round, maxExtractRounds, err)
-			continue
-		}
-
-		// 复用既有 parseAndValidate：解析 JSON、生成 domain/subdomain slug、
-		// 过滤非法 relation.kind、填充 provenance。
-		domains, perr := parseAndValidate(resp.Text)
-		if perr != nil {
-			lastErr = fmt.Errorf("第 %d 次解析: %w", round, perr)
-			log.Printf("[extract-annot] 第 %d/%d 次解析失败，原地重试: %v", round, maxExtractRounds, perr)
-			continue
-		}
-
-		// 融合映射后处理（B 阶段）：用 members 倒推 source_skills；第二期 description 留空
-		// （待第三期按 subdomain 融合重写）。
-		backfillSourceSkills(domains, skillByUnit)
-
-		// schema 校验：结构完整性（至少一个 domain；entity/concept 必备 id+name）。
-		// 不通过 → 原地重试重新提取（契约第 5 点）。
-		if verr := validateExtractSchema(domains); verr != nil {
-			lastErr = fmt.Errorf("第 %d 次 schema 校验: %w", round, verr)
-			log.Printf("[extract-annot] 第 %d/%d 次 schema 校验失败，原地重试: %v", round, maxExtractRounds, verr)
-			continue
-		}
-
-		log.Printf("[extract-annot] ✓ 第 %d 轮提取成功：%d 个 domain", round, len(domains))
-		return &Result{Domains: domains, Rounds: round}, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("extract from annotations: 原地重试 %d 次后仍失败: %w", maxExtractRounds, lastErr)
+	resp, err := e.client.Complete(ctx, llm.CompleteRequest{System: annotatedSystemPrompt, User: user, MaxTokens: e.maxTokens})
+	if err != nil {
+		return nil, fmt.Errorf("extract from annotations: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.FinishReason == "length" || resp.FinishReason == "max_tokens" {
+		return nil, fmt.Errorf("extract: missing or incomplete response")
+	}
+	domains, err := parseAndValidate(resp.Text)
+	if err != nil {
+		return nil, err
+	}
+	backfillSourceSkills(domains, skillByUnit)
+	return &Result{Domains: domains, Rounds: 1}, nil
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -132,15 +81,9 @@ func assembleAnnotatedMessage(docs []*dktypes.AnnotatedDocument) string {
 
 	for _, skill := range order {
 		fmt.Fprintf(&sb, "## skill: %s\n", skill)
-		// 同一 skill 下不同文档可能出现相同 04 id（同名单元）：投喂时按 id 去重，
-		// 避免重复行干扰 LLM（dump 的 04_extract_input 仍保留完整 per-document 结构）。
-		seen := make(map[string]bool)
+		// Same-name IDs can carry different dated facts; retain every source incidence.
 		for _, d := range bySkill[skill] {
 			for _, it := range d.Items {
-				if it.ID != "" && seen[it.ID] {
-					continue
-				}
-				seen[it.ID] = true
 				fmt.Fprintf(&sb, "- id=%s [%s] %s: %s\n", it.ID, it.Tag, it.Name, it.Content)
 			}
 		}
@@ -294,45 +237,3 @@ const annotatedSystemPrompt = `你是领域知识融合专家。用户会给你�
     }
   ]
 }`
-
-// ——————————————————————————————————————————————————————————————————————————————
-// schema 校验 / Schema validation
-// ——————————————————————————————————————————————————————————————————————————————
-
-// validateExtractSchema 校验提取结果的结构完整性（parseAndValidate 之上的补充）：
-//   - 至少存在一个 domain（输入非空却提取出 0 个 domain 视为提取失败）；
-//   - 每个 domain / subdomain 都有 slug（由 parseAndValidate 生成，防御性再校验）；
-//   - 每个 entity / concept 都有非空 id 与 name（入库时依赖 id 非空，作为 AssignNodeUUIDs 的 members 派生前提）。
-//
-// 不通过时返回 error，由 ExtractFromAnnotations 触发原地重试。
-//
-// validateExtractSchema checks structural integrity beyond parseAndValidate and returns
-// an error (triggering an in-place retry) when the result is unusable.
-func validateExtractSchema(domains []Domain) error {
-	if len(domains) == 0 {
-		return fmt.Errorf("提取结果为空：未归纳出任何 domain")
-	}
-	for i := range domains {
-		d := &domains[i]
-		if strings.TrimSpace(d.Slug) == "" {
-			return fmt.Errorf("domain %q 缺 slug", d.Name)
-		}
-		for j := range d.Subdomains {
-			sd := &d.Subdomains[j]
-			if strings.TrimSpace(sd.Slug) == "" {
-				return fmt.Errorf("domain %q 下 subdomain %q 缺 slug", d.Name, sd.Name)
-			}
-			for _, n := range sd.Entities {
-				if strings.TrimSpace(n.ID) == "" || strings.TrimSpace(n.Name) == "" {
-					return fmt.Errorf("subdomain %q 下存在缺 id/name 的 entity", sd.Name)
-				}
-			}
-			for _, n := range sd.Concepts {
-				if strings.TrimSpace(n.ID) == "" || strings.TrimSpace(n.Name) == "" {
-					return fmt.Errorf("subdomain %q 下存在缺 id/name 的 concept", sd.Name)
-				}
-			}
-		}
-	}
-	return nil
-}

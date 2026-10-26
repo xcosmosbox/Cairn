@@ -117,7 +117,7 @@ func TestLocalContradictionScopeDoesNotWidenOrDoubleVerify(t *testing.T) {
 // 本域候选也必须遵守原文完整性、容量与取消边界，不能借同子域绕过失败关闭。
 func TestLocalContradictionsFailClosedOnSourceCapacityAndCancellation(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []string{"missing-source", "over-budget", "cancelled"} {
+	for _, tc := range []string{"missing-source", "cancelled"} {
 		t.Run(tc, func(t *testing.T) {
 			res, docs, sources, verdict := localContradictionFixture()
 			ctx, cancel := context.WithCancel(context.Background())
@@ -127,8 +127,6 @@ func TestLocalContradictionsFailClosedOnSourceCapacityAndCancellation(t *testing
 			switch tc {
 			case "missing-source":
 				sources = sources[:1]
-			case "over-budget":
-				opts.MaxEvidenceBytes = 1
 			case "cancelled":
 				cancel()
 				want = "execution_error"

@@ -73,7 +73,7 @@ class SafeHTTPTests(unittest.TestCase):
         wire = MemoryWire('https://other.invalid/', 302)
         with tempfile.TemporaryDirectory() as root:
             ledger = JSONLedger(Path(root) / 'requests.jsonl')
-            client = native.NativeDeepSeekClient(native.EvalConfig(max_retries=1), 'synthetic-secret', native.CallBudget(10), ledger)
+            client = native.NativeDeepSeekClient(native.EvalConfig(max_retries=1), 'synthetic-secret', native.AttemptCounter(), ledger)
             with self.opener(wire):
                 with self.assertRaises(native.AuthorizationAbort): client.complete([], {'question_id': 'q', 'arm': 'graph', 'turn': 1}, 'required')
                 with self.assertRaises(native.AuthorizationAbort): client.complete([], {'question_id': 'later', 'arm': 'graph', 'turn': 1}, 'required')
@@ -95,7 +95,9 @@ class SafeHTTPTests(unittest.TestCase):
                 max_calls=4, max_total_tokens=100000, max_input_chars=10000, timeout=3,
                 validation_retries=1, api_key_env='SYNTHETIC_JUDGE_KEY', limit=0, concurrency=1)
             with mock.patch.dict('os.environ', {'SYNTHETIC_JUDGE_KEY': 'synthetic-secret'}), self.opener(wire), redirect_stdout(io.StringIO()):
-                with self.assertRaisesRegex(RuntimeError, 'authorization'): grade.judge(args)
+                status = grade.judge(args)
+                self.assertTrue(status['endpoint_credential_unavailable'])
+                self.assertEqual(status['collected_outcomes'], 2)
             self.assertEqual(len(wire.sent), 1)
             events = read_jsonl(args.usage)
             self.assertEqual([row['event'] for row in events], ['request', 'response'])

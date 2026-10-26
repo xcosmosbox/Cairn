@@ -12,7 +12,7 @@ from unittest import mock
 
 from agent_eval import load_solver_questions
 from agent_eval_native import (
-    CallBudget,
+    AttemptCounter,
     EvalConfig,
     JSONLedger,
     NativeDeepSeekClient,
@@ -310,7 +310,7 @@ class NativeHarnessTests(unittest.TestCase):
             path = Path(directory) / "requests.jsonl"
             ledger = JSONLedger(path)
             self.addCleanup(ledger.close)
-            client = NativeDeepSeekClient(EvalConfig(), "test-native-credential", CallBudget(5), ledger)
+            client = NativeDeepSeekClient(EvalConfig(), "test-native-credential", AttemptCounter(), ledger)
             responses = iter([provider_response("length"), provider_response("tool_calls")])
             captured = []
 
@@ -339,13 +339,15 @@ class NativeHarnessTests(unittest.TestCase):
             records = [json.loads(line) for line in text.splitlines()]
             self.assertEqual([record["event"] for record in records], ["request", "response", "request", "response"])
             self.assertNotIn("test-native-credential", text)
-            self.assertNotIn("DO_NOT_STORE_REASONING", text)
+            parsed_only = [{key: value for key, value in row.items() if key != "response_body"} for row in records]
+            self.assertNotIn("DO_NOT_STORE_REASONING", json.dumps(parsed_only))
+            self.assertIn("response_body", records[1])
 
     def test_stop_without_tools_is_protocol_error_not_http_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             ledger = JSONLedger(Path(directory) / "requests.jsonl")
             self.addCleanup(ledger.close)
-            client = NativeDeepSeekClient(EvalConfig(), "test-native-credential", CallBudget(5), ledger)
+            client = NativeDeepSeekClient(EvalConfig(), "test-native-credential", AttemptCounter(), ledger)
             payload = provider_response("stop", {"role": "assistant", "content": "plain answer", "tool_calls": []})
             with mock.patch("agent_eval_native.urlopen", return_value=MockResponse(payload)) as request:
                 result = evaluate_question("q7", "Question", "raw", FakeEngine(), client, EvalConfig())

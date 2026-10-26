@@ -38,9 +38,9 @@ for the final candidate. Cairn remains **Alpha**; planned identities are `1.0.0`
 
 The [execution policy](../coordination/EXECUTION_POLICY.md) permanently authorizes
 ordinary paid/network official DeepSeek/Cairn experiments and the specifically
-confirmed source/annotation/feedback data egress within its scope. A future run
-still needs its exact technical freeze/review/live admission; do not request the
-same user permission again or run a paid control as routine release regression.
+confirmed source/annotation/feedback data egress within its scope. Small experiments follow #105 after affected checks, without repeated technical GO
+or archive/full609/recovery prerequisites. Do not request the same user permission
+again or run a paid control as routine release regression.
 QA/gold/HOLDOUT access and new model runs are not part of this documentation task.
 
 ## 2. Run the inherited free gates on C

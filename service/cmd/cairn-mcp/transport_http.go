@@ -402,6 +402,14 @@ func writeJSONResponse(w http.ResponseWriter, resp *jsonRPCResponse) {
 		return
 	}
 
+	if structured, ok := result["structuredContent"].(map[string]interface{}); ok {
+		if result["isError"] == true {
+			structured["isError"] = true
+		}
+		writeJSON(w, structured)
+		return
+	}
+
 	content, _ := result["content"].([]interface{})
 	if content == nil {
 		writeJSON(w, result)

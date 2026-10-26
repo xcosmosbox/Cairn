@@ -2,60 +2,62 @@ package extract
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/xcosmosbox/cairn/core/dktypes"
+	"log"
+	"math"
+	"strings"
 )
 
-// ValidateFusionCompleteness rejects missing source material before description
-// generation, and missing descriptions before materialization. Only nodes that
-// meet the configured ingest confidence threshold are required to be publishable.
-// Inspect every member: one valid source must not hide another invented member.
-func ValidateFusionCompleteness(res *Result, docs []*dktypes.AnnotatedDocument, minConfidence float64, requireDescriptions bool) error {
+// ValidateFusionCompleteness validates source association per node. Missing
+// descriptions and unknown members remove only that node and incident edges;
+// coverage/annotation detail length/confidence are not admission thresholds.
+func ValidateFusionCompleteness(res *Result, docs []*dktypes.AnnotatedDocument, _ float64, requireDescriptions bool) error {
 	if res == nil {
-		return fmt.Errorf("fusion completeness: missing extraction result")
+		return fmt.Errorf("fusion: missing extraction result")
 	}
-	memberDetails := map[string]bool{}
+	members := map[string]bool{}
 	for _, doc := range docs {
-		if doc == nil {
-			continue
-		}
-		for _, item := range doc.Items {
-			if item.ID == "" {
-				continue
-			}
-			complete := strings.TrimSpace(item.Detail) != "" && strings.TrimSpace(doc.FilePath) != ""
-			if previous, exists := memberDetails[item.ID]; exists {
-				complete = complete && previous
-			}
-			memberDetails[item.ID] = complete
-		}
-	}
-	for _, domain := range res.Domains {
-		for _, subdomain := range domain.Subdomains {
-			for _, nodes := range [][]Node{subdomain.Entities, subdomain.Concepts} {
-				for _, node := range nodes {
-					if node.Confidence < minConfidence {
-						continue
-					}
-					if len(node.Members) == 0 {
-						return fmt.Errorf("fusion completeness: node %q has no source members", node.Name)
-					}
-					for _, member := range node.Members {
-						complete, exists := memberDetails[member]
-						if !exists {
-							return fmt.Errorf("fusion completeness: node %q references unknown member %q", node.Name, member)
-						}
-						if !complete {
-							return fmt.Errorf("fusion completeness: node %q member %q has missing detail or source path", node.Name, member)
-						}
-					}
-					if requireDescriptions && strings.TrimSpace(node.Description) == "" {
-						return fmt.Errorf("fusion completeness: node %q has no generated description", node.Name)
-					}
+		if doc != nil {
+			for _, it := range doc.Items {
+				if it.ID != "" && doc.FilePath != "" {
+					members[it.ID] = true
 				}
 			}
 		}
 	}
+	filter := func(nodes []Node) []Node {
+		kept := make([]Node, 0, len(nodes))
+		for _, node := range nodes {
+			reason := ""
+			if node.ID == "" || strings.TrimSpace(node.Name) == "" || len(node.Members) == 0 {
+				reason = "missing identity or source members"
+			}
+			if math.IsNaN(node.Confidence) || math.IsInf(node.Confidence, 0) || node.Confidence < 0 || node.Confidence > 1 {
+				reason = "invalid confidence"
+			}
+			for _, m := range node.Members {
+				if !members[m] {
+					reason = "unknown source member"
+				}
+			}
+			if requireDescriptions && strings.TrimSpace(node.Description) == "" {
+				reason = "missing description response"
+			}
+			if reason != "" {
+				log.Printf("[extract] omitted node %q: %s", node.Name, reason)
+				continue
+			}
+			kept = append(kept, node)
+		}
+		return kept
+	}
+	for di := range res.Domains {
+		for si := range res.Domains[di].Subdomains {
+			sd := &res.Domains[di].Subdomains[si]
+			sd.Entities = filter(sd.Entities)
+			sd.Concepts = filter(sd.Concepts)
+		}
+	}
+	cleanDangling(res.Domains)
 	return nil
 }
