@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -241,6 +242,15 @@ func modelError(err error) error {
 			return permanentError(err)
 		}
 		return unavailableError(err)
+	}
+	// HTTP 客户端在联网前拒绝的协议/主机配置不会因重试而恢复；其他 URL 错误仍可能是暂时网络故障。
+	// Only these local request causes are permanent, never every wrapped URL error.
+	var requestErr *url.Error
+	if errors.As(err, &requestErr) && requestErr.Err != nil {
+		cause := requestErr.Err.Error()
+		if strings.HasPrefix(cause, "unsupported protocol scheme ") || cause == "http: no Host in request URL" {
+			return permanentError(err)
+		}
 	}
 	for _, prefix := range []string{
 		"openai_compatible: nil renderer", "openai_compatible: max_tokens ",

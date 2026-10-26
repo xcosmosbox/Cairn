@@ -30,6 +30,14 @@ review requires correction of invented details while retaining supported substan
 it does not rewrite historical outcomes or claim new model success on all originals.
 Ordinary full-entry wiring and integrated six-original graph acceptance remain #114.
 
+Fresh [v0.1.2 reacceptance research](https://github.com/xcosmosbox/Cairn/issues/110#issuecomment-6421003577)
+found that known local endpoint configuration failures consumed document recoveries;
+#110 was reopened. The [narrow repair and actual-client controls](reports/2026-10-27-v012-permanent-config-repair.md)
+stop those failures after one permanent attempt, while retaining service/rate-limit
+recovery, provider-local timeouts and caller cancellation. The prior acceptance and
+original report remain dated history. New exact-head research/CI and coordinator
+acceptance are separate live events; #111 has not started at this checkpoint.
+
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
 omission-as-warning product direction; it does not restore retired peripheral gates.
