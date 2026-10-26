@@ -20,8 +20,10 @@ the fixed diagnostic. Normal CI and optional product features remain.
 qids, complete six-original support-document union. Builder sees originals only; solver
 qid/question; judge selected gold. This is a support-enriched given-source diagnostic,
 not full-corpus retrieval, generalization, HOLDOUT or release evidence. All four intended
-question×arm slots remain even if construction/retrieval/model/judge fails. No model result
-exists at this snapshot; later actual results must be recorded before claiming otherwise.
+question×arm slots remain even if construction/retrieval/model/judge fails. The [actual diagnostic](reports/diagnostic105-results.md) completed:43build+4solver+7judge
+requests. Five of6originals materialized; all4solver slots completed, but4judge validation
+errors plus2ambiguous judgments leave every pair unresolved. No reliable paired utility
+estimate or graph benefit was established. No post-outcome rerun or tuning occurred.
 
 ## Historical evidence and paused work
 

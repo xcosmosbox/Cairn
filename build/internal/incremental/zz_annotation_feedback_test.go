@@ -27,9 +27,9 @@ func TestAnnotationSingleAssessmentNoRevision(t *testing.T) {
 				if strings.Contains(r.System, "你是知识标注的语义核验专家") {
 					gates++
 					if reject {
-						return &llm.CompleteResponse{Text: `{"idempotent":false,"reason":"unisolatable unsupported claim"}`}, nil
+						return &llm.CompleteResponse{Text: `{"supported":false,"reason":"unisolatable unsupported claim","unsupported_items":[],"omissions":[]}`}, nil
 					}
-					return &llm.CompleteResponse{Text: `{"idempotent":true}`}, nil
+					return &llm.CompleteResponse{Text: `{"supported":true,"reason":"retained facts are supported by the original source","unsupported_items":[],"omissions":[]}`}, nil
 				}
 				annotations++
 				return &llm.CompleteResponse{Text: `{"items":[{"tag":"entity","name":"unit","content":"summary","detail":"original source","confidence":0.69}]}`}, nil
@@ -64,7 +64,7 @@ func TestC4SingleAnnotationKeepsHumanBlocksOutsideSource(t *testing.T) {
 			t.Fatal("human block reached model")
 		}
 		if strings.Contains(r.System, "你是知识标注的语义核验专家") {
-			return &llm.CompleteResponse{Text: `{"idempotent":true}`}, nil
+			return &llm.CompleteResponse{Text: `{"supported":true,"reason":"retained facts are supported by the original source","unsupported_items":[],"omissions":[]}`}, nil
 		}
 		return &llm.CompleteResponse{Text: `{"items":[{"tag":"entity","name":"new unit","content":"summary","detail":"New outside prose.","confidence":0.69}]}`}, nil
 	})

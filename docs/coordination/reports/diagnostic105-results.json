@@ -1,0 +1,206 @@
+{
+  "format": "cairn-diagnostic105-public-results/v1",
+  "source_commit": "0ef43b32401e6a5511b6ddf1e06eed68840c6954",
+  "equivalent_remote_commit": "ad7ab5b9b2cc550bdb3543404236d27ec26d3173",
+  "source_tree": "7d34aca2e4c9ca92d0bdc937eedaaa323371ca2c",
+  "source_after_test_only_fix": "baba7a1",
+  "intended_documents": 6,
+  "accepted_documents": 5,
+  "accepted_annotation_rows": 173,
+  "accepted_distinct_document_member_incidences": 172,
+  "materialized_distinct_document_member_incidences": 171,
+  "node_labels": {
+    "Concept": 61,
+    "Domain": 4,
+    "Entity": 96,
+    "Skill": 1,
+    "Subdomain": 11
+  },
+  "edges": 424,
+  "graph_db_bytes": 765952,
+  "graph_db_sha256": "dc5b264fb199cd65a486f6b7c65f6237c25c548e716ed149fa47f0b2dae4f00e",
+  "raw_index_bytes": 253952,
+  "raw_chunks": 39,
+  "build_seconds": 497.85599502400055,
+  "solver_seconds": 8.42394590100048,
+  "judge_seconds": 23.478424695000285,
+  "requests": {
+    "build": 43,
+    "solver": 4,
+    "judge": 7,
+    "total": 54
+  },
+  "known_prompt_tokens": 244774,
+  "known_completion_tokens": 318076,
+  "unknown_usage_responses": 0,
+  "fees": null,
+  "solver": {
+    "intended_slots": 4,
+    "completed_schema_and_citation_valid": 4,
+    "raw_substantive_answers": 2,
+    "graph_substantive_answers": 1,
+    "graph_abstentions": 1,
+    "emitted_citations": 6,
+    "invalid_citations": 0,
+    "declared_quotes": 0,
+    "declared_quote_validation_rate": null
+  },
+  "judge": {
+    "cases": 7,
+    "validated_schema_and_evidence_guards": 3,
+    "validation_errors": 4,
+    "ambiguous_among_validated": 2,
+    "usable_answer_judgment": {
+      "arm": "raw",
+      "qid_prefix": "040bf93af9d8",
+      "strict_pass": true
+    },
+    "error_counts": {
+      "top_level_schema_mismatch": 1,
+      "missing_authoritative_evidence_refs": 1,
+      "missing_original_bound_cited_substantive_support": 2
+    },
+    "case_outcomes": [
+      {
+        "case_id": "case-00001",
+        "question_id": "040bf93af9d84d82a5c27faa41512df01e6752a81db06843ea38e0cacd113d64",
+        "arm": "raw_source_fts_sqlite",
+        "case_kind": "answer",
+        "record_status": "ok",
+        "error": null,
+        "gold_or_rubric_ambiguity": false,
+        "answer_strict_pass": true
+      },
+      {
+        "case_id": "case-00002",
+        "question_id": "040bf93af9d84d82a5c27faa41512df01e6752a81db06843ea38e0cacd113d64",
+        "arm": "raw_source_fts_sqlite",
+        "case_kind": "evidence",
+        "record_status": "error",
+        "error": "judge verdict top-level schema mismatch",
+        "gold_or_rubric_ambiguity": false,
+        "answer_strict_pass": null
+      },
+      {
+        "case_id": "case-00003",
+        "question_id": "040bf93af9d84d82a5c27faa41512df01e6752a81db06843ea38e0cacd113d64",
+        "arm": "production_graph",
+        "case_kind": "answer",
+        "record_status": "error",
+        "error": "answer claim lacks original-bound cited substantive support",
+        "gold_or_rubric_ambiguity": false,
+        "answer_strict_pass": null
+      },
+      {
+        "case_id": "case-00004",
+        "question_id": "02f2a372b5109cc853719305e2188216fde659f4f3a951b2e26cfb3c50200a62",
+        "arm": "raw_source_fts_sqlite",
+        "case_kind": "evidence",
+        "record_status": "error",
+        "error": "supported verdict lacks authoritative evidence references",
+        "gold_or_rubric_ambiguity": false,
+        "answer_strict_pass": null
+      },
+      {
+        "case_id": "case-00005",
+        "question_id": "02f2a372b5109cc853719305e2188216fde659f4f3a951b2e26cfb3c50200a62",
+        "arm": "production_graph",
+        "case_kind": "evidence",
+        "record_status": "ok",
+        "error": null,
+        "gold_or_rubric_ambiguity": true,
+        "answer_strict_pass": null
+      },
+      {
+        "case_id": "case-00006",
+        "question_id": "02f2a372b5109cc853719305e2188216fde659f4f3a951b2e26cfb3c50200a62",
+        "arm": "raw_source_fts_sqlite",
+        "case_kind": "answer",
+        "record_status": "error",
+        "error": "answer claim lacks original-bound cited substantive support",
+        "gold_or_rubric_ambiguity": false,
+        "answer_strict_pass": null
+      },
+      {
+        "case_id": "case-00007",
+        "question_id": "040bf93af9d84d82a5c27faa41512df01e6752a81db06843ea38e0cacd113d64",
+        "arm": "production_graph",
+        "case_kind": "evidence",
+        "record_status": "ok",
+        "error": null,
+        "gold_or_rubric_ambiguity": true,
+        "answer_strict_pass": null
+      }
+    ]
+  },
+  "conservative_paired_summary": {
+    "intended_pairs": 2,
+    "intended_arm_slots": 4,
+    "unresolved_slots": 4,
+    "raw_provisional_grounded_correct": 0,
+    "graph_provisional_grounded_correct": 0,
+    "formal_statistics_ready": false
+  },
+  "conclusion": "Inconclusive: no reliable paired utility estimate or demonstrated graph benefit; provisional zero is not measured zero accuracy. No post-outcome rerun/tuning.",
+  "scope": "fixed support-enriched two-DEV given-source diagnostic; no HOLDOUT/full-corpus/generalization/null/refusal/release claim",
+  "raw_summary_sha256": "cf84697d8b04bfd367039f7b695e68d971d2849760a64b9923c0718ae654852e",
+  "per_question_existing_result_analysis": [
+    {
+      "question_id": "02f2a372b5109cc853719305e2188216fde659f4f3a951b2e26cfb3c50200a62",
+      "failed_originals_in_support": [],
+      "omitted_accepted_members_in_support": [],
+      "arms": {
+        "production_graph": {
+          "abstain": true,
+          "normalized_answer_contains_expected_target": false,
+          "visible_support_original_count": 1,
+          "required_support_originals": 3,
+          "visible_characters": 9053,
+          "evidence_blocks": 6
+        },
+        "raw_source_fts_sqlite": {
+          "abstain": false,
+          "normalized_answer_contains_expected_target": true,
+          "visible_support_original_count": 1,
+          "required_support_originals": 3,
+          "visible_characters": 10000,
+          "evidence_blocks": 5
+        }
+      }
+    },
+    {
+      "question_id": "040bf93af9d84d82a5c27faa41512df01e6752a81db06843ea38e0cacd113d64",
+      "failed_originals_in_support": [
+        "3d08aa8f2eec4126b0b2d629dc063ce0d9fdc300604457905566cbbc44472099"
+      ],
+      "omitted_accepted_members_in_support": [
+        {
+          "doc_id": "129e45fe8c1a56a0e6a876b0ec446e29a10db73e3bc8a66688dbf8b3f640ad65",
+          "member_id_sha256": "97444630490e3fb40af72d589c3b0e4f368dbba05ade60247a75263773f3bf99"
+        }
+      ],
+      "arms": {
+        "production_graph": {
+          "abstain": false,
+          "normalized_answer_contains_expected_target": true,
+          "visible_support_original_count": 1,
+          "required_support_originals": 3,
+          "visible_characters": 10000,
+          "evidence_blocks": 6
+        },
+        "raw_source_fts_sqlite": {
+          "abstain": false,
+          "normalized_answer_contains_expected_target": true,
+          "visible_support_original_count": 3,
+          "required_support_originals": 3,
+          "visible_characters": 10000,
+          "evidence_blocks": 5
+        }
+      }
+    }
+  ],
+  "post_run_read_only_identity_unchanged": {
+    "graph": true,
+    "raw": true
+  }
+}
