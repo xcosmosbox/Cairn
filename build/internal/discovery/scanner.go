@@ -263,7 +263,8 @@ func (s *scanState) scanDir(path string) {
 	}
 	var skill *Skill
 	for _, marker := range s.rules.Markers {
-		if _, exists := byName[marker]; !exists {
+		entry, exists := byName[marker]
+		if !exists {
 			continue
 		}
 		markerPath := filepath.Join(path, marker)
@@ -274,7 +275,11 @@ func (s *scanState) scanDir(path string) {
 			return
 		}
 		source := s.readSource(markerPath, SourceSkillBody)
-		if source.Disposition == Unsupported {
+		// 普通标记即使正文不受支持也能确定目录身份，避免把正常引用误排除；
+		// 目录、符号链接等非普通标记仍不能取得所有权并隐藏后代。
+		// Regular marker presence preserves reference scope despite unsupported bytes;
+		// non-regular markers must not claim the directory and hide descendants.
+		if source.Disposition == Unsupported && !entry.Type().IsRegular() {
 			continue
 		}
 		if skill == nil {
