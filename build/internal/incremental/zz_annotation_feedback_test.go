@@ -15,8 +15,9 @@ func (f feedbackClient) Complete(_ context.Context, r llm.CompleteRequest) (*llm
 }
 func (feedbackClient) ProviderName() string { return "one-pass-test" }
 
-// A rejected assessment used to spend more calls rewriting the full annotation.
-func TestAnnotationSingleAssessmentNoRevision(t *testing.T) {
+// 禁用额外恢复时仍只执行一次；拒绝结果不得成为可接受候选。
+// Disabling extra recovery keeps the one-attempt contract without accepting rejections.
+func TestAnnotationDisabledRecoveryAssessesOnce(t *testing.T) {
 	for _, reject := range []bool{false, true} {
 		t.Run(map[bool]string{false: "accepted", true: "rejected"}[reject], func(t *testing.T) {
 			annotations, gates := 0, 0
@@ -34,7 +35,7 @@ func TestAnnotationSingleAssessmentNoRevision(t *testing.T) {
 				annotations++
 				return &llm.CompleteResponse{Text: `{"items":[{"tag":"entity","name":"unit","content":"summary","detail":"original source","confidence":0.69}]}`}, nil
 			})
-			doc, reason := newAnnotator(client, 71, 1, 0).annotateOne(context.Background(), "skill", "ref.md", "original source")
+			doc, reason := newAnnotator(client, 71, -1, 0).annotateOne(context.Background(), "skill", "ref.md", "original source")
 			if annotations != 1 || gates != 1 {
 				t.Fatalf("annotations=%d gates=%d", annotations, gates)
 			}

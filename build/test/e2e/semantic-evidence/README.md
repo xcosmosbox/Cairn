@@ -89,3 +89,20 @@ Case-specific `owner`, `stage` and `evidence_kind` fields identify the named res
 The unresolved exact LLM/parser/filter cause of an already localized historical stage
 loss does not block #109's inventory acceptance; it remains with that stage's owner.
 These fixtures neither waive that loss nor establish parent v0.1 acceptance.
+
+## v0.1.2 annotation helper evidence
+
+The [annotation revision report](../../../../docs/coordination/reports/2026-10-26-v012-annotation-revision.md)
+and [three-row semantic disposition](v012_removed_rows.md) add deterministic helper
+acceptance without changing these originals, expectations or historical packets.
+`annotation.DocumentProcessor` returns source skill/path, candidate identity, factual
+document outcome/reason and actual finite attempts. Only `complete` candidates may
+enter downstream node processing; other retained candidates are evidence.
+
+The shared recovery allowance counts extra failed-step recoveries: positive N gives
+N, zero defaults to 3, negative disables. Invalid or explicitly unknown assessment
+reassesses the same candidate with its own attempt reason; actual unsupported/omitted knowledge triggers original/candidate/feedback
+revision and whole-candidate recheck. The C4 adapter uses this same helper with only
+outside-block source text. Full-entry wiring and final six-original-plus-supplement
+graph/aggregate acceptance remain #114. Source-preservation fixtures do not constitute
+a new model judgment of the private originals or general semantic-completeness proof.

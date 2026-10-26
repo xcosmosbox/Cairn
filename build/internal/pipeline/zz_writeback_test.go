@@ -21,7 +21,7 @@ func (writebackFixtureLLM) Complete(ctx context.Context, req llm.CompleteRequest
 	case strings.Contains(req.System, "知识结构化标注专家"):
 		text = `{"items":[{"tag":"concept","name":"幂等键","content":"重复请求只处理一次。","detail":"通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95}]}`
 	case strings.Contains(req.System, "语义核验专家"):
-		text = `{"idempotent":true,"reason":"完整覆盖"}`
+		text = `{"idempotent":true,"reason":"fixture detail retains the complete idempotency source sentence","unsupported_items":[],"omissions":[]}`
 	case strings.Contains(req.System, "领域知识融合专家"):
 		match := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindStringSubmatch(req.User)
 		if len(match) != 2 {
