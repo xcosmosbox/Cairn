@@ -3,22 +3,20 @@
 // 块区域已置空、行号与原档 1:1 对齐），绝不重标已有 uuid 块。
 //
 // 复用全量流水线的同一套组件与语义（契约一致）：
-//   - annotation.LLMAnnotator：per-doc LLM 标注一次；
-//   - annotation.FormatGate（Gate A 代码门）+ annotation.SemanticGate（Gate B LLM 语义门）；
-//   - 标注/核验失败仅影响本篇，不付费重写；
+//   - annotation.DocumentProcessor：共享有限失败步骤重试与整篇语义修订；
+//   - 标注/核验失败仅影响本篇，成功兄弟不重跑；
 //   - extract.AssignIDs：刷 04 id（<slug(skill)>-<tag>-<slug(name)>）。
 //
 // 产出带 04 id + SourceSpan（与原档行号对齐）的新标注单元，供 I-4 增量对齐消费。
 //
 // This file implements I-3 annotation: only docs with C4 additions are annotated,
 // and only their outside-block text (C4Text, line-aligned to the doc). It reuses
-// the full pipeline's annotator and both gates once, then mints 04 ids via extract.AssignIDs.
+// the same finite document processor as the full helper, then mints 04 ids via extract.AssignIDs.
 package incremental
 
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
@@ -43,24 +41,28 @@ type annotateOutput struct {
 	// Skipped 是标注失败（或空文本跳过）的文档及原因（可观测，不阻塞流水线）。
 	// Skipped lists document-local annotation failures.
 	Skipped []annotateSkip
+	// Results 按路径保留所有文档的事实结果和实际尝试；只有 complete 候选可下传。
+	// Results retain every source outcome and attempts; only complete candidates are accepted.
+	Results []annotation.DocumentResult
 }
 
-// annotator 封装 I-3 的标注组件三元组（复用全量组件，依赖注入 llm.Client 便于 mock）。
-// annotator bundles the I-3 annotation components (full-pipeline reuse).
+// documentProcessor 让增量只依赖共享文档处理契约，不复制重试状态机。
+// documentProcessor is the common processing contract, with no adapter retry loop.
+type documentProcessor interface {
+	Process(context.Context, string, string, string) annotation.DocumentResult
+}
+
+// annotator 复用全量标注处理器；接口便于确定性测试取消与终态汇合。
+// annotator reuses the full document processor and permits deterministic join tests.
 type annotator struct {
-	llm          *annotation.LLMAnnotator
-	formatGate   *annotation.FormatGate
-	semanticGate *annotation.SemanticGate
+	processor documentProcessor
 }
 
-// newAnnotator 组装 I-3 标注器（与全量同一套组件与参数语义）。
-// newAnnotator assembles the I-3 annotator (same components as the full pipeline).
+// newAnnotator 的 maxRetries 与共享处理器一致：正数为全篇共享的额外恢复次数，
+// 0 使用默认 3，负数禁止额外恢复；初始生成与核验不消耗恢复次数。
+// maxRetries is the shared EXTRA recovery allowance (0 defaults to 3; negative disables it).
 func newAnnotator(client llm.Client, maxTokens, maxRetries, maxNameRunes int) *annotator {
-	return &annotator{
-		llm:          annotation.NewLLMAnnotator(client, maxTokens, maxRetries),
-		formatGate:   annotation.NewFormatGate(maxNameRunes),
-		semanticGate: annotation.NewSemanticGate(client, maxTokens, maxRetries),
-	}
+	return &annotator{processor: annotation.NewDocumentProcessor(client, maxTokens, maxRetries, maxNameRunes)}
 }
 
 // annotateC4Docs 并发标注所有含 C4 的文档（仅块外新增片段）。
@@ -82,59 +84,46 @@ func (a *annotator) annotateC4Docs(ctx context.Context, pp *PipelinePlan, c4Text
 	}
 	sortStrings(docs)
 
-	type docResult struct {
-		path   string
-		doc    *dktypes.AnnotatedDocument
-		reason string
-	}
-	results := make([]docResult, len(docs))
+	results := make([]annotation.DocumentResult, len(docs))
 	parallel.ForEachIndexed(parallel.MaxConcurrency, docs, func(i int, path string) {
-		text := c4TextByDoc[path]
-		skill := pp.SkillByDoc[path]
-		doc, reason := a.annotateOne(ctx, skill, path, text)
-		results[i] = docResult{path: path, doc: doc, reason: reason}
+		results[i] = a.processor.Process(ctx, pp.SkillByDoc[path], path, c4TextByDoc[path])
 	})
-
+	// 先等所有文档终态再汇合；失败候选只作证据，不能当作权威空替换。
+	// Join every terminal outcome; failed candidates are trace evidence only.
+	out.Results = results
 	var passed []*dktypes.AnnotatedDocument
 	for _, r := range results {
-		if r.doc == nil {
-			out.Skipped = append(out.Skipped, annotateSkip{Path: r.path, Reason: r.reason})
+		if reason := annotationSkipReason(r); reason != "" {
+			out.Skipped = append(out.Skipped, annotateSkip{Path: r.FilePath, Reason: reason})
 			continue
 		}
-		if len(r.doc.Items) == 0 {
-			// 标注成功但零产出（纯叙述新增）——也记为跳过，供 per-doc C4 状态判
-			// 「未解决」（问题 2：零产出时人类散文必须保留，不得静默删除）。
-			out.Skipped = append(out.Skipped, annotateSkip{Path: r.path,
-				Reason: "标注零产出（新增文本未含可吸收的 entity/concept 单元）"})
-			continue
-		}
-		passed = append(passed, r.doc)
+		passed = append(passed, r.Document)
 	}
 	// 刷 04 id（与全量同一函数：<slug(skill)>-<tag>-<slug(name)>）。
 	out.Docs = extract.AssignIDs(passed)
 	return out
 }
 
-// annotateOne 对单篇文档的块外片段执行「标注 → Gate A → Gate B」，失败仅跳过本篇，不重写。
-// annotateOne runs annotate→GateA→GateB for one doc's outside-block text once; failures are local to this document.
+// annotateOne 使用同一处理器；失败只影响当前文档，理由供既有跳过契约消费。
+// annotateOne delegates to the same processor and preserves document-local skip reasons.
 func (a *annotator) annotateOne(ctx context.Context, skill, path, text string) (*dktypes.AnnotatedDocument, string) {
-	if strings.TrimSpace(text) == "" {
-		return nil, fmt.Sprintf("%s: 块外新增为空（跳过）", path)
+	result := a.processor.Process(ctx, skill, path, text)
+	if reason := annotationSkipReason(result); reason != "" {
+		return nil, reason
 	}
-	doc, err := a.llm.Annotate(ctx, skill, path, text)
-	if err != nil {
-		return nil, fmt.Sprintf("%s 标注失败: %v", path, err)
+	return result.Document, ""
+}
+
+// annotationSkipReason 保留零产出散文和失败基线；未接受候选不能进入对齐。
+// Zero-item prose and unsuccessful candidates remain unresolved under the existing contract.
+func annotationSkipReason(result annotation.DocumentResult) string {
+	if result.Outcome != annotation.DocumentComplete {
+		return fmt.Sprintf("%s 标注%s: %s", result.FilePath, result.Outcome, result.Reason)
 	}
-	cleaned, err := a.formatGate.Check(doc)
-	if err != nil {
-		return nil, fmt.Sprintf("%s Gate A 未通过: %v", path, err)
+	if result.Document == nil || len(result.Document.Items) == 0 {
+		return fmt.Sprintf("%s: 标注零产出（新增文本未含可吸收的 entity/concept 单元）", result.FilePath)
 	}
-	// 一次事实核验；遗漏不触发重写，无法核验只影响当前文档。
-	// Assess facts once; omissions never trigger annotation revision.
-	if err := a.semanticGate.Check(ctx, text, cleaned); err != nil {
-		return nil, fmt.Sprintf("%s Gate B 未通过: %v", path, err)
-	}
-	return cleaned, ""
+	return ""
 }
 
 // sortStrings 稳定排序（本包小工具，避免到处 import sort）。

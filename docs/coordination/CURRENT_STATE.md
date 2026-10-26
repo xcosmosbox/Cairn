@@ -22,6 +22,14 @@ Its task checkpoint/PR records exact head checks and acceptance. Ordinary produc
 entry wiring, annotation/node/relation/provenance repairs and parent v0.1 acceptance
 remain with #110–#114; no new paid/model run is implied.
 
+The [v0.1.2 annotation helper implementation/evidence](reports/2026-10-26-v012-annotation-revision.md)
+adds a shared finite document processor, strict coverage/factuality feedback and the
+C4 adapter, with deterministic recovery/exhaustion/cancellation and source-preservation
+checks. Its live #110 PR/review/CI records govern acceptance. The new three-row semantic
+review requires correction of invented details while retaining supported substance;
+it does not rewrite historical outcomes or claim new model success on all originals.
+Ordinary full-entry wiring and integrated six-original graph acceptance remain #114.
+
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
 omission-as-warning product direction; it does not restore retired peripheral gates.

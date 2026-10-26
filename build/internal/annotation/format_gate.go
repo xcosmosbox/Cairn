@@ -3,7 +3,6 @@ package annotation
 import (
 	"fmt"
 	"github.com/xcosmosbox/cairn/core/dktypes"
-	"log"
 	"math"
 	"strings"
 )
@@ -15,8 +14,8 @@ type FormatGate struct{}
 
 func NewFormatGate(_ int) *FormatGate { return &FormatGate{} }
 
-// Check normalizes each item independently. Malformed rows are observable local
-// failures; distinct facts and source incidences sharing a name are all retained.
+// Check 仅归一化，不删除坏行后假装完整；同名事实全部保留。
+// Check normalizes without silently filtering malformed rows or same-name facts.
 func (g *FormatGate) Check(doc *dktypes.AnnotatedDocument) (*dktypes.AnnotatedDocument, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("format gate: nil document")
@@ -27,8 +26,7 @@ func (g *FormatGate) Check(doc *dktypes.AnnotatedDocument) (*dktypes.AnnotatedDo
 		it.Content = strings.TrimSpace(it.Content)
 		it.Detail = strings.TrimSpace(it.Detail)
 		if !it.Tag.IsValid() || it.Name == "" || it.Content == "" || math.IsNaN(it.Confidence) || math.IsInf(it.Confidence, 0) || it.Confidence < 0 || it.Confidence > 1 {
-			log.Printf("[format-gate] rejected malformed item %d in %s", i, doc.FilePath)
-			continue
+			return nil, fmt.Errorf("format gate: malformed item %d in %s; candidate requires repair", i, doc.FilePath)
 		}
 		it.SourceSpan = normalizeSourceSpan(it.SourceSpan)
 		cleaned.Items = append(cleaned.Items, it)
