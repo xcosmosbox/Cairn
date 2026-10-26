@@ -31,7 +31,12 @@ approve model spending, or automatically accept/merge their work. Existing expli
 authorization continues to apply within its scope. No approval is needed merely to read,
 research, reproduce free local checks, or prepare an isolated fix and PR.
 
-Current experiment direction: [#105](https://github.com/xcosmosbox/Cairn/issues/105) and
-[accepted simplification plan](docs/coordination/reports/2026-10-26-simplification-plan.md).
-Use minimal affected checks, then run the declared experiment. Missing usage/archive
-access is a warning; individual failed outcomes remain in the intended denominator.
+Current direction: [v0.1 planning #107](https://github.com/xcosmosbox/Cairn/issues/107),
+[version roadmap](ROADMAP.md) and [finite construction plan](docs/coordination/reports/2026-10-26-v01-build-completeness-plan.md).
+The plan is not an implementation result. v0.1 requires meaningful source knowledge and
+provenance to survive construction; finite failed-step retry/semantic revision precedes
+partial completion for retryable/repairable failures. Raw retention, warning labels or
+partial-result robustness cannot certify semantic completeness. This supersedes #105's
+one-shot/no-semantic-revision direction while preserving its actual history and deletion
+of unnecessary cost/time/archive/full609/recovery/repeated-approval gates. Use affected
+checks and normal CI; missing usage is unknown and all intended outcomes remain visible.

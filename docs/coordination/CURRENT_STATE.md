@@ -1,20 +1,28 @@
 # Current evidence snapshot
 
-As of **2026-10-26 UTC**. Starting main baseline:
-`b850ee4e4bf1074713c10b58b2a963b50640b1b9`.
-Live [#105](https://github.com/xcosmosbox/Cairn/issues/105), task comments/PR heads and raw
+As of **2026-10-26 UTC**. Product source baseline:
+`d2fa342312809b1d632308433ec507b523d86655` (merged PR106).
+Live [#107](https://github.com/xcosmosbox/Cairn/issues/107), task comments/PR heads and raw
 outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
 answer-utility result is implied by code acceptance/CI.
 
 ## Current work
 
-[#105 adopted one complete simplification plan](reports/2026-10-26-simplification-plan.md)
-after four read-only contexts voted YES on all38 rows. The same-account/model limit is
-explicit; votes are decisions, not scientific measurements. Fresh executors have isolated
-build, runtime, evaluation, incremental, service and documentation/integration scopes.
-They delete nonessential gates and inactive experimental frameworks, preserve concrete
-identity/source/human/atomic/query/credential safeguards, run affected checks, then execute
-the fixed diagnostic. Normal CI and optional product features remain.
+[#107](https://github.com/xcosmosbox/Cairn/issues/107) publishes the
+[finite v0.1 construction plan](reports/2026-10-26-v01-build-completeness-plan.md),
+[#108](https://github.com/xcosmosbox/Cairn/issues/108) and six product implementation children. All product changes remain
+unaccepted at plan publication. Four read-only research sessions inspected annotation,
+fusion/relations, provenance/storage and acceptance; publication changes docs/Issues only.
+No product executor or paid model job is started by this plan.
+
+The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
+finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
+omission-as-warning product direction; it does not restore retired peripheral gates.
+#14 is future v0.2/v0.4 backlog after the relevant stage, not current execution.
+
+#105's simplification is complete at PR106:38 mechanism groups,149 paths and net27189
+lines removed, with affected/integrated checks and normal CI. This is implementation
+history, not source-completeness, graph-benefit or release acceptance.
 
 [Fixed selection](reports/diagnostic105-selection.json): first two existing selected DEV
 qids, complete six-original support-document union. Builder sees originals only; solver
@@ -25,6 +33,25 @@ requests. Five of6originals materialized; all4solver slots completed, but4judge 
 errors plus2ambiguous judgments leave every pair unresolved. No reliable paired utility
 estimate or graph benefit was established. No post-outcome rerun or tuning occurred.
 
+
+## New read-only diagnosis of the saved #105 packet
+
+This is inspection of retained evidence, not a new construction/model run. The failed
+original had29 items; assessment returned HTTP200/stop, supported=false and index29
+outside valid0–28. The gate rejected malformed feedback with no semantic retry; neither
+semantic falsehood nor exhausted revision follows. Across the other five originals,
+176 initial rows became173 accepted rows; those3 removals still require source-semantic
+disposition for v0.1. There were205 initial rows across all six originals.
+
+The172 distinct accepted document–member incidences became171 by the earliest saved05
+extraction result. Later selection/SQLite agree on171. NodeSourcesInserted172 counts
+raw input rows including one duplicate; it is not distinct committed provenance.
+The precise LLM/parser/filter origin of the early missing member remains unresolved.
+Do not attribute it to a whole-node or SQLite insertion loss. v0.1.1 records the boundary,
+.2/.3 repair their stages, .5 reports true persisted sets, and .6 accepts the full source
+semantics without reducing the six-original denominator. The original diagnostic report
+and private packet remain unchanged; fixed packet identity is in the new plan.
+
 ## Historical evidence and paused work
 
 | Record | Actual boundary |
@@ -34,7 +61,7 @@ estimate or graph benefit was established. No post-outcome rerun or tuning occur
 | #64/#68/#74 implementations | Typed revision/local contradiction/human-edge protections were source evidence; old revision method now superseded |
 | #99/PR101 | Source accepted at starting main; original-only qualification/zero-key preflight, no actual provider experiment |
 | #103/PR104 | Earlier original609 timeout remains failure; later original609 regression user-stopped, neither pass nor code-defect failure; draft optimization not measured speedup |
-| #11/#13 | Optional historical archive/control review backlog, not completed and not prerequisites for a new experiment |
+| #11/#13 | Closed superseded archive/control review; not completed successfully and not prerequisites for a new experiment |
 
 Old source/packets/comments remain unchanged. The orphan staged/history/bounded experimental
 route is retired by #105; reproducing it is not required to measure the ordinary pipeline.

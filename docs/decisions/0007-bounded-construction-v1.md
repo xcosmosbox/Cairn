@@ -15,7 +15,15 @@ when history is unnecessary. Preserve actual alias/parent/source/member ownershi
 numeric values, human edits, valid selected graph consistency, isolated materialization and
 atomic publication. Missing output is a local unavailable outcome, never an empty replacement
 that deletes prior data. Preserve raw requests/responses/errors and complete intended counts.
-Unknown usage and upload failure are warnings. No losslessness repair or retry-to-pass loop.
+Unknown usage and upload failure are warnings. The #105 implementation removed semantic
+repair/retry; this is baseline history, not the current v0.1 acceptance direction.
+
+Current applicability (2026-10-26): [#107](https://github.com/xcosmosbox/Cairn/issues/107)
+and the [v0.1 plan](../coordination/reports/2026-10-26-v01-build-completeness-plan.md)
+require finite failed-step retry/semantic revision and substantive coverage in ordinary
+production construction. Their implementation is pending. This does not restore the
+retired bounded/staged/history/counter/importer framework or accept lossy construction
+merely because retained items are valid.
 
 Existing product incremental writeback/ownership safeguards and optional evolution features
 remain independent of the retired harness. No public API/schema/Bundle/query migration is
