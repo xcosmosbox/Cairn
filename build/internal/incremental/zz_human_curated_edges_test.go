@@ -103,7 +103,8 @@ func TestTouchedHumanEdgesSurviveActualRecomputeAndIngest(t *testing.T) {
 	}
 }
 
-// 人工节点不等于所有相关机器边也被冻结；保持 touched machine-only 的原有删除/更新语义。
+// v0.1.4：没有冻结原文时，省略或派生描述不能删除/覆盖被触碰的机器边。
+// Source-less reflow retains every old field, whether an unverified response omits or rewrites it.
 func TestTouchedMachineEdgeRetainsAutomaticRecomputeBehavior(t *testing.T) {
 	t.Parallel()
 	for _, updated := range []bool{false, true} {
@@ -133,16 +134,8 @@ func TestTouchedMachineEdgeRetainsAutomaticRecomputeBehavior(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !updated {
-				if len(after) != 0 {
-					t.Fatalf("machine omission became protected: %+v", after)
-				}
-				return
-			}
-			want := *before[0]
-			want.Description, want.Confidence = "Updated machine condition", .2
-			if len(after) != 1 || !reflect.DeepEqual(after[0], &want) {
-				t.Fatalf("machine update/metadata behavior changed: after=%+v want=%+v", after, want)
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("source-less machine reflow changed original Edge: before=%+v after=%+v", before, after)
 			}
 		})
 	}

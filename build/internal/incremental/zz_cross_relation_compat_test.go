@@ -87,10 +87,8 @@ func TestCrossRelationIncrementalCompatibilityPreservesHumanAndEdgeMetadata(t *t
 			if err != nil || node == nil || node.ID != sourceID || node.Description != source.Description || node.Provenance != dktypes.ProvenanceHumanCurated {
 				t.Fatalf("human content or pinned identity changed: %+v %v", node, err)
 			}
+			// v0.1.4 cannot certify new relations without original sources.
 			wantCalls := 0
-			if localNeighbor {
-				wantCalls = 1
-			}
 			if client.calls != wantCalls {
 				t.Fatalf("local I7 path not exercised: calls=%d want=%d warnings=%v", client.calls, wantCalls, rs.warningsSnapshot())
 			}

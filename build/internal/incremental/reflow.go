@@ -6,10 +6,8 @@
 //     素材 = node 现有 description（已有 members 的融合沉淀——04 detail 不持久化，
 //     增量场景以现有 description 为旧素材载体）+ 本轮新融入 members 的 detail（I-3 产出）。
 //     human_curated 的 node 跳过（R8：人工内容绝不覆盖）。
-//   - I-7：仅对 dirty.Subdomains 剪枝式重算 relation：输入该子域现存全部 node
-//     （含本轮新增、已删的自然消失）+ 现有 relation，要求 LLM 输出**最终集合**
-//     （保留仍有效的、删无效的=不出现在输出、补涉及新 node 的、无关原样保留——
-//     最小改变）；6 枚举 kind 校验 + 端点存在性过滤 + 越界原地重试（与全量一致）。
+//   - I-7：复用原文关系 helper；缺失输出不是删边授权，既有 Edge 完整保留。
+//     带原文的入口核验两端来源并有限修复，旧入口只报告来源不可用。
 //
 // R1 铁律：两个阶段的 LLM 都只见 alias（<subdomain-slug>#<序号>），uuid 绝不进
 // prompt；LLM 返回的端点/节点引用由代码翻译回 uuid（call-scoped aliasBook）。
@@ -24,8 +22,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"math"
+	"sort"
 	"strings"
 	"sync"
 
@@ -45,19 +44,22 @@ type reflowResult struct {
 	// relations 是每个脏子域重算后的「最终」语义 relation 集合（端点已是 uuid）。
 	// relations holds the final recomputed semantic relations per dirty subdomain.
 	relations map[SubdomainKey][]extract.Relation
-	// keptCross 是每个脏子域「端点跨子域」的现存边（不进 LLM，原样保留重插）。
-	// keptCross keeps existing edges whose endpoints cross subdomains (verbatim).
+	// keptCross 是每个脏子域保留的完整既有边（包括本域与跨域，原样保留重插）。
+	// keptCross retains complete existing local/cross edges (verbatim unless new facets merge).
 	keptCross map[SubdomainKey][]*dktypes.Edge
 }
 
 // reflower 封装 I-6/I-7 的依赖（llm.Client 注入，测试 mock）。
 // reflower bundles I-6/I-7 dependencies (mockable llm.Client).
 type reflower struct {
-	client       llm.Client
-	maxTokens    int
-	st           *stores
-	nodeMu       sync.Mutex
-	nodeOutcomes []extract.NodeDescriptionOutcome
+	client           llm.Client
+	maxTokens        int
+	st               *stores
+	nodeMu           sync.Mutex
+	nodeOutcomes     []extract.NodeDescriptionOutcome
+	relationMu       sync.Mutex
+	relationOutcomes []relationReflowOutcome
+	relationReport   *extract.RelationProcessReport
 }
 
 // newReflower 构造 I-6/I-7 执行器。
@@ -288,171 +290,610 @@ func aggregateReflowMemberDetails(memberIDs []string, ao *alignOutcome) string {
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
-// I-7 脏 subdomain relation 重算（剪枝式）
+// I-7 原文核验与既有边保留 / Source-aware relations and complete old-edge retention
 // ——————————————————————————————————————————————————————————————————————————————
 
-// relateCandidates 是 I-7 单个子域的候选节点视图（KG 现存 + 本轮新增）。
-// relateCandidates is one dirty subdomain's candidate nodes for I-7.
-type relateCandidates struct {
-	nodes []*dktypes.Node // entity/concept 节点（含 pending 新建的虚拟节点）
+// relationReflowOutcome 把“保留旧内容”与“核验新断言”分开，不能靠保留给推断补明示信用。
+// Retention is a factual state, never proof that an old inference was explicit.
+type relationReflowOutcome struct {
+	Scope                 SubdomainKey
+	EdgeID                int64
+	Source, Target, Kind  string
+	State, Classification string
+	Outcome               annotation.DocumentOutcome
+	Reason                string
+	CandidateID           string
 }
 
-// recomputeRelations 执行 I-7：对每个脏子域剪枝式重算语义 relation。
-// 输入：脏子域 + I-6 重融合的 description（关系判定要看最新正文）+ 本轮新建 node。
-// 输出：每子域「最终」relation 集合（uuid 端点）+ 跨子域保留边（I-8 先删后插）。
-//
-// recomputeRelations runs I-7: per dirty subdomain, prune-recompute semantic
-// relations over current + newly added nodes, using freshly fused descriptions.
+// relationReflowOutcomes / relationProcessReport 只暴露阶段事实；产品状态由 .6 汇总。
+// These accessors expose stage facts, not product-level completion.
+func (r *reflower) relationReflowOutcomes() []relationReflowOutcome {
+	r.relationMu.Lock()
+	defer r.relationMu.Unlock()
+	return append([]relationReflowOutcome(nil), r.relationOutcomes...)
+}
+func (r *reflower) relationProcessReport() *extract.RelationProcessReport {
+	r.relationMu.Lock()
+	defer r.relationMu.Unlock()
+	if r.relationReport == nil {
+		return nil
+	}
+	// Reports contain nested evidence; do not let a reader rewrite the retained receipt.
+	data, _ := json.Marshal(r.relationReport)
+	var out extract.RelationProcessReport
+	_ = json.Unmarshal(data, &out)
+	return &out
+}
+func (r *reflower) recordRelationOutcome(out relationReflowOutcome) {
+	r.relationMu.Lock()
+	defer r.relationMu.Unlock()
+	r.relationOutcomes = append(r.relationOutcomes, out)
+}
+
+// recomputeRelations 保留旧入口，但没有冻结原文时不能把派生 description 当明示证据。
+// The legacy entry retains prior edges and reports unavailable source verification.
 func (r *reflower) recomputeRelations(ctx context.Context, dirty *DirtySet, ao *alignOutcome,
 	descriptions map[string]string, rs *runState) (map[SubdomainKey][]extract.Relation, map[SubdomainKey][]*dktypes.Edge) {
+	return r.recomputeRelationsWithSources(ctx, dirty, ao, descriptions, nil, nil, extract.RelationProcessOptions{}, rs)
+}
 
-	finalRels := make(map[SubdomainKey][]extract.Relation)
-	keptEdges := make(map[SubdomainKey][]*dktypes.Edge)
-	// 本轮被触碰的 node（新增/融入、C1 内容编辑、I-6 正文重融合）。两端都不在此
-	// 集合中的现存内部边与本轮变化无关，受硬保护——详见下方结果合并处的说明。
-	touched := touchedNodeSet(dirty, ao, descriptions, rs)
-	for _, key := range dirty.SortedSubdomains() {
-		// —— 现存节点（entity/concept；层节点不参与 relation）——
-		existing, err := r.st.nodes.ListBySubdomain(ctx, key.Domain, key.Subdomain)
-		if err != nil {
-			rs.warnf(fmt.Sprintf("I-7 子域 %s 读取节点失败（跳过）: %v", key, err))
-			continue
-		}
-		var nodes []*dktypes.Node
-		for _, n := range existing {
-			if n.Label == dktypes.LabelEntity || n.Label == dktypes.LabelConcept {
-				nodes = append(nodes, n)
-			}
-		}
-		// —— 本轮新建 node（虚拟节点：uuid 已派生、description 用 I-6 产出）——
-		// ao is normally non-nil in the orchestrator, but treating a nil outcome as
-		// an empty pending set keeps this read-only stage fail-closed for callers that
-		// only need to reflow existing nodes.
-		if ao != nil {
-			for uuid, pn := range ao.pending {
-				if pn == nil {
-					continue
-				}
-				if !pn.IsNew || pn.Domain != key.Domain || pn.Subdomain != key.Subdomain {
-					continue
-				}
-				desc := descriptions[uuid]
-				if desc == "" {
-					desc = pn.Summary
-				}
-				nodes = append(nodes, &dktypes.Node{
-					ID: uuid, Label: dktypes.Label(pn.Label), Name: pn.Name,
-					Summary: pn.Summary, Description: desc,
-					Domain: key.Domain, Subdomain: key.Subdomain,
-				})
-			}
-		}
-		// I-6 重融合的正文覆盖 KG 旧值（关系判定看最新 description）。
-		for _, n := range nodes {
-			if d, ok := descriptions[n.ID]; ok {
-				n.Description = d
-			}
-		}
-
-		// —— 现存语义边：子域内（进 LLM 剪枝）与跨子域（原样保留）分流 ——
-		nodeSet := make(map[string]bool, len(nodes))
-		for _, n := range nodes {
-			nodeSet[n.ID] = true
-		}
-		var internal, cross []*dktypes.Edge
-		seenEdge := make(map[string]*dktypes.Edge)
-		readFailed := false
-		for _, n := range nodes {
-			edges, err := r.st.edges.GetOutgoing(ctx, n.ID, 0)
-			if err != nil {
-				rs.warnf(fmt.Sprintf("I-7 读取 node %s 出边失败（跳过该子域）: %v", n.ID, err))
-				// A partial edge view is not authoritative. Do not let the nodes/edges
-				// collected before the failure reach the LLM or the ingest maps.
-				readFailed = true
-				break
-			}
-			for _, e := range edges {
-				if !extract.IsValidRelationKind(string(e.Kind)) {
-					continue // 只要 6 枚举语义边（composes 层级边由 ingest 物化，不经此处）
-				}
-				edgeKey := e.SourceID + "\x00" + e.TargetID + "\x00" + string(e.Kind)
-				if previous := seenEdge[edgeKey]; previous != nil {
-					// 旧库重复身份里人工行优先，不能因机器行先读到就丢掉 R8 标记。
-					// Storage separately preserves every original row of this identity.
-					if previous.Provenance != dktypes.ProvenanceHumanCurated && e.Provenance == dktypes.ProvenanceHumanCurated {
-						*previous = *e
-					}
-					continue
-				}
-				seenEdge[edgeKey] = e
-				if nodeSet[e.TargetID] {
-					internal = append(internal, e)
-				} else {
-					cross = append(cross, e) // 端点跨子域：原样保留，不进 LLM
-				}
-			}
-		}
-		if readFailed {
-			// Missing map keys are the explicit fail-closed signal consumed by I-8.
-			// In particular, do not publish an empty keptCross key: doing so would
-			// make a later implementation mistake look like an authoritative result.
-			continue
-		}
-		// —— 节点 < 2：无关系可判，最终集合为空（I-8 先删后插即清空）——
-		if len(nodes) < 2 {
-			finalRels[key] = nil
-			// The edge view is complete, and no LLM stage can fail for a
-			// subdomain with fewer than two nodes, so its cross edges are an
-			// authoritative part of the successful empty result.
-			keptEdges[key] = cross
-			continue
-		}
-
-		// —— LLM 剪枝重算（alias 呈现，R1）——
-		rels, err := r.relateOneSubdomain(ctx, key, nodes, internal, rs)
-		if err != nil {
-			rs.warnf(fmt.Sprintf("I-7 子域 %s relation 重算失败（保留现存内部边）: %v", key, err))
-			// No authoritative result is published on exhausted retries. I-8
-			// interprets the missing key as "leave the existing semantic edges
-			// untouched", preserving every edge column rather than lossy-casting
-			// old *Edge values into extract.Relation.
-			continue
-		}
-		// Publish both pieces only after the relation stage has succeeded. A
-		// successful empty relation set is represented by a present key with a
-		// nil/empty slice; that is distinct from a missing key above.
-		//
-		// 硬保护（R9 脏集封闭在「边」维度的补全）：I-7 是「全量最终集合」语义——
-		// LLM 不返回某条边即视为删除。脏集的最小单位是 subdomain，故一旦子域变脏，
-		// 其内部**全部**既有边都进入可删范围，而其中大多数与本轮变化毫无关系。
-		// LLM 一次遗漏就等于静默丢失既有知识连接：无告警、不可回溯（对比节点真删
-		// 有「真删 N」、primary 删除有「清理 stale primary」日志）。
-		//
-		// R8 优先于脏集裁量：人工边即使端点被触碰也必须整行保留；机器返回同一
-		// 身份不代表有权覆盖人工内容。先滤掉冲突生成项，再把原始人工边补回。
-		// Machine-only unrelated omissions keep the existing R9 protection; all
-		// human identities retain their original payload regardless of touched nodes.
-		//
-		// 删边应通过 rebalance 的显式 drop_edge patch 表达（可观测），而不是靠
-		// 重算时「少返回几条」隐式发生。
-		rels = excludeHumanEdgeReplacements(internal, rels)
-		missing := missingProtectedEdges(internal, touched, rels)
-		finalRels[key] = rels
-		// 补回的边以原始 *Edge 形态重插，保留全部列（避免 lossy-cast 成 Relation）。
-		kept := append([]*dktypes.Edge(nil), cross...)
-		keptEdges[key] = append(kept, missing...)
-		if n := len(missing); n > 0 {
-			log.Printf("[incremental-reflow] I-7 子域 %s: 保留 %d 条人工边或与本轮无关的遗漏边（R8/R9）", key, n)
+// recomputeRelationsWithSources 是 changed-document 的共享关系入口；调用者须提供两端的
+// 全部标注成员绑定与冻结原文。它只把 source-explicit 的新选择加入结果，旧 Edge 在候选
+// Result 之外独立保留。没有输出、unknown、传输错误都不是删边授权；人工正文不进模型。
+// Source-aware changed construction reuses the full helper, with no duplicate retry loop.
+func (r *reflower) recomputeRelationsWithSources(ctx context.Context, dirty *DirtySet, ao *alignOutcome,
+	descriptions map[string]string, docs []*dktypes.AnnotatedDocument, originals []extract.FrozenSource,
+	opts extract.RelationProcessOptions, rs *runState) (map[SubdomainKey][]extract.Relation, map[SubdomainKey][]*dktypes.Edge) {
+	final := make(map[SubdomainKey][]extract.Relation)
+	kept := make(map[SubdomainKey][]*dktypes.Edge)
+	r.relationMu.Lock()
+	r.relationOutcomes = nil
+	r.relationReport = nil
+	r.relationMu.Unlock()
+	if dirty == nil {
+		return final, kept
+	}
+	warn := func(msg string) {
+		if rs != nil {
+			rs.warnf(msg)
 		}
 	}
-	return finalRels, keptEdges
+	fail := func(key SubdomainKey, reason string) {
+		status := annotation.DocumentUnavailable
+		if ctx.Err() != nil {
+			status = annotation.DocumentCancelled
+			reason = ctx.Err().Error() + ": " + reason
+		}
+		r.recordRelationOutcome(relationReflowOutcome{Scope: key, State: "unavailable", Classification: "unknown", Outcome: status, Reason: reason})
+		warn("I-7 " + key.String() + ": " + reason)
+	}
+	if r.st == nil || r.st.nodes == nil || r.st.edges == nil {
+		for _, key := range dirty.SortedSubdomains() {
+			fail(key, "relation stores are unavailable")
+		}
+		return final, kept
+	}
+	active := make(map[SubdomainKey]bool)
+	for _, key := range dirty.SortedSubdomains() {
+		active[key] = true
+	}
+	touched := touchedNodeSet(dirty, ao, descriptions, rs)
+	// 新来源可能改变“流入”脏节点的跨域边，不能只看本域出边而直接保留跨边。
+	// Include affected incoming owners so both endpoint materials are revalidated.
+	if len(originals) > 0 {
+		ids := make([]string, 0, len(touched))
+		for id := range touched {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			// Content-only changes and pending members can also introduce outgoing edges.
+			if node, err := r.st.nodes.GetByID(ctx, id); err == nil && node != nil {
+				active[SubdomainKey{node.Domain, node.Subdomain}] = true
+			} else if ao != nil && ao.pending[id] != nil {
+				pn := ao.pending[id]
+				active[SubdomainKey{pn.Domain, pn.Subdomain}] = true
+			}
+			edges, err := r.st.edges.GetIncoming(ctx, id, 0)
+			if err != nil {
+				warn(fmt.Sprintf("I-7 incoming relation lookup %s: %v", id, err))
+				continue
+			}
+			for _, edge := range edges {
+				if edge.Provenance == dktypes.ProvenanceHumanCurated || !extract.IsValidRelationKind(string(edge.Kind)) {
+					continue
+				}
+				node, err := r.st.nodes.GetByID(ctx, edge.SourceID)
+				if err != nil || node == nil {
+					warn(fmt.Sprintf("I-7 incoming source %s unavailable: %v", edge.SourceID, err))
+					continue
+				}
+				key := SubdomainKey{node.Domain, node.Subdomain}
+				active[key] = true
+			}
+		}
+	}
+	// 现有边不是跨域候选的目录：按调用者实际提供的文档身份补齐尚未相连的端点。
+	// Supplement only supplied source identities; unrelated graph scopes stay outside discovery.
+	eligible := make(map[SubdomainKey]bool, len(active))
+	for key := range active {
+		eligible[key] = true
+	}
+	if len(originals) > 0 && r.st.sources != nil {
+		supplied := map[[2]string]bool{}
+		for _, doc := range docs {
+			if doc != nil {
+				supplied[[2]string{doc.Skill, doc.FilePath}] = true
+			}
+		}
+		rows, err := r.st.sources.ListAll(ctx)
+		if err != nil {
+			for key := range eligible {
+				fail(key, fmt.Sprintf("discover supplied-source relation endpoints: %v", err))
+			}
+		} else {
+			for _, row := range rows {
+				if !supplied[[2]string{row.Skill, row.FilePath}] {
+					continue
+				}
+				node, err := r.st.nodes.GetByID(ctx, row.NodeUUID)
+				if err == nil && node != nil && (node.Label == dktypes.LabelEntity || node.Label == dktypes.LabelConcept) {
+					active[SubdomainKey{node.Domain, node.Subdomain}] = true
+				}
+			}
+		}
+	}
+	nodes := map[string]*dktypes.Node{}
+	edgeGroups := map[SubdomainKey][]*dktypes.Edge{}
+	blocked := map[SubdomainKey][]*dktypes.Edge{}
+	keys := make([]SubdomainKey, 0, len(active))
+	for key := range active {
+		keys = append(keys, key)
+	}
+	sortSubdomainKeys(keys)
+	for _, key := range keys {
+		existing, err := r.st.nodes.ListBySubdomain(ctx, key.Domain, key.Subdomain)
+		if err != nil {
+			fail(key, fmt.Sprintf("read nodes: %v", err))
+			continue
+		}
+		local := map[string]*dktypes.Node{}
+		for _, node := range existing {
+			if node.Label != dktypes.LabelEntity && node.Label != dktypes.LabelConcept {
+				continue
+			}
+			c := *node
+			local[c.ID] = &c
+		}
+		if ao != nil {
+			for id, pn := range ao.pending {
+				if pn == nil || !pn.IsNew || pn.Domain != key.Domain || pn.Subdomain != key.Subdomain {
+					continue
+				}
+				local[id] = &dktypes.Node{ID: id, Label: dktypes.Label(pn.Label), Name: pn.Name, Summary: pn.Summary, Domain: pn.Domain, Subdomain: pn.Subdomain, Provenance: dktypes.ProvenanceLLMInferred}
+			}
+		}
+		ids := make([]string, 0, len(local))
+		for id := range local {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		var allEdges []*dktypes.Edge
+		readOK := true
+		for _, id := range ids {
+			if d, ok := descriptions[id]; ok && local[id].Provenance != dktypes.ProvenanceHumanCurated {
+				local[id].Description = d
+			}
+			outgoing, err := r.st.edges.GetOutgoing(ctx, id, 0)
+			if err != nil {
+				fail(key, fmt.Sprintf("read edges %s: %v", id, err))
+				readOK = false
+				break
+			}
+			for _, edge := range outgoing {
+				if extract.IsValidRelationKind(string(edge.Kind)) {
+					copyEdge := *edge
+					allEdges = append(allEdges, &copyEdge)
+				}
+			}
+		}
+		if !readOK {
+			continue
+		}
+		final[key] = nil
+		edgeGroups[key] = allEdges
+		// A human identity is protected authoritatively by I-8, including old duplicate rows.
+		protected := map[string]bool{}
+		for _, edge := range allEdges {
+			if edge.Provenance == dktypes.ProvenanceHumanCurated {
+				protected[reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind))] = true
+			}
+		}
+		seenMachine := map[string]bool{}
+		for _, edge := range allEdges {
+			identity := reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind))
+			if !protected[identity] {
+				if seenMachine[identity] {
+					blocked[key] = append(blocked[key], edge)
+				}
+				seenMachine[identity] = true
+			}
+		}
+		for _, edge := range allEdges {
+			state, classification, reason, status := "retained_old", "unknown", "original support is unavailable; existing edge retained", annotation.DocumentUnavailable
+			if edge.Provenance == dktypes.ProvenanceLLMInferred {
+				classification = "inferred"
+			}
+			if edge.Provenance == dktypes.ProvenanceHumanCurated {
+				state = "retained_human"
+				reason = "human-curated edge protected outside model input"
+				status = annotation.DocumentComplete
+			}
+			r.recordRelationOutcome(relationReflowOutcome{Scope: key, EdgeID: edge.ID, Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), State: state, Classification: classification, Outcome: status, Reason: reason})
+			if !protected[reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind))] || edge.Provenance == dktypes.ProvenanceHumanCurated {
+				kept[key] = append(kept[key], edge)
+			}
+		}
+		for id, node := range local {
+			nodes[id] = node
+		}
+		// A cross endpoint stays in its real scope. Its derived body is never an original.
+		for _, edge := range allEdges {
+			if edge.Provenance == dktypes.ProvenanceHumanCurated {
+				continue
+			}
+			if nodes[edge.TargetID] != nil {
+				continue
+			}
+			node, err := r.st.nodes.GetByID(ctx, edge.TargetID)
+			if err != nil || node == nil {
+				warn(fmt.Sprintf("I-7 target %s unavailable: %v", edge.TargetID, err))
+				continue
+			}
+			c := *node
+			if d, ok := descriptions[c.ID]; ok && c.Provenance != dktypes.ProvenanceHumanCurated {
+				c.Description = d
+			}
+			nodes[c.ID] = &c
+		}
+	}
+	if len(originals) == 0 {
+		report := &extract.RelationProcessReport{}
+		for _, key := range keys {
+			if _, ok := final[key]; ok {
+				reason := "frozen original sources unavailable; retained old relations, no new relation certified"
+				fail(key, reason)
+				outcome := annotation.DocumentUnavailable
+				if ctx.Err() != nil {
+					outcome = annotation.DocumentCancelled
+					reason = ctx.Err().Error()
+				}
+				report.Scopes = append(report.Scopes, extract.RelationScopeOutcome{Scope: key.String(), Outcome: outcome, Reason: reason})
+			}
+		}
+		for key, duplicates := range blocked {
+			delete(final, key)
+			for _, edge := range duplicates {
+				r.recordRelationOutcome(relationReflowOutcome{Scope: key, Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), State: "application_deferred", Classification: "unknown", Outcome: annotation.DocumentUnavailable, Reason: "legacy duplicate machine triple requires lossless persistence support (#113); all old rows retained"})
+			}
+		}
+		r.relationMu.Lock()
+		r.relationReport = report
+		r.relationMu.Unlock()
+		return final, kept
+	}
+	// Build a call-scoped graph without persistent IDs or human-curated prose.
+	ids := make([]string, 0, len(nodes))
+	for id := range nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	aliasByID, idByAlias := map[string]string{}, map[string]string{}
+	for i, id := range ids {
+		alias := fmt.Sprintf("relation-node-%d", i+1)
+		aliasByID[id] = alias
+		idByAlias[alias] = id
+	}
+	graph := &extract.Result{}
+	scopeIndex := map[SubdomainKey][2]int{}
+	addScope := func(key SubdomainKey) *extract.Subdomain {
+		if index, ok := scopeIndex[key]; ok {
+			return &graph.Domains[index[0]].Subdomains[index[1]]
+		}
+		di := -1
+		for i := range graph.Domains {
+			if graph.Domains[i].Slug == key.Domain {
+				di = i
+				break
+			}
+		}
+		if di < 0 {
+			graph.Domains = append(graph.Domains, extract.Domain{Name: key.Domain, Slug: key.Domain})
+			di = len(graph.Domains) - 1
+		}
+		graph.Domains[di].Subdomains = append(graph.Domains[di].Subdomains, extract.Subdomain{Name: key.Subdomain, Slug: key.Subdomain})
+		si := len(graph.Domains[di].Subdomains) - 1
+		scopeIndex[key] = [2]int{di, si}
+		return &graph.Domains[di].Subdomains[si]
+	}
+	for _, id := range ids {
+		node := nodes[id]
+		key := SubdomainKey{node.Domain, node.Subdomain}
+		en := extract.Node{ID: aliasByID[id], Label: string(node.Label), Name: node.Name, Summary: node.Summary, Description: node.Description, Confidence: node.Confidence}
+		if node.Provenance == dktypes.ProvenanceHumanCurated {
+			en.Name = "protected endpoint"
+			en.Summary = ""
+			en.Description = ""
+		}
+		members := map[string]bool{}
+		memberReadOK := r.st.sources != nil
+		if r.st.sources != nil {
+			rows, err := r.st.sources.ListByNode(ctx, id)
+			if err != nil {
+				fail(key, fmt.Sprintf("read source members %s: %v", id, err))
+				memberReadOK = false
+			} else {
+				for _, row := range rows {
+					members[row.MemberID] = true
+				}
+			}
+		}
+		if ao != nil {
+			for _, row := range ao.sourceRows {
+				if row.NodeUUID == id {
+					members[row.MemberID] = true
+				}
+			}
+			if pn := ao.pending[id]; pn != nil {
+				for _, member := range pn.NewMembers {
+					members[member] = true
+				}
+			}
+		}
+		for member := range members {
+			if memberReadOK && member != "" {
+				en.Members = append(en.Members, member)
+			}
+		}
+		sort.Strings(en.Members)
+		sd := addScope(key)
+		if node.Label == dktypes.LabelEntity {
+			sd.Entities = append(sd.Entities, en)
+		} else {
+			sd.Concepts = append(sd.Concepts, en)
+		}
+	}
+	human := map[string]bool{}
+	for _, key := range keys {
+		edges, ok := edgeGroups[key]
+		if !ok {
+			continue
+		}
+		sd := addScope(key)
+		for _, edge := range edges {
+			identity := reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind))
+			if edge.Provenance == dktypes.ProvenanceHumanCurated {
+				human[identity] = true
+				continue
+			}
+			sd.Relations = append(sd.Relations, extract.Relation{Source: aliasByID[edge.SourceID], Target: aliasByID[edge.TargetID], Kind: string(edge.Kind), Description: edge.Description, Confidence: edge.Confidence})
+		}
+	}
+	report := extract.NewExtractor(r.client, r.maxTokens).ProcessRelations(ctx, graph, docs, originals, opts)
+	r.relationMu.Lock()
+	r.relationReport = report
+	r.relationMu.Unlock()
+	for _, scope := range report.Scopes {
+		if scope.Outcome != annotation.DocumentComplete {
+			warn(fmt.Sprintf("I-7 %s: %s (%s)", scope.Scope, scope.Reason, scope.Outcome))
+		}
+	}
+	// Existing candidates are audited separately; source verification never upgrades
+	// their retained inference classification to explicit.
+	for _, decision := range report.Decisions {
+		source, target := idByAlias[decision.Source.Alias], idByAlias[decision.Target.Alias]
+		if source == "" || target == "" {
+			continue
+		}
+		key := SubdomainKey{nodes[source].Domain, nodes[source].Subdomain}
+		if _, ok := final[key]; !ok {
+			continue
+		}
+		if decision.Classification != "explicit" || decision.Outcome != annotation.DocumentComplete {
+			for _, edge := range edgeGroups[key] {
+				if edge.SourceID == source && edge.TargetID == target && string(edge.Kind) == decision.Relation.Kind && edge.Description == decision.Relation.Description && edge.Provenance != dktypes.ProvenanceHumanCurated {
+					classification := "unknown"
+					if edge.Provenance == dktypes.ProvenanceLLMInferred {
+						classification = "inferred"
+					}
+					r.relationMu.Lock()
+					for i := range r.relationOutcomes {
+						if r.relationOutcomes[i].Scope == key && r.relationOutcomes[i].EdgeID == edge.ID {
+							r.relationOutcomes[i] = relationReflowOutcome{Scope: key, EdgeID: edge.ID, Source: source, Target: target, Kind: string(edge.Kind), State: "retained_old_audited", Classification: classification, Outcome: decision.Outcome, Reason: decision.Reason, CandidateID: decision.CandidateID}
+						}
+					}
+					r.relationMu.Unlock()
+				}
+			}
+		}
+	}
+	grouped := map[SubdomainKey]map[string][]extract.RelationProcessDecision{}
+	for _, decision := range report.Selected {
+		if decision.Classification != "explicit" || decision.Outcome != annotation.DocumentComplete {
+			continue
+		}
+		source, target := idByAlias[decision.Source.Alias], idByAlias[decision.Target.Alias]
+		if source == "" || target == "" {
+			continue
+		}
+		key := SubdomainKey{nodes[source].Domain, nodes[source].Subdomain}
+		if _, ok := final[key]; !ok {
+			continue
+		}
+		if !eligible[key] && !touched[source] && !touched[target] {
+			continue
+		}
+		identity := reflowEdgeKey(source, target, decision.Relation.Kind)
+		if human[identity] {
+			r.recordRelationOutcome(relationReflowOutcome{Scope: key, Source: source, Target: target, Kind: decision.Relation.Kind, State: "verified_new_unapplied", Classification: "explicit", Outcome: annotation.DocumentPartial, Reason: "source-verified addition conflicts with protected human edge identity; human content retained", CandidateID: decision.CandidateID})
+			continue
+		}
+		if grouped[key] == nil {
+			grouped[key] = map[string][]extract.RelationProcessDecision{}
+		}
+		grouped[key][identity] = append(grouped[key][identity], decision)
+		r.recordRelationOutcome(relationReflowOutcome{Scope: key, Source: source, Target: target, Kind: decision.Relation.Kind, State: "verified_new", Classification: "explicit", Outcome: decision.Outcome, Reason: decision.Reason, CandidateID: decision.CandidateID})
+	}
+	for key, groups := range grouped {
+		identities := make([]string, 0, len(groups))
+		for identity := range groups {
+			identities = append(identities, identity)
+		}
+		sort.Strings(identities)
+		for _, identity := range identities {
+			decisions := groups[identity]
+			first := decisions[0]
+			source, target := idByAlias[first.Source.Alias], idByAlias[first.Target.Alias]
+			description := coalesceReflowAssertions(edgeGroups[key], source, target, first.Relation.Kind, decisions)
+			confidence := first.Relation.Confidence
+			for _, edge := range edgeGroups[key] {
+				if reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind)) == identity {
+					confidence = edge.Confidence
+					break
+				}
+			}
+			final[key] = append(final[key], extract.Relation{Source: source, Target: target, Kind: first.Relation.Kind, Description: description, Confidence: confidence})
+		}
+	}
+	// 不让旧 I-8 的 triple-first/collapse 策略因本次省略删除既有多行；.5 负责无损落库。
+	// Defer only that replacement scope, while retaining independent verified selections.
+	for key, duplicates := range blocked {
+		delete(final, key)
+		for _, edge := range duplicates {
+			reason := fmt.Sprintf("relation replacement deferred: legacy duplicate machine triple %s --%s--> %s requires lossless persistence support (#113); all old rows retained", edge.SourceID, edge.Kind, edge.TargetID)
+			r.recordRelationOutcome(relationReflowOutcome{Scope: key, Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), State: "application_deferred", Classification: "unknown", Outcome: annotation.DocumentUnavailable, Reason: reason})
+			warn("I-7 " + key.String() + ": " + reason)
+		}
+		r.relationMu.Lock()
+		for i := range r.relationOutcomes {
+			if r.relationOutcomes[i].Scope == key && r.relationOutcomes[i].State == "verified_new" {
+				r.relationOutcomes[i].State = "verified_new_unapplied"
+				r.relationOutcomes[i].Outcome = annotation.DocumentUnavailable
+				r.relationOutcomes[i].Reason = "source verified selection retained in report; application deferred for legacy duplicate machine rows (#113)"
+			}
+		}
+		r.relationMu.Unlock()
+	}
+	for key := range final {
+		if !eligible[key] && len(grouped[key]) == 0 {
+			delete(final, key)
+		}
+	}
+	// Incoming/supplemental owners are dirtied only after a complete read and a relevant selection.
+	for key := range final {
+		if !dirty.Subdomains[key] {
+			dirty.DirtySubdomain(key)
+		}
+	}
+	return final, kept
+}
+
+func reflowEdgeKey(source, target, kind string) string {
+	return source + "\x00" + target + "\x00" + kind
+}
+
+// reflowAssertionEnvelope 适配既有单三元组存储形态；每个来源/限定断言独立保留。
+// This existing description field carries labeled facets, without inventing schema/provenance.
+type reflowAssertionEnvelope struct {
+	Assertions []reflowAssertion `json:"cairn_relation_assertions_v1"`
+}
+type reflowAssertion struct {
+	Classification string                  `json:"classification"`
+	Description    string                  `json:"description"`
+	Sources        []extract.CrossSource   `json:"sources,omitempty"`
+	Evidence       []extract.CrossEvidence `json:"evidence,omitempty"`
+}
+
+// coalesceReflowAssertions 不信任旧机器正文里的自报标签；只有本轮 Selected 的精确
+// 描述/来源/逐字证据组合有明示信用。其他旧字段保留为未核验历史，不能借 JSON 洗成事实。
+// Prior envelope labels are data; only an exact currently verified facet grants explicit credit.
+func coalesceReflowAssertions(old []*dktypes.Edge, source, target, kind string, selected []extract.RelationProcessDecision) string {
+	current := map[string]reflowAssertion{}
+	for _, decision := range selected {
+		if decision.Classification != "explicit" || decision.Outcome != annotation.DocumentComplete {
+			continue
+		}
+		assertion := reflowAssertion{Classification: "explicit", Description: decision.Relation.Description, Sources: decision.Sources, Evidence: decision.Evidence}
+		key, normalized := canonicalReflowAssertion(assertion)
+		current[key] = normalized
+	}
+	encoded := map[string]reflowAssertion{}
+	retainHistorical := func(assertion reflowAssertion) {
+		assertion.Classification = "legacy_unverified"
+		key, normalized := canonicalReflowAssertion(assertion)
+		// Reverified identical facets replace their historical label, without growing duplicates.
+		if _, verified := current[key]; !verified {
+			encoded[key] = normalized
+		}
+	}
+	for _, edge := range old {
+		if reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind)) != reflowEdgeKey(source, target, kind) {
+			continue
+		}
+		var prior reflowAssertionEnvelope
+		decoder := json.NewDecoder(strings.NewReader(edge.Description))
+		decoder.DisallowUnknownFields()
+		// Non-format legacy JSON may contain meaningful extra fields; preserve it whole.
+		if decoder.Decode(&prior) == nil && decoder.Decode(&struct{}{}) == io.EOF && len(prior.Assertions) > 0 {
+			for _, assertion := range prior.Assertions {
+				retainHistorical(assertion)
+			}
+		} else {
+			retainHistorical(reflowAssertion{Description: edge.Description})
+		}
+	}
+	for key, assertion := range current {
+		encoded[key] = assertion
+	}
+	keys := make([]string, 0, len(encoded))
+	for key := range encoded {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	envelope := reflowAssertionEnvelope{}
+	for _, key := range keys {
+		envelope.Assertions = append(envelope.Assertions, encoded[key])
+	}
+	data, _ := json.Marshal(envelope)
+	return string(data)
+}
+
+// canonicalReflowAssertion 的身份不含信用标签，也不依赖 verifier 的来源/证据数组顺序。
+// Classification is assigned from current verification, independently of facet identity.
+func canonicalReflowAssertion(assertion reflowAssertion) (string, reflowAssertion) {
+	assertion.Sources = append([]extract.CrossSource(nil), assertion.Sources...)
+	assertion.Evidence = append([]extract.CrossEvidence(nil), assertion.Evidence...)
+	sort.Slice(assertion.Sources, func(i, j int) bool {
+		a, _ := json.Marshal(assertion.Sources[i])
+		b, _ := json.Marshal(assertion.Sources[j])
+		return string(a) < string(b)
+	})
+	sort.Slice(assertion.Evidence, func(i, j int) bool {
+		a, _ := json.Marshal(assertion.Evidence[i])
+		b, _ := json.Marshal(assertion.Evidence[j])
+		return string(a) < string(b)
+	})
+	identity := assertion
+	identity.Classification = ""
+	data, _ := json.Marshal(identity)
+	return string(data), assertion
 }
 
 // touchedNodeSet 汇总「本轮被触碰」的 node uuid：新增/融入（ao.pending、
 // DirtySet.NodesFused）、内容编辑（DirtySet.NodesContent、runState.touched）、
 // 正文重融合（I-6 descriptions）。与这些 node 都无关的边即「本轮不涉及」。
 //
-// 取并集是保守的：宁可少保护几条边，也不要把真正需要重判的边锁死。
+// 并集只决定需要核验的范围；它不再赋予模型通过省略删除机器边的权限。
 //
 // touchedNodeSet unions every node uuid this run touched.
 func touchedNodeSet(dirty *DirtySet, ao *alignOutcome, descriptions map[string]string, rs *runState) map[string]bool {
@@ -481,223 +922,6 @@ func touchedNodeSet(dirty *DirtySet, ao *alignOutcome, descriptions map[string]s
 		}
 	}
 	return touched
-}
-
-// excludeHumanEdgeReplacements 不把机器返回的同身份结果当成人工编辑授权。
-// Drop generated collisions before publishing I-7's machine relation set.
-func excludeHumanEdgeReplacements(internal []*dktypes.Edge, rels []extract.Relation) []extract.Relation {
-	protected := make(map[string]bool)
-	for _, edge := range internal {
-		if edge != nil && edge.Provenance == dktypes.ProvenanceHumanCurated {
-			protected[edge.SourceID+"\x00"+edge.TargetID+"\x00"+string(edge.Kind)] = true
-		}
-	}
-	kept := rels[:0]
-	for _, rel := range rels {
-		if protected[rel.Source+"\x00"+rel.Target+"\x00"+rel.Kind] {
-			log.Printf("[incremental-reflow] R8 skip generated replacement of human edge %s --%s--> %s", rel.Source, rel.Kind, rel.Target)
-			continue
-		}
-		kept = append(kept, rel)
-	}
-	return kept
-}
-
-// missingProtectedEdges 补回整条人工边（不受 touched/returned 影响），以及未触碰的机器遗漏边。
-// Preserve every human row and the prior R9 machine-only omission policy.
-func missingProtectedEdges(internal []*dktypes.Edge, touched map[string]bool, rels []extract.Relation) []*dktypes.Edge {
-	if len(internal) == 0 {
-		return nil
-	}
-	returned := make(map[string]bool, len(rels))
-	for _, rel := range rels {
-		returned[rel.Source+"\x00"+rel.Target+"\x00"+rel.Kind] = true
-	}
-	var out []*dktypes.Edge
-	for _, e := range internal {
-		if e == nil {
-			continue
-		}
-		if e.Provenance == dktypes.ProvenanceHumanCurated {
-			out = append(out, e)
-			log.Printf("[incremental-reflow] R8 preserve human edge id=%d %s --%s--> %s", e.ID, e.SourceID, e.Kind, e.TargetID)
-			continue
-		}
-		if touched[e.SourceID] || touched[e.TargetID] {
-			continue // 与本轮变化相关 → LLM 裁量（含删除权）
-		}
-		if returned[e.SourceID+"\x00"+e.TargetID+"\x00"+string(e.Kind)] {
-			continue // LLM 已确认保留 → 走 I-8 字段级合并路径
-		}
-		out = append(out, e)
-	}
-	return out
-}
-
-// relateOneSubdomain 对单个脏子域做剪枝式 relation 重算：
-// 输入全部候选节点（alias + name + description）与现存内部 relation（alias 端点），
-// 要求 LLM 输出「最终集合」——保留仍有效的、删除无效的（不出现在输出即删）、
-// 为涉及新节点的关系补充新条目、无关的原样保留（最小改变）。
-// 校验：6 枚举 kind（extract.IsValidRelationKind，与全量同一枚举集）+ 端点命中
-// alias + 非自环；越界条目局部丢弃，非法 JSON 仅使当前子域不可用。
-//
-// relateOneSubdomain prune-recomputes one dirty subdomain's relations: the LLM
-// emits the final relation set over aliased nodes, validated against the 6-kind
-// enum and alias endpoints in one response.
-func (r *reflower) relateOneSubdomain(ctx context.Context, key SubdomainKey, nodes []*dktypes.Node,
-	existing []*dktypes.Edge, rs *runState) ([]extract.Relation, error) {
-
-	// alias 分配（call-scoped）：<subdomain-slug>#<序号>。
-	uuidByAlias := make(map[string]string)
-	aliasByUUID := make(map[string]string)
-	// 稳定序（输出确定性）：按 uuid 排序。
-	sortedNodes := append([]*dktypes.Node(nil), nodes...)
-	sortNodesByID(sortedNodes)
-	for i, n := range sortedNodes {
-		alias := fmt.Sprintf("%s#%d", key.Subdomain, i+1)
-		uuidByAlias[alias] = n.ID
-		aliasByUUID[n.ID] = alias
-	}
-
-	resp, err := r.client.Complete(ctx, llm.CompleteRequest{
-		System:    relateRecomputeSystemPrompt,
-		User:      buildRelateRecomputePrompt(key, sortedNodes, existing, aliasByUUID, ""),
-		MaxTokens: r.maxTokens,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("LLM 调用失败: %w", err)
-	}
-	if resp == nil {
-		return nil, fmt.Errorf("LLM 返回空响应")
-	}
-	var out relateRecomputeOutput
-	if err := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); err != nil {
-		return nil, fmt.Errorf("relation JSON: %w", err)
-	}
-	rels, invalid := translateRecomputedRelations(out.Relations, uuidByAlias)
-	if invalid {
-		rs.warnf(fmt.Sprintf("I-7 子域 %s 丢弃非法 relation 条目；保留有效条目及已有关系", key))
-		// 非法条目不能成为删边授权；保留旧关系，同时接受有效新增/更新。
-		// A partial malformed set does not authorize deletion of existing pairs.
-		seen := map[string]bool{}
-		for _, rel := range rels {
-			seen[rel.Source+"\x00"+rel.Target+"\x00"+rel.Kind] = true
-		}
-		for _, edge := range existing {
-			identity := edge.SourceID + "\x00" + edge.TargetID + "\x00" + string(edge.Kind)
-			if !seen[identity] {
-				rels = append(rels, extract.Relation{Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), Description: edge.Description, Confidence: edge.Confidence})
-				seen[identity] = true
-			}
-		}
-	}
-	return rels, nil
-}
-
-// relateRecomputeOutput 是 I-7 LLM 返回的 JSON。
-// relateRecomputeOutput is the I-7 LLM JSON output.
-type relateRecomputeOutput struct {
-	Relations []struct {
-		Source      string  `json:"source"`
-		Target      string  `json:"target"`
-		Kind        string  `json:"kind"`
-		Description string  `json:"description"`
-		Confidence  float64 `json:"confidence"`
-	} `json:"relations"`
-}
-
-// translateRecomputedRelations 把 LLM 返回的 alias 端点 relation 翻译为 uuid 端点：
-// kind 越界丢弃并告警；端点未命中 alias（编造）或自环丢弃（绝不悬空，R5）；
-// 同身份 (source,target,kind) 重复条目去重（问题 7：LLM 重复返回只落一条）。
-// translateRecomputedRelations translates alias endpoints back to uuids, dropping
-// invalid kinds, fabricated endpoints, self-loops (R5), and
-// duplicate (source,target,kind) triples.
-func translateRecomputedRelations(rels []struct {
-	Source      string  `json:"source"`
-	Target      string  `json:"target"`
-	Kind        string  `json:"kind"`
-	Description string  `json:"description"`
-	Confidence  float64 `json:"confidence"`
-}, uuidByAlias map[string]string) (out []extract.Relation, hasInvalidKind bool) {
-	seen := make(map[string]bool)
-	for _, r := range rels {
-		if !extract.IsValidRelationKind(r.Kind) || math.IsNaN(r.Confidence) || math.IsInf(r.Confidence, 0) {
-			hasInvalidKind = true
-			continue
-		}
-		src, okS := uuidByAlias[r.Source]
-		tgt, okT := uuidByAlias[r.Target]
-		if !okS || !okT || src == tgt {
-			hasInvalidKind = true
-			continue // 编造端点 / 自环 → 丢弃（R5）
-		}
-		identity := src + "\x00" + tgt + "\x00" + r.Kind
-		if seen[identity] {
-			continue // 重复三元组去重（问题 7）
-		}
-		seen[identity] = true
-		conf := r.Confidence
-		if conf <= 0 || conf > 1 {
-			conf = 0.8
-		}
-		out = append(out, extract.Relation{
-			Source: src, Target: tgt, Kind: r.Kind,
-			Description: r.Description, Confidence: conf,
-		})
-	}
-	return out, hasInvalidKind
-}
-
-// relateRecomputeSystemPrompt 是 I-7 剪枝重算的 system 提示（与全量 relate 同风格，
-// 增加「最小改变」增量语义）。
-// relateRecomputeSystemPrompt is the I-7 prune-recompute system prompt.
-const relateRecomputeSystemPrompt = `你是领域知识关系识别专家。用户会给你**一个子域**内的全部节点（实体 / 概念）及其详述，
-以及该子域**现有的语义关系**（以节点 alias 表示）。这是一次增量更新：子域刚发生了节点新增或删除。
-请输出这些节点之间语义关系的【最终集合】：
-
-- 保留仍然成立的关系（原样保留，包括 description）；
-- 删除不再成立的关系（不出现在输出中即视为删除，例如端点已删除或语义已失效）；
-- 为涉及新增节点的关系补充新条目；
-- 与增删无关的关系保持原样（最小改变）。
-
-严格要求：
-1. 只返回一个 JSON 对象（json 格式），形如 {"relations":[{"source":"alias","target":"alias","kind":"...","description":"...","confidence":0.x}]}，
-   不要输出任何解释性文字或代码围栏。
-2. source 与 target 必须逐字引用输入节点列表中的 alias，不得编造、不得指向列表之外。
-3. kind 只能取以下 6 个语义枚举之一，绝不允许自造：
-   "triggers"、"depends_on"、"references"、"generalizes"、"composes"、"contradicts"。
-4. 只识别真实、明确的关系；如果最终没有任何关系，返回 {"relations":[]} 是完全允许的。
-5. 不要输出层级 / 归属类关系（那由结构自动物化）。`
-
-// buildRelateRecomputePrompt 组装 I-7 的 user 消息（节点清单 + 现存关系 + 上轮反馈）。
-// buildRelateRecomputePrompt assembles the I-7 user message.
-func buildRelateRecomputePrompt(key SubdomainKey, nodes []*dktypes.Node, existing []*dktypes.Edge,
-	aliasByUUID map[string]string, prevErr string) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "## 子域：%s（所属域：%s）\n\n### 本子域内的节点（只在它们之间判定关系）\n", key.Subdomain, key.Domain)
-	for _, n := range nodes {
-		fmt.Fprintf(&sb, "- alias=%s [%s]：%s\n", aliasByUUID[n.ID], n.Label, n.Name)
-		body := strings.TrimSpace(n.Description)
-		if body == "" {
-			body = strings.TrimSpace(n.Summary)
-		}
-		if body != "" {
-			fmt.Fprintf(&sb, "  详述：%s\n", body)
-		}
-	}
-	sb.WriteString("\n### 现有语义关系（请输出增删调整后的【最终集合】）\n")
-	if len(existing) == 0 {
-		sb.WriteString("（当前无关系）\n")
-	}
-	for _, e := range existing {
-		fmt.Fprintf(&sb, "- %s --%s--> %s：%s\n",
-			aliasByUUID[e.SourceID], e.Kind, aliasByUUID[e.TargetID], e.Description)
-	}
-	sb.WriteString("\n只返回 relations JSON。\n")
-	if strings.TrimSpace(prevErr) != "" {
-		fmt.Fprintf(&sb, "\n## 上一轮的问题（请修正后重试）\n- %s\n", prevErr)
-	}
-	return sb.String()
 }
 
 // ——————————————————————————————————————————————————————————————————————————————

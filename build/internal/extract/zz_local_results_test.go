@@ -19,7 +19,7 @@ func TestExtractionRetainsValidSiblingAndReportsOmissionWithoutRepair(t *testing
 		t.Fatal(err)
 	}
 	sd := res.Domains[0].Subdomains[0]
-	if len(sd.Entities) != 1 || sd.Entities[0].ID != "good" || sd.Entities[0].Confidence != .69 || len(sd.Relations) != 0 || len(c.Requests) != 1 || len(rpt.TrulyMissing) != 1 || rpt.FinalRate != .5 {
+	if len(sd.Entities) != 1 || sd.Entities[0].ID != "good" || sd.Entities[0].Confidence != .69 || len(sd.Relations) != 1 || len(c.Requests) != 1 || len(rpt.TrulyMissing) != 1 || rpt.FinalRate != .5 {
 		t.Fatalf("wrong local result: %+v %+v calls%d", sd, rpt, len(c.Requests))
 	}
 	sd.Entities[0].Description = "good description"
