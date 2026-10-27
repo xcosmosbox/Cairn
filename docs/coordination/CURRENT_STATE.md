@@ -84,6 +84,20 @@ to pre-existing #113 storage normalization: the .4 adapter returns the exact old
 Prior .4 full-field persistence evidence covers tested nonzero-confidence rows only.
 #113/.5 and parent #108 remain unaccepted; .5 execution has not started in this repair.
 
+The corrected .4 was reaccepted at PR123/main
+`c9e5872d750582e9de4c98ded0492814850b26cf`; its existing relation assertion/source
+interface remains unchanged. The user subsequently started #113 under
+[the disjoint execution ACK](https://github.com/xcosmosbox/Cairn/issues/113#issuecomment-6442332173)
+and [the bounded integration amendment](https://github.com/xcosmosbox/Cairn/issues/113#issuecomment-6442350516).
+The [v0.1.5 persistence report](reports/2026-10-27-v015-persistence-fidelity.md)
+records source-count reconciliation, complete machine content pairs, lossless old edge
+rows/zero confidence, source lifecycle and optional schema1 graph readback metadata.
+The opt-in changed-node pair adapter is usable and tested; its legacy ordinary caller
+still defers repaired summaries pending #114 wiring. #114 remains the sole ordinary
+full/changed integration and final source-first campaign owner. Exact-head review, CI
+and acceptance are live task/PR events; this snapshot does not accept #113 or parent
+#108 and no paid model run is implied.
+
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
 omission-as-warning product direction; it does not restore retired peripheral gates.

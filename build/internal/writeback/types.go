@@ -18,6 +18,8 @@ package writeback
 import (
 	"sort"
 
+	"github.com/xcosmosbox/cairn/core/dktypes"
+
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 )
 
@@ -44,6 +46,8 @@ type MemberSource struct {
 // nodeView is the write-back view of one entity/concept fusion node, carrying all
 // info needed for rendering.
 type nodeView struct {
+	Sources       []SourceReference
+	Relations     []*dktypes.Edge
 	UUID          string   // node.ID（UUID，由 AssignNodeUUIDs 分配）/ node UUID
 	FileSlug      string   // LLM 生成的可读 slug（用于 _shared 文件名）/ LLM-generated readable slug
 	Tag           string   // "Entity" | "Concept" / node label
@@ -142,6 +146,7 @@ func buildNodeViews(res *extract.Result, memberSources map[string][]MemberSource
 func makeNodeView(n *extract.Node, tag, domainName, domainSlug, subdomainName, subdomainSlug string,
 	memberSources map[string][]MemberSource) nodeView {
 	v := nodeView{
+		Sources:       []SourceReference{},
 		UUID:          n.ID,
 		FileSlug:      n.FileSlug,
 		Tag:           tag,
@@ -165,7 +170,6 @@ func makeNodeView(n *extract.Node, tag, domainName, domainSlug, subdomainName, s
 	// 聚合该 node 所有 members 的来源文档（distinct file_path），用于 shared 判定与镜像渲染。
 	// Aggregate distinct source file_paths across all members for shared detection.
 	fileSet := make(map[string]bool)
-	var firstSpan *span
 	for _, m := range n.Members {
 		if m == "" {
 			continue
@@ -175,13 +179,9 @@ func makeNodeView(n *extract.Node, tag, domainName, domainSlug, subdomainName, s
 			continue
 		}
 		for _, src := range sources {
+			v.Sources = append(v.Sources, SourceReference{MemberID: m, Skill: src.Skill, FilePath: src.FilePath, StartLine: src.StartLine, EndLine: src.EndLine, CoordinateSpace: "source_document"})
 			if src.FilePath != "" {
 				fileSet[src.FilePath] = true
-			}
-			// 取第一个有行的 source 作为排序 span（回写块排序用）。
-			// Take the first source with lines as the ordering span.
-			if firstSpan == nil && src.StartLine > 0 {
-				firstSpan = &span{StartLine: src.StartLine, EndLine: src.EndLine}
 			}
 		}
 	}
@@ -192,6 +192,14 @@ func makeNodeView(n *extract.Node, tag, domainName, domainSlug, subdomainName, s
 	// Stable order for determinism.
 	sortStrings(v.SourceFiles)
 	v.Shared = IsSharedSourceFiles(v.SourceFiles)
+	v.Sources = canonicalSourceReferences(v.Sources)
+	var firstSpan *span
+	for _, source := range v.Sources {
+		if source.StartLine > 0 && source.EndLine >= source.StartLine {
+			firstSpan = &span{StartLine: source.StartLine, EndLine: source.EndLine}
+			break
+		}
+	}
 	v.Span = firstSpan
 	return v
 }

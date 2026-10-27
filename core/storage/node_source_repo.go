@@ -62,56 +62,126 @@ func NewNodeSourceRepo(db *DB) *NodeSourceRepo {
 	return &NodeSourceRepo{db: db}
 }
 
-// InsertBatch 在一个事务内批量插入 node_sources 行。
-// start_line/end_line 为 0 时写入 NULL（与 schema 的可空语义一致）。
-// 主键冲突（同一 node_uuid+member_id+file_path）时用 INSERT OR REPLACE 覆盖，
-// 保证全量重建场景下重复写入幂等（防御 ingest 对同一 member 多来源同文档的去重）。
-//
-// InsertBatch inserts multiple node_sources rows within a single transaction.
-// start_line/end_line = 0 are written as NULL. Uses INSERT OR REPLACE so that
-// duplicate (node_uuid, member_id, file_path) rows are idempotent.
-func (r *NodeSourceRepo) InsertBatch(ctx context.Context, rows []NodeSource) error {
-	if len(rows) == 0 {
-		return nil
-	}
+// NodeSourceBatchResult 区分原始尝试、主键去重后的选择与真正提交的来源关联。
+// Committed 包含重复运行中已存在并被确认的选择，不是新增行数；事务失败时为零。
+// NodeSourceBatchResult separates raw attempts, distinct selected keys and committed
+// selected associations. Committed includes confirmed existing rows on a repeat.
+type NodeSourceBatchResult struct {
+	Attempted        int
+	DistinctSelected int
+	DuplicateRows    int
+	Committed        int
+}
 
+// InsertBatch 保留旧调用契约；需报告事实计数的调用方使用 InsertBatchWithResult。
+// InsertBatch preserves the legacy error-only API.
+func (r *NodeSourceRepo) InsertBatch(ctx context.Context, rows []NodeSource) error {
+	_, err := r.InsertBatchWithResult(ctx, rows)
+	return err
+}
+
+// InsertBatchWithResult 按 node/member/原始文档主键提交关联，零行号存 NULL。
+// 同文档内重复语义会共享 member ID；位置仅为排序提示，保留完整已知且最早的真实位置。
+// 不合成跨越不同出现位置的虚假区间；不同 skill 的同键身份仍明确失败。
+// 提交前读回所选行，防止触发器忽略或修改写入仍被统计为成功。
+// InsertBatchWithResult commits and verifies every distinct selected association.
+// Repeated occurrences share one incidence with a deterministic real representative span.
+func (r *NodeSourceRepo) InsertBatchWithResult(ctx context.Context, rows []NodeSource) (NodeSourceBatchResult, error) {
+	result := NodeSourceBatchResult{Attempted: len(rows)}
+	type sourceKey struct{ node, member, file string }
+	byKey := make(map[sourceKey]int, len(rows))
+	var selected []NodeSource
+	var conflict error
+	for _, row := range rows {
+		key := sourceKey{row.NodeUUID, row.MemberID, row.FilePath}
+		if index, exists := byKey[key]; exists {
+			result.DuplicateRows++
+			if selected[index].Skill != row.Skill {
+				conflict = fmt.Errorf("NodeSourceRepo.InsertBatchWithResult: conflicting skills for %s/%s/%s", row.NodeUUID, row.MemberID, row.FilePath)
+			} else if earlierSourceSpan(row, selected[index]) {
+				selected[index] = row
+			}
+			continue
+		}
+		byKey[key] = len(selected)
+		selected = append(selected, row)
+	}
+	result.DistinctSelected = len(selected)
+	if conflict != nil {
+		return result, conflict
+	}
+	for _, row := range selected {
+		if row.NodeUUID == "" || row.MemberID == "" || row.FilePath == "" || row.StartLine < 0 || row.EndLine < 0 {
+			return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult: invalid source identity or span %s/%s/%s", row.NodeUUID, row.MemberID, row.FilePath)
+		}
+	}
+	if len(selected) == 0 {
+		return result, nil
+	}
 	r.db.mu.Lock()
 	defer r.db.mu.Unlock()
-
 	tx, err := r.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("NodeSourceRepo.InsertBatch begin tx: %w", err)
+		return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult begin: %w", err)
 	}
-	defer tx.Rollback() // 无操作（若已提交）/ no-op if already committed
-
+	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT OR REPLACE INTO node_sources (node_uuid, member_id, skill, file_path, start_line, end_line)
-		 VALUES (?, ?, ?, ?, ?, ?)`)
+		`INSERT INTO node_sources (node_uuid,member_id,skill,file_path,start_line,end_line)
+		 VALUES (?,?,?,?,?,?) ON CONFLICT(node_uuid,member_id,file_path) DO UPDATE SET
+		 skill=excluded.skill,start_line=excluded.start_line,end_line=excluded.end_line`)
 	if err != nil {
-		return fmt.Errorf("NodeSourceRepo.InsertBatch prepare: %w", err)
+		return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult prepare: %w", err)
 	}
 	defer stmt.Close()
-
-	for _, row := range rows {
+	for _, row := range selected {
 		var startLine, endLine any
 		if row.StartLine > 0 {
 			startLine = row.StartLine
-		} // 否则 nil → NULL / else nil → NULL
+		}
 		if row.EndLine > 0 {
 			endLine = row.EndLine
 		}
-		if _, err := stmt.ExecContext(ctx,
-			row.NodeUUID, row.MemberID, row.Skill, row.FilePath, startLine, endLine,
-		); err != nil {
-			return fmt.Errorf("NodeSourceRepo.InsertBatch (%s/%s/%s): %w",
-				row.NodeUUID, row.MemberID, row.FilePath, err)
+		if _, err := stmt.ExecContext(ctx, row.NodeUUID, row.MemberID, row.Skill, row.FilePath, startLine, endLine); err != nil {
+			return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult (%s/%s/%s): %w", row.NodeUUID, row.MemberID, row.FilePath, err)
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("NodeSourceRepo.InsertBatch commit: %w", err)
+	for _, row := range selected {
+		var skill string
+		var start, end sql.NullInt64
+		err := tx.QueryRowContext(ctx, `SELECT skill,start_line,end_line FROM node_sources WHERE node_uuid=? AND member_id=? AND file_path=?`, row.NodeUUID, row.MemberID, row.FilePath).Scan(&skill, &start, &end)
+		if err != nil {
+			return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult verify %s/%s/%s: %w", row.NodeUUID, row.MemberID, row.FilePath, err)
+		}
+		if skill != row.Skill || int(start.Int64) != row.StartLine || int(end.Int64) != row.EndLine {
+			return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult: stored source differs for %s/%s/%s", row.NodeUUID, row.MemberID, row.FilePath)
+		}
 	}
-	return nil
+	if err := tx.Commit(); err != nil {
+		return result, fmt.Errorf("NodeSourceRepo.InsertBatchWithResult commit: %w", err)
+	}
+	result.Committed = len(selected)
+	return result, nil
+}
+
+// earlierSourceSpan 只选择实际输入的位置，不把重复出现的两段之间误报为证据。
+// Prefer a complete known span, then a partial hint, then unknown; break ties by real lines.
+func earlierSourceSpan(a, b NodeSource) bool {
+	rank := func(row NodeSource) int {
+		if row.StartLine > 0 && row.EndLine >= row.StartLine {
+			return 0
+		}
+		if row.StartLine > 0 || row.EndLine > 0 {
+			return 1
+		}
+		return 2
+	}
+	if ar, br := rank(a), rank(b); ar != br {
+		return ar < br
+	}
+	if a.StartLine != b.StartLine {
+		return a.StartLine < b.StartLine
+	}
+	return a.EndLine < b.EndLine
 }
 
 // ListByNode 返回某 node 的全部来源行（用于 shared 判定 / 审计）。

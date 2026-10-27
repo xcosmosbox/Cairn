@@ -34,11 +34,14 @@ func TestIngestDomainsDefersCrossSemanticEdgesUntilAllNodesExist(t *testing.T) {
 			got, err := IngestDomains(ctx, db, IngestDomainsOptions{Result: &extract.Result{Domains: domains}, MinConfidence: .8, MemberSources: map[string][]MemberSource{
 				"member-a": {{Skill: "s", FilePath: "references/a.md"}},
 				"member-b": {{Skill: "s", FilePath: "references/b.md"}},
+				// 既有行为也物化 c；完整映射不能靠遗漏该选中成员假装来源成功。
+				// Preserve the existing low-confidence selection and all edge assertions.
+				"member-filtered": {{Skill: "s", FilePath: "references/filtered.md"}},
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.SemanticEdges != 2 || got.EdgesSkipped != 1 || got.NodeSourcesInserted != 2 {
+			if got.SemanticEdges != 2 || got.EdgesSkipped != 1 || got.NodeSourcesInserted != 3 {
 				t.Fatalf("wrong persistence: %+v", got)
 			}
 			var source, target, kind, description, provenance string
@@ -50,7 +53,7 @@ func TestIngestDomainsDefersCrossSemanticEdgesUntilAllNodesExist(t *testing.T) {
 				t.Fatalf("semantic metadata changed: %q %q %q %.2f %q", source, target, description, confidence, provenance)
 			}
 			var nullSpans int
-			if err := db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM node_sources WHERE start_line IS NULL AND end_line IS NULL`).Scan(&nullSpans); err != nil || nullSpans != 2 {
+			if err := db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM node_sources WHERE start_line IS NULL AND end_line IS NULL`).Scan(&nullSpans); err != nil || nullSpans != 3 {
 				t.Fatalf("unknown source spans changed: count=%d err=%v", nullSpans, err)
 			}
 		})

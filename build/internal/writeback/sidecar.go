@@ -56,28 +56,30 @@ type sidecarFile struct {
 // sidecarNode 是 sidecar 中单个 node 的条目。
 // sidecarNode is one node entry in the sidecar.
 type sidecarNode struct {
-	UUID            string       `yaml:"uuid"`
-	FileSlug        string       `yaml:"file_slug,omitempty"`
-	Tag             string       `yaml:"tag"`
-	Name            string       `yaml:"name"`
-	Domain          string       `yaml:"domain"`
-	Subdomain       string       `yaml:"subdomain"`
-	DomainSlug      string       `yaml:"domain_slug,omitempty"`
-	SubdomainSlug   string       `yaml:"subdomain_slug,omitempty"`
-	Shared          bool         `yaml:"shared"`
-	Members         []string     `yaml:"members"`
-	Span            *sidecarSpan `yaml:"span,omitempty"`
-	SummaryHash     string       `yaml:"summary_hash"`
-	DescriptionHash string       `yaml:"description_hash"`
-	Provenance      string       `yaml:"provenance"`
+	GraphMetadata   *GraphMetadata `yaml:"graph_metadata,omitempty"`
+	UUID            string         `yaml:"uuid"`
+	FileSlug        string         `yaml:"file_slug,omitempty"`
+	Tag             string         `yaml:"tag"`
+	Name            string         `yaml:"name"`
+	Domain          string         `yaml:"domain"`
+	Subdomain       string         `yaml:"subdomain"`
+	DomainSlug      string         `yaml:"domain_slug,omitempty"`
+	SubdomainSlug   string         `yaml:"subdomain_slug,omitempty"`
+	Shared          bool           `yaml:"shared"`
+	Members         []string       `yaml:"members"`
+	Span            *sidecarSpan   `yaml:"span,omitempty"`
+	SummaryHash     string         `yaml:"summary_hash"`
+	DescriptionHash string         `yaml:"description_hash"`
+	Provenance      string         `yaml:"provenance"`
 }
 
 // sidecarSpan 是 sidecar 中 node 的 span（只读元数据，1-based 闭区间）。
 // sidecarSpan is a node's span in the sidecar (read-only, 1-based inclusive).
 type sidecarSpan struct {
-	StartLine int    `yaml:"start_line"`
-	EndLine   int    `yaml:"end_line"`
-	Quote     string `yaml:"quote,omitempty"`
+	CoordinateSpace string `yaml:"coordinate_space,omitempty"`
+	StartLine       int    `yaml:"start_line"`
+	EndLine         int    `yaml:"end_line"`
+	Quote           string `yaml:"quote,omitempty"`
 }
 
 // The pointer fields below let validation distinguish an omitted required YAML
@@ -91,19 +93,20 @@ type sidecarPresence struct {
 }
 
 type sidecarNodePresence struct {
-	UUID            *string      `yaml:"uuid"`
-	Tag             *string      `yaml:"tag"`
-	Name            *string      `yaml:"name"`
-	Domain          *string      `yaml:"domain"`
-	Subdomain       *string      `yaml:"subdomain"`
-	DomainSlug      *string      `yaml:"domain_slug"`
-	SubdomainSlug   *string      `yaml:"subdomain_slug"`
-	Shared          *bool        `yaml:"shared"`
-	Members         *[]string    `yaml:"members"`
-	Span            *sidecarSpan `yaml:"span"`
-	SummaryHash     *string      `yaml:"summary_hash"`
-	DescriptionHash *string      `yaml:"description_hash"`
-	Provenance      *string      `yaml:"provenance"`
+	GraphMetadata   *graphMetadataPresence `yaml:"graph_metadata"`
+	UUID            *string                `yaml:"uuid"`
+	Tag             *string                `yaml:"tag"`
+	Name            *string                `yaml:"name"`
+	Domain          *string                `yaml:"domain"`
+	Subdomain       *string                `yaml:"subdomain"`
+	DomainSlug      *string                `yaml:"domain_slug"`
+	SubdomainSlug   *string                `yaml:"subdomain_slug"`
+	Shared          *bool                  `yaml:"shared"`
+	Members         *[]string              `yaml:"members"`
+	Span            *sidecarSpan           `yaml:"span"`
+	SummaryHash     *string                `yaml:"summary_hash"`
+	DescriptionHash *string                `yaml:"description_hash"`
+	Provenance      *string                `yaml:"provenance"`
 }
 
 // sidecarHeaderComment 是 sidecar 文件顶部的说明注释。
@@ -250,6 +253,14 @@ func validateSidecarValue(sf sidecarFile, p *sidecarPresence) error {
 		if n.Provenance != "llm_inferred" && n.Provenance != "human_curated" && n.Provenance != "extraction" {
 			return fmt.Errorf("node %q has invalid provenance %q", n.UUID, n.Provenance)
 		}
+		if err := validateGraphMetadata(n.UUID, n.GraphMetadata); err != nil {
+			return err
+		}
+		if p != nil && (*p.Nodes)[i].GraphMetadata != nil {
+			if err := validateGraphMetadataPresence((*p.Nodes)[i].GraphMetadata); err != nil {
+				return err
+			}
+		}
 		if n.Span != nil {
 			if n.Span.StartLine < 1 || n.Span.EndLine < n.Span.StartLine {
 				return fmt.Errorf("node %q has invalid span", n.UUID)
@@ -289,6 +300,7 @@ func buildSidecar(docRelPath, mdContent string, nodes []nodeView, generatedAt ti
 			provenance = "llm_inferred"
 		}
 		sn := sidecarNode{
+			GraphMetadata:   buildGraphMetadata(v, mdContent),
 			UUID:            v.UUID,
 			Tag:             strings.ToLower(v.Tag),
 			Name:            v.Name,
@@ -305,8 +317,9 @@ func buildSidecar(docRelPath, mdContent string, nodes []nodeView, generatedAt ti
 		}
 		if v.Span != nil {
 			sn.Span = &sidecarSpan{
-				StartLine: v.Span.StartLine,
-				EndLine:   v.Span.EndLine,
+				CoordinateSpace: "ordering_hint",
+				StartLine:       v.Span.StartLine,
+				EndLine:         v.Span.EndLine,
 			}
 		}
 		if len(sn.Members) == 0 {
@@ -418,5 +431,9 @@ func unmarshalJournalSidecar(data []byte, sf *sidecarFile) error {
 	if err := yaml.Unmarshal(data, sf); err != nil {
 		return err
 	}
-	return validateSidecarValue(*sf, nil)
+	var presence sidecarPresence
+	if err := yaml.Unmarshal(data, &presence); err != nil {
+		return err
+	}
+	return validateSidecarValue(*sf, &presence)
 }

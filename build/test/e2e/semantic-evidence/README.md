@@ -230,3 +230,49 @@ pre-existing storage normalization despite exact adapter retention. #113 owns th
 repair and complete persistence acceptance; prior .4 full-row evidence covers tested
 nonzero-confidence rows only. This .4 repair starts no .5 execution or six-original
 actual-model campaign and does not alter frozen inputs or historical reports.
+
+## v0.1.5 persistence handoff
+
+[#113](https://github.com/xcosmosbox/Cairn/issues/113) supplies bounded persistence
+helpers and deterministic SQLite/Markdown readback controls; its
+[report](../../../../docs/coordination/reports/2026-10-27-v015-persistence-fidelity.md)
+maps each obligation to evidence. This does not perform #114's ordinary six-original
+construction campaign or aggregate product completion.
+
+`NodeSourceRepo.InsertBatchWithResult` separates attempted raw rows,
+`DistinctSelected`, `DuplicateRows`, and verified `Committed` selected associations.
+A repeated selected association remains committed without becoming a new source.
+Repeated positions of the same source incidence select a real deterministic span
+(known complete, then earliest), rather than fabricating a bounding range. Different
+skill identity at one physical key fails explicitly; SQL failures return zero
+committed for that transaction. `IngestDomains` exposes the corresponding
+`NodeSources*` counts and exact missing-member mappings rather than skipping them.
+The synthetic 172-attempt/171-distinct control demonstrates the arithmetic on real
+SQLite; it does not replay or relabel the historical diagnostic's 172 raw rows.
+
+Changed construction can opt in to `fuseDescriptionsWithVerifiedContent` and carry both
+returned maps into `reflowResult.descriptions` / `verifiedNodeContent` before I-8.
+Only complete current outcomes with exact matching ID and Description authorize the
+atomic Summary+Description pair. The legacy `fuseDescriptions` entry keeps its truthful
+summary-repair deferral until #114 switches the ordinary caller. Storage protects human
+content and pinned fields, and repeated equal pairs do not change the node timestamp.
+
+`WritebackContextWithRelations` accepts actual stored edges for optional schema1
+`graph_metadata`; incremental writeback reads the stored graph directly. Exact source
+associations carry `source_document` coordinates; generated block offsets carry
+`generated_document` coordinates. Relation snapshots retain every stored row and full
+Description assertion envelope, including source hashes, quotes and explicit versus
+unverified classifications; serialization grants no new source credit. Relations remain
+outside editable Markdown. Legacy sidecars and the old writer API remain usable, with
+unknown relations represented as unknown rather than a fabricated empty graph.
+
+Focused controls (from the repository root):
+
+```sh
+go test ./core/storage ./build/internal/ingest ./build/internal/writeback ./build/internal/incremental ./build/test/e2e/semantic-evidence
+```
+
+The composed tests exercise actually verified .3/.4 candidates, I-8 SQLite application,
+I-9 primary/mirror/complete-block readback, repeated selections and zero confidence.
+Separate injected failures prove their operational behavior; they do not replace the
+normal selected-graph retention checks or the later source-first semantic campaign.

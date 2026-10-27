@@ -149,8 +149,10 @@ func TestHumanProtectionKeepsMachineAndExplicitMutationContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, err := repo.ListAll(ctx)
-	if err != nil || len(after) != 1 || after[0].ID != before[0].ID || after[0].Description != updated.Description || after[0].Confidence != updated.Confidence || after[0].Properties != before[0].Properties {
-		t.Fatalf("machine update/dedup changed: %+v %v", after, err)
+	// .5 不再丢弃完整旧机器重复行；只更新最早行的模型字段，后续行整行保留。
+	// Lossless replacement retains siblings instead of collapsing their distinct payloads.
+	if err != nil || len(after) != 2 || after[0].ID != before[0].ID || after[0].Description != updated.Description || after[0].Confidence != updated.Confidence || after[0].Properties != before[0].Properties || !reflect.DeepEqual(after[1], before[1]) {
+		t.Fatalf("machine update/duplicate retention changed: %+v %v", after, err)
 	}
 	if err := repo.ReplaceSemanticBySubdomain(ctx, "d", "s", nil); err != nil {
 		t.Fatal(err)
