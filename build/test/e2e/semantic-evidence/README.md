@@ -214,3 +214,19 @@ unapplied there. #113 owns complete persistence/readback; #114 owns ordinary ent
 wiring and final aggregate/source-to-graph acceptance. The narrow terminal structural
 reselection after node filtering preserves early repair inputs and starts no #114
 work. Missing in-scope relation behavior still blocks #112 and the parent.
+
+Fresh research after PR122 found an accepted whole-set revision could leave an obsolete
+new assertion selected when another revised candidate terminated unknown/exhausted.
+The [partial revision repair receipt](../../../../docs/coordination/reports/2026-10-27-v014-partial-revision-repair.md)
+records the current correction and independent actual changed-helper/SQLite regression.
+At accepted complete+supported replacement coverage, only exact still-present identities
+retain current selection/cache credit; removed assertions remain audit history and need
+a fresh verdict if reintroduced. Exact good siblings, distinct valid same-triple qualifiers
+and other sources survive. Persistent old text remains separately `legacy_unverified`;
+its retention cannot grant a superseded newly selected facet explicit credit.
+
+A separate unchanged failing SQLite control localizes old confidence `0` → `0.8` to
+pre-existing storage normalization despite exact adapter retention. #113 owns that
+repair and complete persistence acceptance; prior .4 full-row evidence covers tested
+nonzero-confidence rows only. This .4 repair starts no .5 execution or six-original
+actual-model campaign and does not alter frozen inputs or historical reports.

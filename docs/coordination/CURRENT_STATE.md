@@ -70,6 +70,20 @@ Final exact-head review, normal CI and maintainer acceptance remain live events;
 #113 persistence/readback and #114 ordinary source plumbing/final product campaign remain
 separate owners. No new paid or six-original model construction is implied.
 
+Fresh [v0.1.4 research](https://github.com/xcosmosbox/Cairn/issues/112#issuecomment-6434312462)
+reopened #112 after PR122/main `f86ad506fb1b9638e19496b50b6b514f9b99c29b`:
+an accepted whole-set revision followed by another candidate's unknown exhaustion
+leaves a superseded new assertion explicitly selected and applicable to SQLite.
+The [new narrow repair receipt](reports/2026-10-27-v014-partial-revision-repair.md)
+records the failed-before/passed-after changed-helper/SQLite control and separates current
+selection from protected persistent legacy text. Related tests/builds/vet and document
+checks pass at the report's exact combined code checkpoint. New exact-head review, CI and maintainer
+acceptance remain live Issue/PR events; PR122's dated history remains intact.
+A separate independently reproduced old-confidence `0` → `0.8` SQLite mutation belongs
+to pre-existing #113 storage normalization: the .4 adapter returns the exact old row.
+Prior .4 full-field persistence evidence covers tested nonzero-confidence rows only.
+#113/.5 and parent #108 remain unaccepted; .5 execution has not started in this repair.
+
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
 omission-as-warning product direction; it does not restore retired peripheral gates.
