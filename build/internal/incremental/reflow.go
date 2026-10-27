@@ -41,6 +41,8 @@ type reflowResult struct {
 	// descriptions 是 I-6 重融合出的新 description（uuid → 正文）。
 	// descriptions maps node uuid → re-fused description (I-6).
 	descriptions map[string]string
+	// verifiedNodeContent is opt-in: only a complete pair authorizes both fields.
+	verifiedNodeContent map[string]extract.NodeDescriptionOutcome
 	// relations 是每个脏子域重算后的「最终」语义 relation 集合（端点已是 uuid）。
 	// relations holds the final recomputed semantic relations per dirty subdomain.
 	relations map[SubdomainKey][]extract.Relation
@@ -91,6 +93,12 @@ type reflowNode struct {
 // fuseDescriptions runs I-6: re-fuse descriptions for member-dirty nodes only,
 // parallel per subdomain; every node retains an explicit outcome (R8/R9).
 func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *alignOutcome, rs *runState) map[string]string {
+	return r.fuseDescriptionsForPersistence(ctx, dirty, ao, rs, false)
+}
+
+// fuseDescriptionsForPersistence 明确传入 pair 能力；旧调用方继续保护无法应用的修正。
+// Explicit local capability avoids changing shared reflower state during parallel work.
+func (r *reflower) fuseDescriptionsForPersistence(ctx context.Context, dirty *DirtySet, ao *alignOutcome, rs *runState, allowPair bool) map[string]string {
 	r.nodeMu.Lock()
 	r.nodeOutcomes = nil // 每次调用只发布本轮证据，不能重用前次成功来改写新候选。
 	r.nodeMu.Unlock()
@@ -168,7 +176,7 @@ func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *al
 	sortSubdomainKeys(keys)
 	results := make([]sdResult, len(keys))
 	parallel.ForEachIndexed(parallel.MaxConcurrency, keys, func(i int, key SubdomainKey) {
-		results[i] = sdResult{descByUUID: r.fuseSubdomainBatch(ctx, key, bySub[key], rs)}
+		results[i] = sdResult{descByUUID: r.fuseSubdomainBatchForPersistence(ctx, key, bySub[key], rs, allowPair)}
 	})
 	for _, res := range results {
 		for uuid, desc := range res.descByUUID {
@@ -188,6 +196,10 @@ func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *al
 // fuseSubdomainBatch 逐节点核验摘要与详述，调用只含 alias，UUID 保留在代码侧。
 // Existing summaries requiring a persistence change remain explicitly unresolved.
 func (r *reflower) fuseSubdomainBatch(ctx context.Context, key SubdomainKey, nodes []*reflowNode, rs *runState) map[string]string {
+	return r.fuseSubdomainBatchForPersistence(ctx, key, nodes, rs, false)
+}
+
+func (r *reflower) fuseSubdomainBatchForPersistence(ctx context.Context, key SubdomainKey, nodes []*reflowNode, rs *runState, allowPair bool) map[string]string {
 	written := make(map[string]string)
 	var inputs []extract.NodeDescriptionInput
 	byID := map[string]*reflowNode{}
@@ -202,7 +214,7 @@ func (r *reflower) fuseSubdomainBatch(ctx context.Context, key SubdomainKey, nod
 	for _, out := range result.Nodes {
 		n := byID[out.ID]
 		if out.Outcome == annotation.DocumentComplete && n != nil {
-			if !n.isNew && out.Summary != n.summary {
+			if !allowPair && !n.isNew && out.Summary != n.summary {
 				// 既有 I-8 只写 description，不能把未能持久化的新摘要冒充完成。
 				// Expose the verified correction, retain the old pair, and hand off to .5/.6.
 				out.Outcome = annotation.DocumentPartial
@@ -445,7 +457,6 @@ func (r *reflower) recomputeRelationsWithSources(ctx context.Context, dirty *Dir
 	}
 	nodes := map[string]*dktypes.Node{}
 	edgeGroups := map[SubdomainKey][]*dktypes.Edge{}
-	blocked := map[SubdomainKey][]*dktypes.Edge{}
 	keys := make([]SubdomainKey, 0, len(active))
 	for key := range active {
 		keys = append(keys, key)
@@ -509,16 +520,6 @@ func (r *reflower) recomputeRelationsWithSources(ctx context.Context, dirty *Dir
 				protected[reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind))] = true
 			}
 		}
-		seenMachine := map[string]bool{}
-		for _, edge := range allEdges {
-			identity := reflowEdgeKey(edge.SourceID, edge.TargetID, string(edge.Kind))
-			if !protected[identity] {
-				if seenMachine[identity] {
-					blocked[key] = append(blocked[key], edge)
-				}
-				seenMachine[identity] = true
-			}
-		}
 		for _, edge := range allEdges {
 			state, classification, reason, status := "retained_old", "unknown", "original support is unavailable; existing edge retained", annotation.DocumentUnavailable
 			if edge.Provenance == dktypes.ProvenanceLLMInferred {
@@ -569,12 +570,6 @@ func (r *reflower) recomputeRelationsWithSources(ctx context.Context, dirty *Dir
 					reason = ctx.Err().Error()
 				}
 				report.Scopes = append(report.Scopes, extract.RelationScopeOutcome{Scope: key.String(), Outcome: outcome, Reason: reason})
-			}
-		}
-		for key, duplicates := range blocked {
-			delete(final, key)
-			for _, edge := range duplicates {
-				r.recordRelationOutcome(relationReflowOutcome{Scope: key, Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), State: "application_deferred", Classification: "unknown", Outcome: annotation.DocumentUnavailable, Reason: "legacy duplicate machine triple requires lossless persistence support (#113); all old rows retained"})
 			}
 		}
 		r.relationMu.Lock()
@@ -765,25 +760,8 @@ func (r *reflower) recomputeRelationsWithSources(ctx context.Context, dirty *Dir
 			final[key] = append(final[key], extract.Relation{Source: source, Target: target, Kind: first.Relation.Kind, Description: description, Confidence: confidence})
 		}
 	}
-	// 不让旧 I-8 的 triple-first/collapse 策略因本次省略删除既有多行；.5 负责无损落库。
-	// Defer only that replacement scope, while retaining independent verified selections.
-	for key, duplicates := range blocked {
-		delete(final, key)
-		for _, edge := range duplicates {
-			reason := fmt.Sprintf("relation replacement deferred: legacy duplicate machine triple %s --%s--> %s requires lossless persistence support (#113); all old rows retained", edge.SourceID, edge.Kind, edge.TargetID)
-			r.recordRelationOutcome(relationReflowOutcome{Scope: key, Source: edge.SourceID, Target: edge.TargetID, Kind: string(edge.Kind), State: "application_deferred", Classification: "unknown", Outcome: annotation.DocumentUnavailable, Reason: reason})
-			warn("I-7 " + key.String() + ": " + reason)
-		}
-		r.relationMu.Lock()
-		for i := range r.relationOutcomes {
-			if r.relationOutcomes[i].Scope == key && r.relationOutcomes[i].State == "verified_new" {
-				r.relationOutcomes[i].State = "verified_new_unapplied"
-				r.relationOutcomes[i].Outcome = annotation.DocumentUnavailable
-				r.relationOutcomes[i].Reason = "source verified selection retained in report; application deferred for legacy duplicate machine rows (#113)"
-			}
-		}
-		r.relationMu.Unlock()
-	}
+	// I-8 now preserves every legacy row and applies the merged facets to one stable row.
+	// 原旧多行保护由持久化事务实现；无需丢弃已核验的新选择。
 	for key := range final {
 		if !eligible[key] && len(grouped[key]) == 0 {
 			delete(final, key)

@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/xcosmosbox/cairn/core/dktypes"
 )
@@ -260,6 +261,27 @@ func (r *NodeRepo) InsertBatch(ctx context.Context, nodes []*dktypes.Node) error
 		return fmt.Errorf("NodeRepo.InsertBatch commit: %w", err)
 	}
 	return nil
+}
+
+// UpdateMachineContent 原子应用已验证的完整摘要/正文，不覆盖人工内容或其他字段。
+// 相同内容重复应用不改变时间戳；UUID、名称、来源、属性与文件身份均保留。
+// 返回 false 表示节点不存在或已人工维护，调用方不得宣称机器候选已应用。
+// UpdateMachineContent atomically applies a verified pair to a non-curated node.
+func (r *NodeRepo) UpdateMachineContent(ctx context.Context, id, summary, description string) (bool, error) {
+	r.db.mu.Lock()
+	defer r.db.mu.Unlock()
+	result, err := r.db.Conn().ExecContext(ctx,
+		`UPDATE nodes SET updated_at=CASE WHEN summary=? AND COALESCE(description,'')=? THEN updated_at ELSE ? END,
+		 summary=?,description=? WHERE id=? AND provenance!='human_curated'`,
+		summary, description, time.Now().UTC(), summary, nullString(description), id)
+	if err != nil {
+		return false, fmt.Errorf("NodeRepo.UpdateMachineContent %s: %w", id, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("NodeRepo.UpdateMachineContent count %s: %w", id, err)
+	}
+	return n == 1, nil
 }
 
 // RowID 返回节点的 SQLite rowid（FTS5 索引以 rowid 关联）。

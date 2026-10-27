@@ -394,7 +394,11 @@ func (r *EdgeRepo) DeleteSemanticBySubdomain(ctx context.Context, domain, subdom
 // identities. R8: if ANY old row of an identity is human_curated, preserve ALL
 // its old rows without UPDATE/DELETE, including legacy NULLs and duplicates.
 // Generated omission or collision never authorizes a human payload change.
-// Machine-only legacy duplicates still collapse to the oldest row. Explicit
+// 机器旧重复行各自携带来源/限定和完整元数据，不能按三元组折叠。新生成的聚合
+// description/confidence 更新最早行；其余旧行原样保留。带既有 ID 的保留行按 ID
+// 匹配，不能因传入顺序把第二条旧描述写到第一条。
+// Machine-only duplicates retain every row. A generated aggregate updates the
+// oldest row; ID-bearing retained rows match their original row. Explicit
 // manual InsertIfAbsent/DeleteBetween APIs retain their separate mutation contract.
 func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdomain string, replacements []*dktypes.Edge) error {
 	r.db.mu.Lock()
@@ -408,7 +412,7 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 
 	// Snapshot the complete old rows before mutating anything.  Keeping the
 	// complete Edge values is important for identity-preserving updates and for
-	// deterministic duplicate collapse in legacy databases.
+	// preserving distinct full legacy rows under one triple.
 	rows, err := tx.QueryContext(ctx, `
 		SELECT e.id, e.source_id, e.target_id, e.kind, e.description, e.properties,
 		       e.provenance, e.confidence, e.source_refs, e.bidirectional,
@@ -422,6 +426,7 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 		return fmt.Errorf("EdgeRepo.ReplaceSemanticBySubdomain snapshot: %w", err)
 	}
 	oldByKey := make(map[string]*dktypes.Edge)
+	oldByID := make(map[int64]*dktypes.Edge)
 	oldIDsByKey := make(map[string][]int64)
 	// 必须在同一事务内看完所有旧行：不能因最早重复行是机器边而漏掉后续人工边。
 	// Snapshot provenance across every duplicate before deciding any mutation.
@@ -438,6 +443,7 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 			return fmt.Errorf("EdgeRepo.ReplaceSemanticBySubdomain snapshot scan: %w", err)
 		}
 		edge := row.ToPublic()
+		oldByID[edge.ID] = edge
 		key := edgeIdentityKey(edge.SourceID, edge.TargetID, edge.Kind)
 		if _, exists := oldByKey[key]; !exists {
 			oldByKey[key] = edge
@@ -460,6 +466,7 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 	// validation and replacement observe different databases.
 	prepared := make([]*dktypes.Edge, 0, len(replacements))
 	seen := make(map[string]bool, len(replacements))
+	preparedIndex := make(map[string]int, len(replacements))
 	for _, candidate := range replacements {
 		if candidate == nil {
 			continue
@@ -469,10 +476,6 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 			continue
 		}
 		key := edgeIdentityKey(e.SourceID, e.TargetID, e.Kind)
-		if seen[key] {
-			continue
-		}
-
 		var sourceExists int
 		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM nodes WHERE id = ?`, e.SourceID).Scan(&sourceExists); err != nil {
 			if err == sql.ErrNoRows {
@@ -487,7 +490,9 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 			}
 			return fmt.Errorf("EdgeRepo.ReplaceSemanticBySubdomain target %s: %w", e.TargetID, err)
 		}
-		if e.Confidence <= 0 || e.Confidence > 1 {
+		// 零是合法置信度，不能充当“未填写”哨兵；保留现有越界输入的默认约定。
+		// Zero is valid for retained and new rows; only out-of-range values default.
+		if e.Confidence < 0 || e.Confidence > 1 {
 			e.Confidence = 0.8
 		}
 		if !e.Provenance.IsValid() {
@@ -496,12 +501,21 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 		if e.CreatedAt.IsZero() {
 			e.CreatedAt = time.Now().UTC()
 		}
+		if index, exists := preparedIndex[key]; exists {
+			// 新聚合项没有 DB ID，优先于旧完整行；否则保留候选不得重写别的 ID。
+			// Generated aggregates take precedence over ID-bearing retained snapshots.
+			if e.ID == 0 && prepared[index].ID != 0 {
+				prepared[index] = &e
+			}
+			continue
+		}
 		seen[key] = true
+		preparedIndex[key] = len(prepared)
 		prepared = append(prepared, &e)
 	}
 
-	// Delete rows that are no longer in the authoritative replacement set and
-	// collapse any pre-existing duplicate identities, retaining the oldest id.
+	// Delete machine identities omitted from the authoritative set. An included
+	// identity retains every legacy row, with its distinct metadata and payload.
 	for key, ids := range oldIDsByKey {
 		if len(ids) == 0 {
 			continue
@@ -518,11 +532,6 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 			}
 			continue
 		}
-		for _, id := range ids[1:] {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM edges WHERE id = ?`, id); err != nil {
-				return fmt.Errorf("EdgeRepo.ReplaceSemanticBySubdomain collapse %d: %w", id, err)
-			}
-		}
 	}
 
 	// Update retained identities in place.  The LLM relation schema only carries
@@ -538,6 +547,9 @@ func (r *EdgeRepo) ReplaceSemanticBySubdomain(ctx context.Context, domain, subdo
 			continue // R8：整行原样保留，不把机器描述藏在 human_curated 标志下。
 		}
 		if old := oldByKey[key]; old != nil {
+			if retained := oldByID[edge.ID]; retained != nil && edgeIdentityKey(retained.SourceID, retained.TargetID, retained.Kind) == key {
+				old = retained
+			}
 			// A kept edge is commonly passed through as an exact copy.  Avoiding
 			// a needless UPDATE also preserves the distinction between legacy SQL
 			// NULLs and empty strings in all untouched payload columns.

@@ -387,9 +387,9 @@ func TestV014RelationReflowDiscoversNewCrossWithoutOldEdge(t *testing.T) {
 	}
 }
 
-// I-8 旧实现按 triple 折叠机器重复行；没有原文输出也会丢掉独立限定/元数据。
-// Withhold only the affected replacement scope and prove exact old rows survive real ingest.
-func TestV014RelationReflowDuplicateRowsDeferOnlyTheirScope(t *testing.T) {
+// .5 存储已支持旧重复完整行；已核验的新选择必须实际应用且保全旧语义。
+// Exercise lossless duplicate application together with an independent successful scope.
+func TestV014RelationReflowDuplicateRowsApplyLosslessly(t *testing.T) {
 	t.Parallel()
 	st, dirty, key, docs, originals := v014ReflowFixture(t)
 	ctx := context.Background()
@@ -413,8 +413,8 @@ func TestV014RelationReflowDuplicateRowsDeferOnlyTheirScope(t *testing.T) {
 	r := newReflower(&v014ReflowClient{extraRelation: true, generate: []string{"Admission requires quota before 2025 except emergencies."}}, 4096, st)
 	rs := newRunState()
 	final, kept := r.recomputeRelationsWithSources(ctx, dirty, nil, nil, docs, originals, extract.RelationProcessOptions{MaxRetries: -1}, rs)
-	if _, ok := final[key]; ok {
-		t.Fatal("lossy duplicate-row replacement was published")
+	if rows, ok := final[key]; !ok || len(rows) != 1 {
+		t.Fatal("verified duplicate-row scope was withheld despite lossless persistence")
 	}
 	if rows, ok := final[other]; !ok || len(rows) != 1 {
 		t.Fatal("independent successful scope was withheld")
@@ -422,17 +422,10 @@ func TestV014RelationReflowDuplicateRowsDeferOnlyTheirScope(t *testing.T) {
 	if len(r.relationProcessReport().Selected) == 0 {
 		t.Fatal("verified selected evidence disappeared while application deferred")
 	}
-	deferred, unapplied := false, false
 	for _, out := range r.relationReflowOutcomes() {
-		if out.Scope == key && out.State == "application_deferred" && out.Outcome == annotation.DocumentUnavailable {
-			deferred = true
+		if out.Scope == key && (out.State == "application_deferred" || out.State == "verified_new_unapplied") {
+			t.Fatal("lossless application still reported deferred")
 		}
-		if out.Scope == key && out.State == "verified_new_unapplied" {
-			unapplied = true
-		}
-	}
-	if !deferred || !unapplied {
-		t.Fatal("deferred application falsely reported applied success")
 	}
 	if err := applyIncrementalIngest(ctx, st, dirty, nil, &reflowResult{relations: final, keptCross: kept}, rs); err != nil {
 		t.Fatal(err)
@@ -442,9 +435,15 @@ func TestV014RelationReflowDuplicateRowsDeferOnlyTheirScope(t *testing.T) {
 	if len(independent) != 1 || independent[0].TargetID != "h" {
 		t.Fatal("independent verified scope was not persisted")
 	}
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("legacy duplicate full rows changed: before=%+v after=%+v", before, after)
+	if len(after) != len(before) || !reflect.DeepEqual(before[1], after[1]) {
+		t.Fatalf("independent duplicate row lost: before=%+v after=%+v", before, after)
 	}
+	preserved := *after[0]
+	preserved.Description = before[0].Description
+	if !reflect.DeepEqual(before[0], &preserved) || !strings.Contains(after[0].Description, "different legacy condition") || !strings.Contains(after[0].Description, "before 2025") {
+		t.Fatal("selected aggregate lost old facets or row metadata")
+	}
+
 }
 
 // changed 入口同样使用共享有限预算：可修复生成失败后完成，不重复成功来源。

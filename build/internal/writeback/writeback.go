@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/xcosmosbox/cairn/build/internal/extract"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // Writeback 把全量构建产出的 KG 结构化回写为 md + sidecar。
@@ -44,6 +45,12 @@ func Writeback(res *extract.Result, memberSources map[string][]MemberSource, rep
 
 // WritebackContext fences every managed pair write with the caller lease.
 func WritebackContext(ctx context.Context, res *extract.Result, memberSources map[string][]MemberSource, repoRoot string) (*Report, error) {
+	return WritebackContextWithRelations(ctx, res, memberSources, nil, repoRoot)
+}
+
+// WritebackContextWithRelations 把实际存储边作为只读 sidecar 元数据保真回写。
+// Persisted edges are copied without interpreting assertion credit; nil means unknown.
+func WritebackContextWithRelations(ctx context.Context, res *extract.Result, memberSources map[string][]MemberSource, edges []*dktypes.Edge, repoRoot string) (*Report, error) {
 	report := &Report{}
 	if res == nil {
 		return report, fmt.Errorf("writeback: result is nil")
@@ -52,6 +59,9 @@ func WritebackContext(ctx context.Context, res *extract.Result, memberSources ma
 
 	// 1. 派生全部 node 的回写视图（含 shared 判定 + 来源文档聚合）。
 	views := buildNodeViews(res, memberSources)
+	for i := range views {
+		views[i].Relations = IncidentRelations(edges, views[i].UUID)
+	}
 	if len(views) == 0 {
 		return report, nil
 	}

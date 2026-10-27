@@ -246,6 +246,13 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 		artifactByUUID[uuid] = append(artifactByUUID[uuid], artifact)
 	}
 
+	allEdges, err := st.edges.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+	if allEdges == nil {
+		allEdges = []*dktypes.Edge{}
+	}
 	for uuid := range candidates {
 		blocked := false
 		for path, id := range primaryUUIDByPath {
@@ -322,6 +329,7 @@ func (rpt *rewriteReport) syncPrimaries(ctx context.Context, st *stores, rs *run
 		}
 		// 当前 shared：渲染 primary（KG 权威值），字节比对后写盘。
 		u := buildNodeUpdate(node, srcs, names, "")
+		u.Relations = writeback.IncidentRelations(allEdges, uuid)
 		// A domain move or an older buggy path may leave an artifact under a
 		// different _shared directory.  Keep exactly the KG-canonical path and
 		// converge all stale siblings.
@@ -506,7 +514,7 @@ func buildDocNodeUpdates(ctx context.Context, st *stores, docPath string, names 
 	// 该文档内每个 uuid 的最小 start_line（span 排序）。
 	spanByUUID := make(map[string][2]int)
 	for _, r := range rows {
-		if r.StartLine <= 0 {
+		if r.StartLine <= 0 || r.EndLine < r.StartLine {
 			continue
 		}
 		cur, ok := spanByUUID[r.NodeUUID]
@@ -519,6 +527,13 @@ func buildDocNodeUpdates(ctx context.Context, st *stores, docPath string, names 
 	if err != nil {
 		return nil, err
 	}
+	edges, err := st.edges.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if edges == nil {
+		edges = []*dktypes.Edge{}
+	}
 	var updates []writeback.NodeUpdate
 	for _, uuid := range uuids {
 		node := nodeMap[uuid]
@@ -530,6 +545,7 @@ func buildDocNodeUpdates(ctx context.Context, st *stores, docPath string, names 
 			return nil, err
 		}
 		u := buildNodeUpdate(node, srcs, names, docPath)
+		u.Relations = writeback.IncidentRelations(edges, uuid)
 		if sp, ok := spanByUUID[uuid]; ok {
 			u.SpanStart, u.SpanEnd = sp[0], sp[1]
 		}
@@ -563,19 +579,23 @@ func buildNodeUpdate(node *dktypes.Node, srcs []storage.NodeSource, names *layer
 		subName = node.Subdomain
 	}
 	u := writeback.NodeUpdate{
-		UUID: node.ID, FileSlug: node.FileSlug, Tag: string(node.Label), Name: node.Name,
+		Sources: []writeback.SourceReference{},
+		UUID:    node.ID, FileSlug: node.FileSlug, Tag: string(node.Label), Name: node.Name,
 		Domain: domainName, Subdomain: subName,
 		DomainSlug: node.Domain, SubdomainSlug: node.Subdomain,
 		Summary: node.Summary, Description: node.Description,
 		Members: members, Shared: len(files) >= 2, SourceFiles: files,
 		Provenance: string(node.Provenance),
 	}
+	for _, s := range srcs {
+		u.Sources = append(u.Sources, writeback.SourceReference{MemberID: s.MemberID, Skill: s.Skill, FilePath: s.FilePath, StartLine: s.StartLine, EndLine: s.EndLine, CoordinateSpace: "source_document"})
+	}
 	// The full writer stores the first available source span in every view,
 	// including shared primaries.  Keep the same deterministic ledger-derived
 	// value for incremental writes; document-local callers may override it with
 	// their span below.
 	for _, source := range srcs {
-		if source.StartLine > 0 {
+		if source.StartLine > 0 && source.EndLine >= source.StartLine {
 			u.SpanStart = source.StartLine
 			u.SpanEnd = source.EndLine
 			break

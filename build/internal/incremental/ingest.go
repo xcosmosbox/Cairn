@@ -41,6 +41,9 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 	if err := normalizePendingForPersistence(ao); err != nil {
 		return err
 	}
+	if err := validateVerifiedNodeContent(ao, rr); err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 
 	// —— 1. 新建 domain/subdomain 层节点（含 provides/composes 边）——
@@ -63,9 +66,16 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 					desc = pn.Summary // I-6 失败的兜底（ingest 侧 summary 兜底风格一致）
 				}
 				desc = normalizePersistedSummary(desc)
+				summary := firstNonEmptyStr(pn.Summary, pn.Name)
+				if rr != nil {
+					if content, ok := rr.verifiedNodeContent[uuid]; ok {
+						summary = content.Summary
+						desc = content.Description
+					}
+				}
 				node := &dktypes.Node{
 					ID: uuid, Label: dktypes.Label(pn.Label), Name: pn.Name,
-					Summary: firstNonEmptyStr(pn.Summary, pn.Name), Description: desc,
+					Summary: summary, Description: desc,
 					Domain: pn.Domain, Subdomain: pn.Subdomain,
 					Confidence: pn.Confidence, Provenance: dktypes.ProvenanceLLMInferred,
 					SourceRefs: strings.Join(pn.SourceSkills, ","),
@@ -80,6 +90,16 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 				if exists == nil {
 					if err := st.nodes.Insert(ctx, node); err != nil {
 						return fmt.Errorf("I-8 insert node %s: %w", uuid, err)
+					}
+				} else if rr != nil {
+					if content, ok := rr.verifiedNodeContent[uuid]; ok {
+						applied, err := st.nodes.UpdateMachineContent(ctx, uuid, content.Summary, content.Description)
+						if err != nil {
+							return fmt.Errorf("I-8 retry node pair %s: %w", uuid, err)
+						}
+						if !applied {
+							return fmt.Errorf("I-8 retry node %s content not applied: human protected identity", uuid)
+						}
 					}
 				}
 			} else if rr != nil {
@@ -96,10 +116,19 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 						rs.warnf(fmt.Sprintf("I-8：融入目标 node %s 不存在（跳过 description 更新）", uuid))
 						continue
 					}
-					node.Description = desc
-					node.UpdatedAt = now
-					if err := st.nodes.Update(ctx, node); err != nil {
+					summary := node.Summary
+					if content, ok := rr.verifiedNodeContent[uuid]; ok {
+						summary = content.Summary
+						desc = content.Description
+					}
+					// 两个语义字段同一 SQL 写入，人工身份在存储条件中再核验。
+					// Atomic pair update also guards direct helper callers against human overwrite.
+					applied, err := st.nodes.UpdateMachineContent(ctx, uuid, summary, desc)
+					if err != nil {
 						return fmt.Errorf("I-8 update node %s: %w", uuid, err)
+					}
+					if !applied {
+						return fmt.Errorf("I-8 node %s content not applied: missing or human protected identity", uuid)
 					}
 				}
 			}
@@ -139,7 +168,9 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 					return fmt.Errorf("I-8 refuse orphan node_source: node %s not found (member %s)", row.NodeUUID, row.MemberID)
 				}
 			}
-			if err := st.sources.InsertBatch(ctx, ao.sourceRows); err != nil {
+			counts, err := st.sources.InsertBatchWithResult(ctx, ao.sourceRows)
+			log.Printf("[incremental-ingest] node_sources attempted=%d selected_distinct=%d duplicate=%d committed=%d", counts.Attempted, counts.DistinctSelected, counts.DuplicateRows, counts.Committed)
+			if err != nil {
 				return fmt.Errorf("I-8 insert node_sources: %w", err)
 			}
 		}
@@ -184,7 +215,7 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 		var replacement []*dktypes.Edge
 		for _, rel := range relations {
 			conf := rel.Confidence
-			if conf <= 0 || conf > 1 {
+			if conf < 0 || conf > 1 {
 				conf = 0.8
 			}
 			replacement = append(replacement, &dktypes.Edge{
@@ -516,7 +547,7 @@ func syncProvenance(ctx context.Context, st *stores, ao *alignOutcome, rs *runSt
 // 同身份边已存在 → 更新权威字段并收敛重复行（问题 7：重放幂等且不吞新值）。
 func insertCheckedEdge(ctx context.Context, st *stores, sourceID, targetID string,
 	kind dktypes.RelationKind, desc string, conf float64, now time.Time, rs *runState) error {
-	if conf <= 0 || conf > 1 {
+	if conf < 0 || conf > 1 {
 		conf = 0.8
 	}
 	return upsertCheckedEdge(ctx, st, &dktypes.Edge{

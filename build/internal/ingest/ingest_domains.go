@@ -169,13 +169,16 @@ type IngestDomainsResult struct {
 	// EdgesSkipped counts edges skipped due to a missing endpoint (app-level FK).
 	EdgesSkipped int
 
-	// NodeSourcesInserted 是写入 node_sources 表的行数（每个 node 的每个 member
-	// 每个来源文档一行；member 不在 MemberSources 中则跳过该 member，不报错）。
-	// 0 表示未写入（MemberSources 为 nil 或无命中）。
-	//
-	// NodeSourcesInserted counts rows written to node_sources (one per node member
-	// per source doc). 0 when MemberSources is nil or no member matched.
-	NodeSourcesInserted int
+	// 来源事实计数：Attempted 包含重复输入；SelectedDistinct 按 SQL 主键计数；
+	// Duplicates 是重复键行数；Inserted 是本次成功事务确认的 distinct 选择（含重放）。
+	// These counters describe source rows only, never semantic completeness.
+	NodeSourcesAttempted        int
+	NodeSourcesSelectedDistinct int
+	NodeSourcesDuplicates       int
+	NodeSourcesInserted         int
+	// NodeSourceMissingMembers 列出没有来源映射的 node/member，不能静默冒充成功。
+	// nil MemberSources retains the legacy optional-provenance mode.
+	NodeSourceMissingMembers []string
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -286,36 +289,37 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 	// nodeSourceRows accumulates node_sources rows for a single batch insert at the end.
 	var nodeSourceRows []storage.NodeSource
 
-	// appendNodeSources 把一个 entity/concept node 的 members 展开为 node_sources 行：
-	// 对 node 的每个 member 查 MemberSources map，对每条来源写一行。
-	// member 不在 map 中则跳过该 member（不报错——防御 repair/supplement 新建节点
-	// 引用的边界情况，R5 同源精神：宁可少写也不误报）。
-	//
-	// appendNodeSources expands a node's members into node_sources rows: for each
-	// member it looks up MemberSources and writes one row per source. A member
-	// absent from the map is skipped silently (defensive: repair/supplement may
-	// reference edge-case members).
-	appendNodeSources := func(nodeID string, members []string, dSlug, sSlug string) {
-		if len(opts.MemberSources) == 0 {
-			return // 无映射 → 不写（向后兼容）
+	// 节点去重不能丢掉后续出现的有效来源；统计始终使用同一个物理主键。
+	// Deduplicate nodes independently from their complete source contributions.
+	type sourceIdentity struct{ node, member, file string }
+	sourceKeys := make(map[sourceIdentity]bool)
+	missingMembers := make(map[string]bool)
+	appendNodeSources := func(nodeID string, members []string) {
+		if opts.MemberSources == nil {
+			return
 		}
 		for _, m := range members {
-			if m == "" {
+			sources := opts.MemberSources[m]
+			if m == "" || len(sources) == 0 {
+				identity := nodeID + "/" + m
+				if !missingMembers[identity] {
+					missingMembers[identity] = true
+					result.NodeSourceMissingMembers = append(result.NodeSourceMissingMembers, identity)
+					log.Printf("[ingest] selected member has no source mapping: %s", identity)
+				}
 				continue
 			}
-			sources, ok := opts.MemberSources[m]
-			if !ok {
-				continue // member 不在 map 中：跳过，不报错
-			}
 			for _, src := range sources {
-				nodeSourceRows = append(nodeSourceRows, storage.NodeSource{
-					NodeUUID:  nodeID,
-					MemberID:  m,
-					Skill:     src.Skill,
-					FilePath:  src.FilePath,
-					StartLine: src.StartLine,
-					EndLine:   src.EndLine,
-				})
+				row := storage.NodeSource{NodeUUID: nodeID, MemberID: m, Skill: src.Skill, FilePath: src.FilePath, StartLine: src.StartLine, EndLine: src.EndLine}
+				nodeSourceRows = append(nodeSourceRows, row)
+				result.NodeSourcesAttempted++
+				key := sourceIdentity{nodeID, m, src.FilePath}
+				if sourceKeys[key] {
+					result.NodeSourcesDuplicates++
+				} else {
+					sourceKeys[key] = true
+					result.NodeSourcesSelectedDistinct++
+				}
 			}
 		}
 	}
@@ -477,9 +481,6 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 				} else if ok {
 					result.EntityNodes++
 					result.NodesInserted++
-					// 为该 entity 的每个 member 写 node_sources（回写与 shared 判定的命脉）。
-					// Write node_sources rows for this entity's members (write-back lifeline).
-					appendNodeSources(entID, ent.Members, dSlug, sSlug)
 					// 步骤 6b：subdomain --composes--> entity（层级边）。
 					if ok2, err := insertEdge(subID, entID, dktypes.KindComposes,
 						"子域包含实体", 1.0, ""); err != nil {
@@ -488,6 +489,7 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 						result.ComposesEdges++
 					}
 				}
+				appendNodeSources(entID, ent.Members)
 			}
 			for _, con := range sd.Concepts {
 				conID := con.ID          // UUID 主键（由 extract.AssignNodeUUIDs 分配）
@@ -510,9 +512,6 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 				} else if ok {
 					result.ConceptNodes++
 					result.NodesInserted++
-					// 为该 concept 的每个 member 写 node_sources（回写与 shared 判定的命脉）。
-					// Write node_sources rows for this concept's members (write-back lifeline).
-					appendNodeSources(conID, con.Members, dSlug, sSlug)
 					// 步骤 6b：subdomain --composes--> concept（层级边）。
 					if ok2, err := insertEdge(subID, conID, dktypes.KindComposes,
 						"子域包含概念", 1.0, ""); err != nil {
@@ -521,6 +520,7 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 						result.ComposesEdges++
 					}
 				}
+				appendNodeSources(conID, con.Members)
 			}
 
 		}
@@ -551,20 +551,19 @@ func IngestDomains(ctx context.Context, db *storage.DB, opts IngestDomainsOption
 	}
 
 	// ————————————————————————————————————————————————————————————————————————
-	// 步骤 7.5：批量写入 node_sources（回写与 shared 判定的命脉）。
-	// 每行 = 一个 node 的一个 member 的一处来源文档；member 不在 MemberSources 中
-	// 的已在 appendNodeSources 内静默跳过。失败不阻断主入库（KG 已正确物化），
-	// 仅记录错误与计数——node_sources 是回写产物输入，非 KG 正确性的一部分。
-	// Step 7.5: batch-insert node_sources rows (write-back lifeline). A member
-	// absent from MemberSources was already skipped silently. Failure does not
-	// abort ingest (the KG is already materialized correctly).
+	// 步骤 7.5：来源是图谱身份的一部分；来源失败必须返回实际失败范围，不能推进版本。
+	// Step 7.5: provenance failure is an ingest error, with factual counters retained.
 	// ————————————————————————————————————————————————————————————————————————
-	if len(nodeSourceRows) > 0 {
-		if err := nsRepo.InsertBatch(ctx, nodeSourceRows); err != nil {
-			log.Printf("[ingest] 写 node_sources 失败（不阻断入库）: %v", err)
-		} else {
-			result.NodeSourcesInserted = len(nodeSourceRows)
-		}
+	if len(result.NodeSourceMissingMembers) > 0 {
+		return result, fmt.Errorf("IngestDomains: selected members missing source mappings: %v", result.NodeSourceMissingMembers)
+	}
+	counts, err := nsRepo.InsertBatchWithResult(ctx, nodeSourceRows)
+	result.NodeSourcesAttempted = counts.Attempted
+	result.NodeSourcesSelectedDistinct = counts.DistinctSelected
+	result.NodeSourcesDuplicates = counts.DuplicateRows
+	result.NodeSourcesInserted = counts.Committed
+	if err != nil {
+		return result, fmt.Errorf("IngestDomains: persist selected sources: %w", err)
 	}
 
 	// ————————————————————————————————————————————————————————————————————————

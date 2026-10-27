@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,6 +130,9 @@ func atomicWriteFileContext(ctx context.Context, path string, data []byte, perm 
 // NodeUpdate carries all KG-authoritative values needed to render one node block
 // during incremental write-back (I-9). Isomorphic to the private nodeView.
 type NodeUpdate struct {
+	Sources   []SourceReference // authoritative source ledger, never generated offsets
+	Relations []*dktypes.Edge   // nil means unavailable to this caller; empty non-nil means known empty
+
 	UUID          string   // node UUID（只读锚点）/ node UUID (read-only anchor)
 	FileSlug      string   // LLM 生成的可读 slug（用于 _shared 文件名）/ LLM slug for _shared filename
 	Tag           string   // "Entity" | "Concept"（大小写不敏感，渲染时归一小写）
@@ -151,6 +155,7 @@ type NodeUpdate struct {
 // toNodeView converts the public NodeUpdate into the private nodeView.
 func (u NodeUpdate) toNodeView() nodeView {
 	v := nodeView{
+		Sources: cloneSourceReferences(u.Sources), Relations: u.Relations,
 		UUID:          u.UUID,
 		FileSlug:      u.FileSlug,
 		Tag:           u.Tag,
@@ -348,7 +353,7 @@ func sidecarNodeMetadataEqual(a, b sidecarNode) bool {
 		a.DomainSlug == b.DomainSlug && a.SubdomainSlug == b.SubdomainSlug &&
 		a.Shared == b.Shared && a.SummaryHash == b.SummaryHash &&
 		a.DescriptionHash == b.DescriptionHash && a.Provenance == b.Provenance &&
-		stringSlicesEqual(a.Members, b.Members) && sidecarSpansEqual(a.Span, b.Span)
+		stringSlicesEqual(a.Members, b.Members) && sidecarSpansEqual(a.Span, b.Span) && graphMetadataMatches(a.GraphMetadata, b.GraphMetadata)
 }
 
 // sidecarNodesEqual 比较完整 node baseline，同时把 nil/[] 空切片视为等价（YAML
@@ -364,7 +369,7 @@ func sidecarNodesEqual(a, b []sidecarNode) bool {
 			x.DomainSlug != y.DomainSlug || x.SubdomainSlug != y.SubdomainSlug ||
 			x.Shared != y.Shared || x.SummaryHash != y.SummaryHash ||
 			x.DescriptionHash != y.DescriptionHash || x.Provenance != y.Provenance ||
-			!stringSlicesEqual(x.Members, y.Members) || !sidecarSpansEqual(x.Span, y.Span) {
+			!stringSlicesEqual(x.Members, y.Members) || !sidecarSpansEqual(x.Span, y.Span) || !graphMetadataEqual(x.GraphMetadata, y.GraphMetadata) {
 			return false
 		}
 	}

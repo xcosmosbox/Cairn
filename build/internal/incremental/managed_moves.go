@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
@@ -155,6 +154,18 @@ func validateMoveEvidence(ctx context.Context, st *stores, ledgerPath string, sc
 		return err
 	}
 	adapted := *sc
+	adapted.Nodes = append([]writeback.SidecarNode(nil), sc.Nodes...)
+	for i := range adapted.Nodes {
+		if g := adapted.Nodes[i].GraphMetadata; g != nil && ledgerPath != sc.Doc {
+			copyGraph := *g
+			// Optional snapshots may still name several old paths after one batch
+			// commit. Move identity is proven by the complete UUID/member/readonly
+			// baseline below, not this stale cache; refresh it from SQLite afterward.
+			copyGraph.SourcesKnown = false
+			copyGraph.Sources = []writeback.SourceReference{}
+			adapted.Nodes[i].GraphMetadata = &copyGraph
+		}
+	}
 	adapted.Doc = ledgerPath
 	if len(views) == 0 || !writeback.SidecarMetadataMatches(adapted, ledgerPath, views) {
 		return fmt.Errorf("sidecar UUID/member/metadata does not match complete source ledger")
@@ -197,14 +208,66 @@ func applyManagedMoves(ctx context.Context, st *stores, root, repoURL string, mo
 		if err := validateMoveEvidence(ctx, st, move.NewPath, sc, string(data)); err != nil {
 			return fmt.Errorf("incremental: move changed during migration %s: %w", move.NewPath, err)
 		}
-		views, err := authoritativeSidecarViews(ctx, st, move.NewPath, false, "")
+	}
+	// Attest the whole committed move batch before refreshing any destination:
+	// refreshing a sharing sibling must not erase another move's old Doc proof.
+	if err := refreshMovedSourceMetadata(ctx, st, root, moves); err != nil {
+		return err
+	}
+	report.DocsRewritten += len(moves)
+	return nil
+}
+
+// refreshMovedSourceMetadata 修复共享来源与 primary 的只读来源快照，保留人工改动 baseline。
+// Refresh siblings first; keep moved-path attestation retryable until all succeed.
+func refreshMovedSourceMetadata(ctx context.Context, st *stores, root string, moves []managedMove) error {
+	paths := map[string]bool{}
+	_, primaryByPath, err := listExpectedSharedPrimaryDocs(ctx, st)
+	if err != nil {
+		return err
+	}
+	ids := map[string]bool{}
+	destinations := map[string]bool{}
+	for _, move := range moves {
+		destinations[move.NewPath] = true
+		for _, src := range move.Sources {
+			ids[src.NodeUUID] = true
+			rows, err := st.sources.ListByNode(ctx, src.NodeUUID)
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				paths[row.FilePath] = true
+			}
+		}
+	}
+	for path, id := range primaryByPath {
+		if ids[id] {
+			paths[path] = true
+		}
+	}
+	ordered := []string{}
+	for path := range paths {
+		if !destinations[path] {
+			ordered = append(ordered, path)
+		}
+	}
+	sort.Strings(ordered)
+	var movedPaths []string
+	for path := range destinations {
+		movedPaths = append(movedPaths, path)
+	}
+	sort.Strings(movedPaths)
+	ordered = append(ordered, movedPaths...)
+	for _, path := range ordered {
+		primaryID := primaryByPath[path]
+		views, err := authoritativeSidecarViews(ctx, st, path, primaryID != "", primaryID)
 		if err != nil {
 			return err
 		}
-		if err := writeback.WriteSidecarForDocContext(ctx, root, move.NewPath, string(data), views, time.Now().UTC()); err != nil {
-			return fmt.Errorf("incremental: rebind moved sidecar %s: %w", move.NewPath, err)
+		if err := writeback.RefreshGraphMetadataContext(ctx, root, path, views); err != nil {
+			return fmt.Errorf("incremental: refresh moved-source metadata %s: %w", path, err)
 		}
-		report.DocsRewritten++
 	}
 	return nil
 }

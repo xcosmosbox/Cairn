@@ -70,7 +70,7 @@ func groupByDoc(views []nodeView) (groups []docGroup, primaries []nodeView) {
 			// shared：在每个来源文档放镜像块；并收集为 primary。
 			for _, fp := range v.SourceFiles {
 				g := getOrCreate(fp)
-				g.Nodes = append(g.Nodes, v)
+				g.Nodes = append(g.Nodes, viewForSourceDoc(v, fp))
 			}
 			primaries = append(primaries, v)
 		} else {
@@ -78,7 +78,7 @@ func groupByDoc(views []nodeView) (groups []docGroup, primaries []nodeView) {
 			// Non-shared: full block in its single source doc.
 			fp := v.SourceFiles[0]
 			g := getOrCreate(fp)
-			g.Nodes = append(g.Nodes, v)
+			g.Nodes = append(g.Nodes, viewForSourceDoc(v, fp))
 		}
 	}
 
@@ -100,4 +100,19 @@ func isMirrorForDoc(v nodeView) bool {
 // primaryAbsPath returns the absolute path of a shared node's primary file.
 func primaryAbsPath(repoRoot string, v nodeView) string {
 	return fmt.Sprintf("%s/%s", repoRoot, primaryFilePath(v))
+}
+
+// viewForSourceDoc 必须按本文档选择原有位置，避免共享节点复用另一个来源的行号。
+// Select a document-local source ordering span; never derive it from rendered lines.
+func viewForSourceDoc(v nodeView, filePath string) nodeView {
+	if len(v.Sources) == 0 {
+		return v
+	}
+	v.Span = nil
+	for _, s := range canonicalSourceReferences(v.Sources) {
+		if s.FilePath == filePath && s.StartLine > 0 && s.EndLine >= s.StartLine && (v.Span == nil || s.StartLine < v.Span.StartLine) {
+			v.Span = &span{StartLine: s.StartLine, EndLine: s.EndLine}
+		}
+	}
+	return v
 }

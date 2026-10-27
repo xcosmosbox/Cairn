@@ -176,7 +176,15 @@ func (r *IncrementalMutationRepo) ApplySourceDeletion(ctx context.Context,
 			NoContribution: true, RowID: rowID,
 		}, nil
 	}
-	deleted := remaining == 0
+	// 人工节点或人工边含独立知识；最后原始贡献消失不授权级联删除人工图谱。
+	// Retain curated relationship endpoints as well, so protected edges stay valid.
+	var curatedEdges int
+	if remaining == 0 && node.Provenance != dktypes.ProvenanceHumanCurated {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM edges WHERE (source_id=? OR target_id=?) AND provenance='human_curated'`, nodeUUID, nodeUUID).Scan(&curatedEdges); err != nil {
+			return nil, fmt.Errorf("IncrementalMutationRepo.ApplySourceDeletion curated edges %s: %w", nodeUUID, err)
+		}
+	}
+	deleted := remaining == 0 && node.Provenance != dktypes.ProvenanceHumanCurated && curatedEdges == 0
 	if deleted {
 		// FTS 与 node/边/来源同事务删除。若只留给后续 I-8 清理，进程在旁路提交后
 		// 崩溃会丢失 rowid 快照，形成永久 FTS 幽灵。
@@ -257,7 +265,7 @@ func reconcileDomainProvenanceTx(ctx context.Context, tx *sql.Tx, domain string,
 	}
 
 	rows, err := tx.QueryContext(ctx,
-		`SELECT source_id FROM edges WHERE target_id = ? AND kind = 'provides'`, domainID)
+		`SELECT source_id FROM edges WHERE target_id = ? AND kind = 'provides' AND provenance != 'human_curated'`, domainID)
 	if err != nil {
 		return fmt.Errorf("list provides %s: %w", domain, err)
 	}
@@ -283,7 +291,7 @@ func reconcileDomainProvenanceTx(ctx context.Context, tx *sql.Tx, domain string,
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM edges WHERE source_id = ? AND target_id = ? AND kind = 'provides'`,
+			`DELETE FROM edges WHERE source_id = ? AND target_id = ? AND kind = 'provides' AND provenance != 'human_curated'`,
 			sourceID, domainID); err != nil {
 			return fmt.Errorf("delete stale provides %s->%s: %w", sourceID, domain, err)
 		}
