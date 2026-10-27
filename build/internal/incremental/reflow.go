@@ -125,6 +125,14 @@ func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *al
 				continue
 			}
 			node, err := r.st.nodes.GetByID(ctx, uuid)
+			// 取消可能发生在读取前或读取中，不能把 caller 终止误报成存储不可用。
+			// Preserve caller cancellation before classifying ordinary lookup failures.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				reason := fmt.Sprintf("I-6: existing node %s read cancelled: %v", uuid, ctxErr)
+				r.recordNodeOutcome(extract.NodeDescriptionOutcome{ID: uuid, Domain: pn.Domain, Subdomain: pn.Subdomain, Outcome: annotation.DocumentCancelled, Reason: reason})
+				rs.warnf(reason)
+				continue
+			}
 			if err != nil || node == nil {
 				reason := fmt.Sprintf("I-6: existing node %s is unavailable: %v", uuid, err)
 				r.recordNodeOutcome(extract.NodeDescriptionOutcome{ID: uuid, Domain: pn.Domain, Subdomain: pn.Subdomain, Outcome: annotation.DocumentUnavailable, Reason: reason})

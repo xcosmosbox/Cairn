@@ -169,3 +169,11 @@ the starting main. After accepted integration, the coordinator records the actua
 release in #111/#112. The next relation owner then holds the whole file exclusively;
 node corrections require another serialized ownership amendment. Until that event,
 #111 retains the file and #112 remains blocked. This text starts no worker.
+
+Fresh cancellation reacceptance [reopened #111](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6432223324)
+after PR120: caller-cancelled existing-node reads incorrectly reported unavailable,
+while preserving stored content and making no model call. The
+[narrow repair evidence](../../../../docs/coordination/reports/2026-10-27-v013-cancellation-repair.md)
+keeps the earlier acceptance as history. The previous #112 handoff is suspended;
+the acknowledged .3 repair owner holds the file until a new explicit accepted
+release. I-7 remains unchanged, and no .4 worker starts from this correction.

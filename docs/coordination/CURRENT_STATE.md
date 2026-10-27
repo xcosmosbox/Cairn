@@ -39,15 +39,21 @@ original report remain dated history. New exact-head research/CI and coordinator
 acceptance are separate live events. The narrow repair was integrated at
 `413cb6045d6cfd0c893624dc87277dffb04e683a` (PR119); live #110 acceptance governs it.
 
-[#111 v0.1.3](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6431600098)
-now has acknowledged identity, semantic and integration writers. Its
+[#111 v0.1.3](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6432033920)
+was accepted at PR120/main `a4a94baa034223345e1b696f6b8800b364fb7977`. Its
 [node helper report](reports/2026-10-27-v013-node-fidelity.md) records bounded
 helper controls and the authentic retained-response/category-filter loss boundary.
-Implementation/review/CI/acceptance are separate live events; no whole-original
-semantic success or new provider run is implied. Structural member/source coverage
-does not substitute for checked surviving node semantics. Existing-target summary
-application and ordinary full/changed construction wiring remain #113/#114;
-`reflow.go` remains #111-exclusive until explicit accepted release to #112.
+Fresh research [reopened #111](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6432223324)
+for one owned cancellation classification defect: existing-node reads interrupted
+by caller cancellation/deadline reported unavailable. Stored content remains intact
+and no model call/replacement occurs. The [narrow repair report](reports/2026-10-27-v013-cancellation-repair.md)
+retains the prior acceptance as history and records new failure/repair evidence.
+New exact-source research, normal CI and coordinator acceptance remain separate live
+events. No whole-original semantic success or new provider run is implied. Structural
+coverage does not substitute for checked surviving node semantics. Existing-target
+summary application and ordinary full/changed construction wiring remain #113/#114.
+The prior #112 next-writer handoff is suspended; the acknowledged narrow .3 owner
+holds `reflow.go` until new accepted release. No v0.1.4 worker has started.
 
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
