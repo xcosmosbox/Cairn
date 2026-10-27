@@ -25,9 +25,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path"
+	"reflect"
 	"strings"
 	"unicode"
 
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
@@ -56,6 +59,7 @@ type alignUnit struct {
 	FilePath   string  // 来源文档 / source doc
 	StartLine  int     // span（与原档行号对齐；0=无）/ span start (0 = none)
 	EndLine    int     // span 止 / span end
+	sources    []*alignUnit
 }
 
 // pendingNode 是 I-4 判归属后产生的一个「待落库 node」（融入已有 / 新建）。
@@ -90,7 +94,9 @@ type alignOutcome struct {
 	pending map[string]*pendingNode
 	// unitsByID 是 04 id → 单元（含 detail，I-6 素材）。
 	// unitsByID maps 04 id → unit (detail for I-6).
-	unitsByID map[string]*alignUnit
+	unitsByID   map[string]*alignUnit
+	sourcesByID map[string][]*alignUnit
+	report      alignReport
 	// sourceRows 是 I-8 要写入 node_sources 的行（新来源贡献）。
 	// sourceRows are the node_sources rows to insert at I-8.
 	sourceRows []storage.NodeSource
@@ -107,10 +113,11 @@ type alignOutcome struct {
 // aligner 是 I-4 增量对齐器：FTS5 召回 + LLM 判归属（alias 呈现，R1）。
 // aligner implements I-4: FTS5 recall + LLM placement (aliased, R1).
 type aligner struct {
-	client    llm.Client
-	maxTokens int
-	recallK   int
-	st        *stores
+	client     llm.Client
+	maxTokens  int
+	recallK    int
+	maxRetries int
+	st         *stores
 }
 
 // newAligner 构造 I-4 对齐器。recallK ≤0 取 defaultRecallK。
@@ -150,7 +157,8 @@ func flattenUnits(docs []*dktypes.AnnotatedDocument) (units []*alignUnit, source
 				u.EndLine = it.SourceSpan.EndLine
 			}
 			if existing, ok := byID[u.ID]; !ok {
-				byID[u.ID] = u
+				combined := *u
+				byID[u.ID] = &combined
 				order = append(order, u.ID)
 			} else {
 				// 同一 04 id 可由多篇文档贡献互补素材。prompt/I-6 只保留一条
@@ -167,6 +175,7 @@ func flattenUnits(docs []*dktypes.AnnotatedDocument) (units []*alignUnit, source
 		}
 	}
 	for _, id := range order {
+		byID[id].sources = sourcesByID[id]
 		units = append(units, byID[id])
 	}
 	return units, sourcesByID
@@ -175,13 +184,10 @@ func flattenUnits(docs []*dktypes.AnnotatedDocument) (units []*alignUnit, source
 func mergeDistinctText(existing, incoming string) string {
 	existing = strings.TrimSpace(existing)
 	incoming = strings.TrimSpace(incoming)
-	if incoming == "" || incoming == existing || strings.Contains(existing, incoming) {
+	if incoming == "" || incoming == existing {
 		return existing
 	}
 	if existing == "" {
-		return incoming
-	}
-	if strings.Contains(incoming, existing) {
 		return incoming
 	}
 	return existing + "\n\n" + incoming
@@ -215,6 +221,7 @@ func (a *aligner) align(ctx context.Context, docs []*dktypes.AnnotatedDocument, 
 		unitsByID: make(map[string]*alignUnit),
 	}
 	units, sourcesByID := flattenUnits(docs)
+	outcome.sourcesByID = sourcesByID
 	if len(units) == 0 {
 		return outcome, nil
 	}
@@ -235,16 +242,19 @@ func (a *aligner) align(ctx context.Context, docs []*dktypes.AnnotatedDocument, 
 	book, promptSections := buildAliases(candidates, subs, doms)
 
 	// —— 4. LLM 判归属（一次调用，含 batch 内互聚全局视野）——
-	decisions, groups, err := a.judge(ctx, units, promptSections, book, rs)
+	decisions, groups, report, err := a.judge(ctx, units, promptSections, book, rs)
+	outcome.report = report
 	if err != nil {
-		// 本次响应不可用：降级为空 outcome + 告警（不阻断旁路已完成的修改）。
-		// llFailed=true：调用方必须把全部 C4 文档标记为未解决（问题 2）。
-		rs.warnf(fmt.Sprintf("I-4 增量对齐 LLM 失败（新单元未对齐，降级跳过）: %v", err))
-		return &alignOutcome{pending: map[string]*pendingNode{}, unitsByID: outcome.unitsByID, llFailed: true}, nil
+		rs.warnf(fmt.Sprintf("I-4 unresolved placement: %v", err))
+		outcome.llFailed = len(decisions) == 0
 	}
-
-	// —— 5. 物化：alias→uuid 翻译 + 新 node 首派生 uuid ——
+	// 已成功 decision 即使后续失败也保留；实际映射覆盖在物化后重算。
+	// Keep accepted siblings after later failures, then reconcile actual source rows.
 	a.materialize(ctx, outcome, decisions, groups, book, sourcesByID, rs)
+	reconcileAlignCoverage(outcome, units, sourcesByID)
+	if ctx.Err() != nil {
+		return outcome, ctx.Err()
+	}
 	return outcome, nil
 }
 
@@ -295,19 +305,17 @@ func buildRecallQuery(u *alignUnit) string {
 	return strings.Join(parts, " OR ")
 }
 
-// sanitizeFTSQuery 清洗 FTS5 查询串：去掉会引发语法错误的引号与操作符字符。
-// sanitizeFTSQuery strips characters that would break FTS5 MATCH syntax.
+// sanitizeFTSQuery 用既有编译器逐词转义，来源标点与大写操作符只能当文字。
+// sanitizeFTSQuery compiles literal source atoms, preserving OR recall without invalid FTS syntax.
 func sanitizeFTSQuery(s string) string {
-	var sb strings.Builder
-	for _, r := range s {
-		switch r {
-		case '"', '(', ')', ':', '^', '*', '{', '}', '~':
-			sb.WriteRune(' ')
-		default:
-			sb.WriteRune(r)
+	var terms []string
+	for _, atom := range strings.Fields(s) {
+		literal, err := storage.CompileFTSPlainText(atom, storage.FTSTextLiteral)
+		if err == nil {
+			terms = append(terms, literal)
 		}
 	}
-	return strings.Join(strings.Fields(sb.String()), " ")
+	return strings.Join(terms, " OR ")
 }
 
 // loadLayerNodes 载入全部 subdomain / domain 层节点（attach 与 new_subdomain 的目标清单）。
@@ -364,8 +372,11 @@ func buildAliases(candidates, subs, doms []*dktypes.Node) (*aliasBook, *promptSe
 		counterBySub[n.Subdomain]++
 		alias := fmt.Sprintf("%s#%d", n.Subdomain, counterBySub[n.Subdomain])
 		book.nodeByAlias[alias] = n
-		fmt.Fprintf(&nb, "- alias=%s [%s] %s（域 %s / 子域 %s）：%s\n",
-			alias, n.Label, n.Name, n.Domain, n.Subdomain, truncateRunes(n.Summary, 120))
+		if n.Provenance == dktypes.ProvenanceHumanCurated {
+			fmt.Fprintf(&nb, "- alias=%s [%s] (protected human object; content unavailable)（域 %s / 子域 %s）\n", alias, n.Label, n.Domain, n.Subdomain)
+		} else {
+			fmt.Fprintf(&nb, "- alias=%s [%s] %s（域 %s / 子域 %s）：%s\n  description: %s\n", alias, n.Label, n.Name, n.Domain, n.Subdomain, n.Summary, n.Description)
+		}
 	}
 	ps.Nodes = nb.String()
 
@@ -435,31 +446,215 @@ type alignLLMOutput struct {
 	Groups    []alignGroup    `json:"groups"`
 }
 
+// alignReport 只陈述对齐范围，产品完成状态由集成层汇总。
+// alignReport retains actual attempts and unresolved members without overwriting good siblings.
+type alignReport struct {
+	Outcome           string
+	Reason            string
+	Attempts          []extract.CoverageAttempt
+	MissingIDs        []string
+	Exhausted         bool
+	InputIncidences   int
+	CoveredIncidences int
+}
+
+func reconcileAlignCoverage(out *alignOutcome, units []*alignUnit, sourcesByID map[string][]*alignUnit) {
+	retained := map[string]bool{}
+	for _, row := range out.sourceRows {
+		wire, _ := json.Marshal([]string{row.Skill, path.Clean(strings.ReplaceAll(row.FilePath, "\\", "/")), row.MemberID})
+		retained[string(wire)] = true
+	}
+	seen := map[string]bool{}
+	missing := map[string]bool{}
+	out.report.InputIncidences = 0
+	out.report.CoveredIncidences = 0
+	for _, u := range units {
+		for _, src := range sourcesByID[u.ID] {
+			wire, _ := json.Marshal([]string{src.Skill, path.Clean(strings.ReplaceAll(src.FilePath, "\\", "/")), u.ID})
+			key := string(wire)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out.report.InputIncidences++
+			if retained[key] && strings.TrimSpace(src.FilePath) != "" {
+				out.report.CoveredIncidences++
+			} else {
+				missing[u.ID] = true
+			}
+		}
+	}
+	out.report.MissingIDs = nil
+	for _, u := range units {
+		if missing[u.ID] {
+			out.report.MissingIDs = append(out.report.MissingIDs, u.ID)
+		}
+	}
+	if len(out.report.MissingIDs) > 0 && out.report.Outcome == "complete" {
+		out.report.Outcome = "partial"
+		out.report.Reason = "materialized placements omitted source/member incidences"
+	}
+}
+
+func (a *aligner) judge(ctx context.Context, units []*alignUnit, ps *promptSections, book *aliasBook, rs *runState) ([]alignDecision, map[string]*alignGroup, alignReport, error) {
+	report := alignReport{Outcome: "complete", Attempts: []extract.CoverageAttempt{}}
+	if a == nil || a.client == nil || (reflect.ValueOf(a.client).Kind() == reflect.Ptr && reflect.ValueOf(a.client).IsNil()) || a.maxTokens < 0 {
+		report.Outcome = "unavailable"
+		report.Reason = "align: invalid client or maxTokens"
+		return nil, map[string]*alignGroup{}, report, fmt.Errorf("%s", report.Reason)
+	}
+	pending := append([]*alignUnit(nil), units...)
+	var accepted []alignDecision
+	groups := map[string]*alignGroup{}
+	remaining := a.maxRetries
+	if remaining == 0 {
+		remaining = annotation.DefaultAnnotateMaxRetries
+	}
+	if remaining < 0 {
+		remaining = 0
+	}
+	feedback := ""
+	for len(pending) > 0 {
+		if ctx.Err() != nil {
+			report.Outcome = "cancelled"
+			report.Reason = ctx.Err().Error()
+			return accepted, groups, report, ctx.Err()
+		}
+		ids := make([]string, 0, len(pending))
+		for _, u := range pending {
+			ids = append(ids, u.ID)
+		}
+		decisions, newGroups, err := a.judgeOnce(ctx, pending, ps, book, rs, feedback, groups)
+		attempt := extract.CoverageAttempt{Number: len(report.Attempts) + 1, MemberIDs: ids, Outcome: "complete"}
+		if err != nil {
+			attempt.Outcome = "unavailable"
+			attempt.Reason = err.Error()
+			report.Outcome = "unavailable"
+			report.Reason = err.Error()
+		} else {
+			// 每次失败范围调用的组名独立，不能覆盖前次已成功的组。
+			// Scope group aliases per attempt so a retry cannot replace accepted sibling groups.
+			rename := map[string]string{}
+			for gid, g := range newGroups {
+				if groups[gid] != nil {
+					rename[gid] = gid
+					continue
+				}
+				key := fmt.Sprintf("attempt%d:%s", attempt.Number, gid)
+				cp := *g
+				cp.Group = key
+				groups[key] = &cp
+				rename[gid] = key
+			}
+			done := map[string]bool{}
+			for _, d := range decisions {
+				if d.Action == "fuse" {
+					d.Group = rename[d.Group]
+				}
+				if d.Action == "attach" || d.Action == "new_subdomain" {
+					gid := fmt.Sprintf("accepted#%d", len(accepted)+1)
+					groups[gid] = &alignGroup{Group: gid, NodeName: d.NodeName, Summary: d.Summary, Tag: d.Tag, Target: d.Target, Domain: d.Domain, Subdomain: d.Subdomain}
+					d.Action = "fuse"
+					d.Group = gid
+				}
+				accepted = append(accepted, d)
+				done[d.Unit] = true
+			}
+			next := []*alignUnit{}
+			for _, u := range pending {
+				if !done[u.ID] {
+					next = append(next, u)
+				}
+			}
+			pending = next
+			if len(pending) > 0 {
+				attempt.Outcome = "partial"
+				attempt.Reason = "missing or invalid unit placement"
+				report.Outcome = "partial"
+				report.Reason = attempt.Reason
+			} else {
+				report.Outcome = "complete"
+				report.Reason = ""
+			}
+		}
+		if ctx.Err() != nil {
+			attempt.Outcome = "cancelled"
+			report.Outcome = "cancelled"
+			report.Reason = ctx.Err().Error()
+		}
+		report.Attempts = append(report.Attempts, attempt)
+		report.MissingIDs = nil
+		for _, u := range pending {
+			report.MissingIDs = append(report.MissingIDs, u.ID)
+		}
+		if ctx.Err() != nil {
+			return accepted, groups, report, ctx.Err()
+		}
+		if len(pending) == 0 {
+			return accepted, groups, report, nil
+		}
+		if err != nil && annotation.IsPermanentModelError(err) {
+			return accepted, groups, report, err
+		}
+		if remaining == 0 {
+			report.Exhausted = true
+			return accepted, groups, report, nil
+		}
+		remaining--
+		feedback = "Only unresolved unit IDs are supplied. Repair their missing/invalid decisions; reference exactly the displayed aliases. Do not repeat successful unit decisions. An unresolved unit referring to the same object as an accepted new placement may use action=fuse with its existing accepted group key; never redefine that group. Same name alone does not establish same object."
+		groupWire, _ := json.Marshal(groups)
+		feedback += "\nRead-only accepted new groups: " + string(groupWire)
+		for _, d := range accepted {
+			if d.Action != "fuse" {
+				continue
+			}
+			for _, u := range units {
+				if u.ID != d.Unit {
+					continue
+				}
+				feedback += fmt.Sprintf("\nRead-only group=%s member material: %s\n%s", d.Group, u.Content, u.Detail)
+			}
+		}
+	}
+	return accepted, groups, report, nil
+}
+
 // judge 一次判定归属，非法条目仅影响对应单元。
 // judge places units once, retaining valid siblings after local validation.
-func (a *aligner) judge(ctx context.Context, units []*alignUnit, ps *promptSections,
-	book *aliasBook, rs *runState) ([]alignDecision, map[string]*alignGroup, error) {
+func (a *aligner) judgeOnce(ctx context.Context, units []*alignUnit, ps *promptSections,
+	book *aliasBook, rs *runState, feedback string, retainedGroups map[string]*alignGroup) ([]alignDecision, map[string]*alignGroup, error) {
+	if a.client == nil || a.maxTokens < 0 {
+		return nil, nil, fmt.Errorf("align: invalid client or maxTokens")
+	}
 	resp, err := a.client.Complete(ctx, llm.CompleteRequest{
-		System: alignSystemPrompt, User: buildAlignPrompt(units, ps, ""), MaxTokens: a.maxTokens,
+		System: alignSystemPrompt, User: buildAlignPrompt(units, ps, feedback), MaxTokens: a.maxTokens,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("增量对齐调用: %w", err)
 	}
-	if resp == nil {
-		return nil, nil, fmt.Errorf("增量对齐空响应")
+	if resp == nil || resp.FinishReason == "length" || resp.FinishReason == "max_tokens" {
+		return nil, nil, fmt.Errorf("增量对齐空响应或不完整")
 	}
 	var out alignLLMOutput
 	if err := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); err != nil {
 		return nil, nil, fmt.Errorf("增量对齐 JSON 无效")
 	}
 	// 复用严格结构/alias 校验，但每个组和单元分别处理；坏条目不拖累同批兄弟。
-	// Validate each group/decision against its actual aliases without a paid retry.
+	// Each attempt validates groups and units independently; the wrapper retries unresolved scopes.
 	groups := map[string]*alignGroup{}
+	for gid, g := range retainedGroups {
+		cp := *g
+		groups[gid] = &cp
+	}
 	groupCounts := map[string]int{}
 	for _, group := range out.Groups {
 		groupCounts[group.Group]++
 	}
 	for _, group := range out.Groups {
+		if retainedGroups[group.Group] != nil {
+			rs.warnf("I-4 ignored replacement of accepted fusion group")
+			continue
+		}
 		candidate := alignLLMOutput{Groups: []alignGroup{group}}
 		valid, err := validateAlignOutput(&candidate, nil, book)
 		if err != nil || groupCounts[group.Group] != 1 {
@@ -1057,7 +1252,10 @@ func buildAlignPrompt(units []*alignUnit, ps *promptSections, prevErr string) st
 	var sb strings.Builder
 	sb.WriteString("# 增量对齐任务\n\n## 新增知识单元（为每一个判定归属）\n")
 	for _, u := range units {
-		fmt.Fprintf(&sb, "- unit_id=%s [%s] %s: %s\n", u.ID, u.Tag, u.Name, u.Content)
+		fmt.Fprintf(&sb, "- unit_id=%s [%s] %s (source=%s): %s\n  detail: %s\n", u.ID, u.Tag, u.Name, u.FilePath, u.Content, u.Detail)
+		for _, src := range u.sources {
+			fmt.Fprintf(&sb, "  contribution source=%s/%s content: %s\n  detail: %s\n", src.Skill, src.FilePath, src.Content, src.Detail)
+		}
 	}
 	sb.WriteString("\n## 已有节点候选（merge_into 的可选目标；以 alias 引用）\n")
 	if ps.Nodes == "" {

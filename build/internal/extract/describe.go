@@ -1,45 +1,30 @@
-// Package extract 的本文件实现第三期「description 融合重写」阶段。
-//
-// 第二期把提取改成「只输出融合映射（members），不写正文」，融合节点的 description 因此留空。
-// 本阶段在悬空修正之后、ingest 之前，按 **subdomain** 为并发单元，为每个融合节点综合其
-// members 对应的 04 原文 detail，用 LLM 重写出一段完整、去重、语义连贯的 description：
-//
-//   - 并发单元 = subdomain：一次 LLM 调用重写该 subdomain 内所有（有素材的）融合节点，
-//     受全局并发上限（parallel.MaxConcurrency）约束；不同 subdomain 写各自节点，无数据竞争。
-//   - 素材 = 节点 members 的 04 detail 聚合（按 04 id 收集所有来源文档的 detail，带来源标记）。
-//     detail 的多源聚合正是在这里真正被消费（第二期刻意推迟到此）。
-//   - 幂等与忠实：要求 LLM 只综合素材、去重合并、不臆造素材外内容；解析失败原地重试。
-//
-// This file implements phase-3 description fusion: per subdomain (bounded by the global
-// concurrency cap), rewrite each fusion node's description by synthesizing the 04 details
-// of its members. Detail aggregation by member id is finally consumed here.
+// Package extract 的本文件从全部来源成员的 Name/Content/Detail 构造节点素材，
+// 使用全量与增量共享的有限语义修订 helper，核验通过后才应用 Summary+Description。
+// 失败节点保留原候选并输出明确结果；来源 marker 和非空正文都不能冒充语义完成。
+// This wrapper gathers complete member-bound materials and applies only verified node pairs.
 package extract
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 
-	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/parallel"
 )
 
-// maxDescribeRounds 是单个 subdomain description 融合的最大轮数：
-// 首轮全量重写 + 后续针对「漏点 / 空 description」节点的伪 session 补写重试，直至全部补齐或耗尽。
-const maxDescribeRounds = 1
-
 // DescribeReport 是 description 融合阶段的结果摘要（可观测，写盘到 05d）。
 // DescribeReport summarizes the description-fusion stage (written to 05d).
 type DescribeReport struct {
-	SubdomainsTotal int      // 参与的 subdomain 总数
-	SubdomainsOK    int      // LLM 成功返回并解析的 subdomain 数
-	NodesTotal      int      // 融合节点总数
-	NodesWithDetail int      // 有素材（members 有 detail）的节点数
-	NodesRewritten  int      // 被写入非空 description 的节点数
-	Failures        []string // subdomain 级失败原因（可观测）
+	SubdomainsTotal int                      // 参与的 subdomain 总数
+	SubdomainsOK    int                      // 全部节点语义核验完成的 subdomain 数
+	NodesTotal      int                      // 融合节点总数
+	NodesWithDetail int                      // 有素材（members 有 detail）的节点数
+	NodesRewritten  int                      // 已应用核验通过摘要/详述对的节点数
+	Failures        []string                 // subdomain 级失败原因（可观测）
+	Outcomes        []NodeDescriptionOutcome // 每个节点的实际语义核验与有限尝试
 }
 
 // ——————————————————————————————————————————————————————————————————————————————
@@ -48,8 +33,9 @@ type DescribeReport struct {
 
 // sourceDetail 是某个 04 单元来自某篇文档的一份 detail。
 type sourceDetail struct {
-	Path   string
-	Detail string
+	Path, Skill, CandidateID string
+	ItemIndex                int
+	Detail                   string
 }
 
 // buildDetailIndex 构造 04 id → 该单元在各来源文档中的 detail 列表。
@@ -58,20 +44,26 @@ type sourceDetail struct {
 // buildDetailIndex maps each 04 id to its details across source documents.
 func buildDetailIndex(docs []*dktypes.AnnotatedDocument) map[string][]sourceDetail {
 	idx := make(map[string][]sourceDetail)
+	var members []string
 	for _, d := range docs {
-		if d == nil {
+		if d != nil {
+			for _, it := range d.Items {
+				members = append(members, it.ID)
+			}
+		}
+	}
+	for _, c := range LookupMemberContributions(docs, members) {
+		it := c.Item
+		if strings.TrimSpace(it.ID) == "" {
 			continue
 		}
-		for _, it := range d.Items {
-			if it.ID == "" {
-				continue
-			}
-			detail := strings.TrimSpace(it.Detail)
-			if detail == "" {
-				detail = strings.TrimSpace(it.Content)
-			}
-			idx[it.ID] = append(idx[it.ID], sourceDetail{Path: d.FilePath, Detail: detail})
+		var detail string
+		// Content 和 Detail 共同承载知识，不能用非空 Detail 遮掉 Content 中的条件。
+		// Source labels alone are not substantive material.
+		if strings.TrimSpace(it.Content) != "" || strings.TrimSpace(it.Detail) != "" {
+			detail = fmt.Sprintf("名称：%s\n内容：%s\n详述：%s", it.Name, it.Content, it.Detail)
 		}
+		idx[it.ID] = append(idx[it.ID], sourceDetail{Path: c.FilePath, Skill: c.Skill, CandidateID: c.CandidateID, ItemIndex: c.ItemIndex, Detail: detail})
 	}
 	return idx
 }
@@ -82,13 +74,21 @@ func buildDetailIndex(docs []*dktypes.AnnotatedDocument) map[string][]sourceDeta
 // aggregateMemberDetails concatenates the multi-source 04 details of a node's members.
 func aggregateMemberDetails(members []string, idx map[string][]sourceDetail) string {
 	var sb strings.Builder
+	seen := map[string]bool{}
 	for _, m := range members {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
 		for _, sd := range idx[m] {
+			if strings.TrimSpace(sd.Detail) == "" {
+				continue
+			}
 			path := sd.Path
 			if strings.TrimSpace(path) == "" {
 				path = "(unknown)"
 			}
-			fmt.Fprintf(&sb, "【成员 %s / 来源 %s】\n%s\n\n", m, path, sd.Detail)
+			fmt.Fprintf(&sb, "【成员 %s / skill %s / 来源 %s / candidate %s / item %d】\n%s\n\n", m, sd.Skill, path, sd.CandidateID, sd.ItemIndex, sd.Detail)
 		}
 	}
 	return strings.TrimSpace(sb.String())
@@ -99,8 +99,8 @@ func aggregateMemberDetails(members []string, idx map[string][]sourceDetail) str
 // ——————————————————————————————————————————————————————————————————————————————
 
 // FuseDescriptions 按 subdomain 并发地为所有融合节点重写 description（就地修改 res）。
-// docs 是刷了 04 id 的标注文档（提供 detail 素材）。不返回 error（单 subdomain 失败降级、
-// 保持其 description 为空，不阻断流水线）。
+// docs 是刷了 04 id 的标注文档。失败节点保持原候选，Outcomes 明确记录其未完成状态。
+// Product completion remains the caller's responsibility.
 //
 // FuseDescriptions rewrites every fusion node's description, fanning out per subdomain.
 func (e *Extractor) FuseDescriptions(ctx context.Context, res *Result, docs []*dktypes.AnnotatedDocument) *DescribeReport {
@@ -131,6 +131,7 @@ func (e *Extractor) FuseDescriptions(ctx context.Context, res *Result, docs []*d
 	})
 
 	for _, r := range results {
+		rpt.Outcomes = append(rpt.Outcomes, r.outcomes...)
 		rpt.NodesTotal += r.nodesTotal
 		rpt.NodesWithDetail += r.nodesWithDetail
 		rpt.NodesRewritten += r.nodesRewritten
@@ -146,10 +147,10 @@ func (e *Extractor) FuseDescriptions(ctx context.Context, res *Result, docs []*d
 	// 门控告警：正常数据下每个融合节点都有 members、每个 04 单元 detail 非空，
 	// 故应满足「节点数 == 有素材数 == 重写数」。任一缺口都指向上游异常或 LLM 未补齐，需关注。
 	if noMaterial := rpt.NodesTotal - rpt.NodesWithDetail; noMaterial > 0 {
-		log.Printf("[extract-describe] ⚠ %d 个节点无 detail 素材（members 为空或来源 detail 缺失）→ description 留空；正常不应出现，请检查上游融合/覆盖", noMaterial)
+		log.Printf("[extract-describe] ⚠ %d 个节点来源素材不完整（成员缺失或来源为空）→ 保留原候选并报告未完成", noMaterial)
 	}
 	if miss := rpt.NodesWithDetail - rpt.NodesRewritten; miss > 0 {
-		log.Printf("[extract-describe] ⚠ %d 个有素材节点经门控 %d 轮重试仍未写入 description（见 Failures）", miss, maxDescribeRounds)
+		log.Printf("[extract-describe] ⚠ %d 个有素材节点有限修订后仍未通过语义核验（见 Outcomes/Failures）", miss)
 	}
 	return rpt
 }
@@ -161,179 +162,86 @@ type sdDescribeResult struct {
 	nodesRewritten  int
 	ok              bool
 	failure         string
+	outcomes        []NodeDescriptionOutcome
 }
 
 // fuseSubdomainDescriptions 为单个 subdomain 内所有有素材的融合节点重写 description。
-// 仅对「members 有 detail 素材」的节点投喂 LLM；无素材节点保持 description 为空
-// （ingest 侧 summary 已有兜底）。解析失败原地重试，耗尽则该 subdomain 降级（不写 description）。
+// 所有声明成员必须具有实质来源；只应用语义核验完成的摘要/详述对。
+// Missing material and exhausted/unknown candidates remain explicit unresolved outcomes.
 func (e *Extractor) fuseSubdomainDescriptions(ctx context.Context, domainName string, sd *Subdomain, detailIdx map[string][]sourceDetail) sdDescribeResult {
-	res := sdDescribeResult{}
-
-	// 收集本 subdomain 内「有素材」的节点及其素材。
-	type nodeMat struct {
-		id       string
-		label    string
-		name     string
-		summary  string
-		material string
-	}
-	var mats []nodeMat
+	res := sdDescribeResult{ok: true}
+	var inputs []NodeDescriptionInput
+	var failures []string
 	collect := func(nodes []Node, label string) {
-		for i := range nodes {
+		for _, n := range nodes {
 			res.nodesTotal++
-			material := aggregateMemberDetails(nodes[i].Members, detailIdx)
-			if material == "" {
-				// 诊断：区分「members 为空」和「members 有 id 但 detail 缺失」
-				if len(nodes[i].Members) == 0 {
-					log.Printf("[extract-describe] ⚠ 节点 %q [%s] 无素材: members 为空（上游融合/覆盖未分配 member）", nodes[i].Name, label)
-				} else {
-					log.Printf("[extract-describe] ⚠ 节点 %q [%s] 无素材: members=%v 但 detail 缺失（04 id 在 detailIndex 中无对应或 Detail 字段为空）", nodes[i].Name, label, nodes[i].Members)
+			material := aggregateMemberDetails(n.Members, detailIdx)
+			reason := ""
+			if len(n.Members) == 0 {
+				reason = "node has no source members"
+			}
+			for _, member := range n.Members {
+				if strings.TrimSpace(member) == "" {
+					reason = "node contains a blank source member identity"
+					break
 				}
+				rows := detailIdx[member]
+				if len(rows) == 0 {
+					reason = fmt.Sprintf("member %q has no source contribution", member)
+					break
+				}
+				for _, row := range rows {
+					if strings.TrimSpace(row.Path) == "" {
+						reason = fmt.Sprintf("member %q has an unknown source path", member)
+						break
+					}
+					if strings.TrimSpace(row.Detail) == "" {
+						reason = fmt.Sprintf("member %q has an empty source contribution", member)
+						break
+					}
+				}
+				if reason != "" {
+					break
+				}
+			}
+			if material == "" && reason == "" {
+				reason = "node has no substantive source material"
+			}
+			if reason != "" {
+				res.ok = false
+				out := NodeDescriptionOutcome{ID: n.ID, Domain: domainName, Subdomain: sd.Name, Summary: n.Summary, Description: n.Description, Outcome: annotation.DocumentUnavailable, Reason: reason, Attempts: []annotation.DocumentAttempt{}}
+				res.outcomes = append(res.outcomes, out)
+				failures = append(failures, fmt.Sprintf("node %q: %s", n.ID, reason))
 				continue
 			}
 			res.nodesWithDetail++
-			mats = append(mats, nodeMat{
-				id: nodes[i].ID, label: label, name: nodes[i].Name,
-				summary: nodes[i].Summary, material: material,
-			})
+			inputs = append(inputs, NodeDescriptionInput{ID: n.ID, Label: label, Name: n.Name, Summary: n.Summary, Description: n.Description, Material: material})
 		}
 	}
 	collect(sd.Entities, string(dktypes.LabelEntity))
 	collect(sd.Concepts, string(dktypes.LabelConcept))
-
-	if len(mats) == 0 {
-		res.ok = true // 无素材可融合，视为正常完成
-		return res
-	}
-
-	declared := map[string]bool{}
-	promptNodes := make([]describePromptNode, 0, len(mats))
-	for _, m := range mats {
-		declared[m.id] = true
-		promptNodes = append(promptNodes, describePromptNode{ID: m.id, Label: m.label, Name: m.name, Summary: m.summary, Material: m.material})
-	}
-	if err := ctx.Err(); err != nil {
-		res.failure = err.Error()
-		return res
-	}
-	resp, err := e.client.Complete(ctx, llm.CompleteRequest{System: describeSystemPrompt, User: buildDescribePrompt(domainName, sd.Name, sd.Summary, promptNodes, ""), MaxTokens: e.maxTokens})
-	if err != nil {
-		res.failure = err.Error()
-		return res
-	}
-	if ctx.Err() != nil {
-		res.failure = ctx.Err().Error()
-		return res
-	}
-	if resp == nil || resp.FinishReason == "length" || resp.FinishReason == "max_tokens" {
-		res.failure = "missing or incomplete description response"
-		return res
-	}
-	var envelope struct {
-		Descriptions []json.RawMessage `json:"descriptions"`
-	}
-	if err := json.Unmarshal([]byte(stripCodeFence(strings.TrimSpace(resp.Text))), &envelope); err != nil {
-		res.failure = err.Error()
-		return res
-	}
-	written := map[string]string{}
-	for _, raw := range envelope.Descriptions {
-		var d struct {
-			NodeID      string `json:"node_id"`
-			Description string `json:"description"`
+	outcomes := FuseNodeDescriptions(ctx, e.client, e.maxTokens, 0, domainName, sd.Name, inputs)
+	res.outcomes = append(res.outcomes, outcomes.Nodes...)
+	complete := map[string]NodeDescriptionOutcome{}
+	for _, out := range outcomes.Nodes {
+		if out.Outcome == annotation.DocumentComplete {
+			complete[out.ID] = out
+			res.nodesRewritten++
+		} else {
+			res.ok = false
+			failures = append(failures, fmt.Sprintf("node %q: %s (%s)", out.ID, out.Reason, out.Outcome))
 		}
-		if err := json.Unmarshal(raw, &d); err != nil || !declared[d.NodeID] || strings.TrimSpace(d.Description) == "" {
-			log.Printf("[extract-describe] omitted invalid/unknown description row")
-			continue
-		}
-		if _, duplicate := written[d.NodeID]; duplicate {
-			delete(written, d.NodeID)
-			declared[d.NodeID] = false
-			continue
-		}
-		written[d.NodeID] = strings.TrimSpace(d.Description)
 	}
-	res.nodesRewritten = applyDescriptions(sd, written)
-	res.ok = len(written) == len(mats)
-	if !res.ok {
-		res.failure = fmt.Sprintf("subdomain %q missing %d/%d descriptions", sd.Name, len(mats)-len(written), len(mats))
+	apply := func(nodes []Node) {
+		for i := range nodes {
+			if out, ok := complete[nodes[i].ID]; ok {
+				nodes[i].Summary = out.Summary
+				nodes[i].Description = out.Description
+			}
+		}
 	}
+	apply(sd.Entities)
+	apply(sd.Concepts)
+	res.failure = strings.Join(failures, "; ")
 	return res
-}
-
-// applyDescriptions 把 node_id → description 写回 subdomain 的 entities/concepts，返回写入数。
-func applyDescriptions(sd *Subdomain, descByID map[string]string) int {
-	n := 0
-	for i := range sd.Entities {
-		if desc, ok := descByID[sd.Entities[i].ID]; ok {
-			sd.Entities[i].Description = desc
-			n++
-		}
-	}
-	for i := range sd.Concepts {
-		if desc, ok := descByID[sd.Concepts[i].ID]; ok {
-			sd.Concepts[i].Description = desc
-			n++
-		}
-	}
-	return n
-}
-
-// ——————————————————————————————————————————————————————————————————————————————
-// prompt 与解析 / Prompt and parsing
-// ——————————————————————————————————————————————————————————————————————————————
-
-// describePromptNode 是投喂给 LLM 的单个待重写节点。
-type describePromptNode struct {
-	ID       string
-	Label    string
-	Name     string
-	Summary  string
-	Material string
-}
-
-// describeOutput 是 description 融合 LLM 返回的 JSON。
-type describeOutput struct {
-	Descriptions []struct {
-		NodeID      string `json:"node_id"`
-		Description string `json:"description"`
-	} `json:"descriptions"`
-}
-
-// describeSystemPrompt 是 description 融合阶段的 system 提示。
-const describeSystemPrompt = `你是知识融合重写专家。用户会给你一个子域（subdomain）内的若干融合节点，
-每个节点有名称、摘要，以及它所融合的多个来源单元的原文详述（素材，可能来自多篇文档、存在重复或互补）。
-你的任务是为每个节点，综合其全部素材，重写出一段完整、准确、连贯的详述（description）。
-
-严格要求：
-1. 只返回一个 JSON 对象（json 格式），形如 {"descriptions":[{"node_id":"...","description":"..."}]}，不要输出任何解释性文字或代码围栏。
-2. 每个 node_id 必须逐字取自输入给出的节点 id，不得编造或改写。
-3. description 必须是详细、完整、语义幂等的正文：综合该节点自己的全部素材，去重、合并互补信息、保持语义连贯完整，
-   在语义幂等前提下尽量保留素材中的长度与关键细节；绝不臆造素材之外的信息，也不要把别的节点的内容混入。
-4. 必须为输入中的【每一个】节点都产出一条【非空】description——一个都不能遗漏、绝不允许留空。`
-
-// buildDescribePrompt 组装 description 融合的 user 消息。
-func buildDescribePrompt(domainName, subName, subSummary string, nodes []describePromptNode, prevErr string) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "## 子域：%s（所属领域：%s）\n", subName, domainName)
-	if strings.TrimSpace(subSummary) != "" {
-		fmt.Fprintf(&sb, "子域说明：%s\n", subSummary)
-	}
-	sb.WriteString("\n请为下列每个融合节点，综合其「来源素材」重写 description：\n\n")
-
-	for _, n := range nodes {
-		fmt.Fprintf(&sb, "### 节点 node_id=%s [%s]：%s\n", n.ID, n.Label, n.Name)
-		if strings.TrimSpace(n.Summary) != "" {
-			fmt.Fprintf(&sb, "摘要：%s\n", n.Summary)
-		}
-		sb.WriteString("来源素材：\n")
-		sb.WriteString(n.Material)
-		sb.WriteString("\n\n")
-	}
-
-	sb.WriteString("只返回 descriptions JSON。\n")
-	if strings.TrimSpace(prevErr) != "" {
-		fmt.Fprintf(&sb, "\n## 上一轮的问题（请修正后重试）\n- %s\n", prevErr)
-	}
-	return sb.String()
 }

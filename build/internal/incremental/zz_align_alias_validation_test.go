@@ -152,7 +152,9 @@ func TestAlignInvalidAliasRetainsValidSiblingWithoutRetry(t *testing.T) {
 				{ID: "u2", Tag: dktypes.TagConcept, Name: "编号保留时间", Content: "编号保留规则", Detail: "编号按固定周期保留。", Confidence: 1},
 			}}}
 			rs := newRunState()
-			out, err := newAligner(client, 65536, st, 15).align(ctx, docs, rs)
+			aligner := newAligner(client, 65536, st, 15)
+			aligner.maxRetries = -1
+			out, err := aligner.align(ctx, docs, rs)
 			if err != nil || len(client.requests) != 1 {
 				t.Fatalf("expected one alignment call: calls=%d err=%v", len(client.requests), err)
 			}

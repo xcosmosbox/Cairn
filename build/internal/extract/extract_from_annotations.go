@@ -12,6 +12,10 @@ import (
 // ExtractFromAnnotations sends every source incidence once. Malformed output
 // fails this extraction attempt; independently valid nodes are retained.
 func (e *Extractor) ExtractFromAnnotations(ctx context.Context, docs []*dktypes.AnnotatedDocument) (*Result, error) {
+	return e.extractAnnotatedWithContext(ctx, docs, "")
+}
+
+func (e *Extractor) extractAnnotatedWithContext(ctx context.Context, docs []*dktypes.AnnotatedDocument, retained string) (*Result, error) {
 	if e.client == nil {
 		return nil, fmt.Errorf("extract: llm client is nil")
 	}
@@ -19,7 +23,7 @@ func (e *Extractor) ExtractFromAnnotations(ctx context.Context, docs []*dktypes.
 		return &Result{}, nil
 	}
 
-	user := assembleAnnotatedMessage(docs)
+	user := assembleAnnotatedMessage(docs) + retained
 	// 04 id → skill 索引：提取阶段不再让 LLM 产出 source_skills，由 members 的 04 id 倒推。
 	skillByUnit := buildSkillIndex(docs)
 
@@ -48,14 +52,8 @@ func (e *Extractor) ExtractFromAnnotations(ctx context.Context, docs []*dktypes.
 // 输入组装 / Input assembly
 // ——————————————————————————————————————————————————————————————————————————————
 
-// assembleAnnotatedMessage 把（已刷 04 id、同 skill 合并后的）标注单元拼装为单个 user 消息：
-// 按来源 skill 分组，每条形如 "- id=<04id> [tag] name: content"。
-// 刻意只投 04 id / name / content（**不投 detail**）：提取阶段只做「组织与融合映射」，
-// 用 04 id 做稳定引用，detail 的长文留给后续阶段消费（B 阶段：提取端对 detail 无感）。
-//
-// assembleAnnotatedMessage assembles the id-assigned, merged items into one user message,
-// grouped by skill; each line is "- id=<04id> [tag] name: content" (no detail). The 04 id
-// gives the extraction stage a stable handle for fusion members.
+// assembleAnnotatedMessage 投喂完整逐项语义和来源，避免同名但仅详述不同的对象被盲目融合。
+// assembleAnnotatedMessage supplies full content/detail and source identity for each accepted item.
 func assembleAnnotatedMessage(docs []*dktypes.AnnotatedDocument) string {
 	order := make([]string, 0)
 	bySkill := make(map[string][]*dktypes.AnnotatedDocument)
@@ -84,7 +82,7 @@ func assembleAnnotatedMessage(docs []*dktypes.AnnotatedDocument) string {
 		// Same-name IDs can carry different dated facts; retain every source incidence.
 		for _, d := range bySkill[skill] {
 			for _, it := range d.Items {
-				fmt.Fprintf(&sb, "- id=%s [%s] %s: %s\n", it.ID, it.Tag, it.Name, it.Content)
+				fmt.Fprintf(&sb, "- id=%s [%s] %s (source=%s): %s\n  detail: %s\n", it.ID, it.Tag, it.Name, d.FilePath, it.Content, it.Detail)
 			}
 		}
 		sb.WriteString("\n")

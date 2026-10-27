@@ -1,6 +1,6 @@
 # Current evidence snapshot
 
-As of **2026-10-26 UTC**. Product source starting baseline:
+As of **2026-10-27 UTC**. Product source starting baseline:
 `d2fa342312809b1d632308433ec507b523d86655` (merged PR106).
 Live [#107](https://github.com/xcosmosbox/Cairn/issues/107), task comments/PR heads and raw
 outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
@@ -36,7 +36,18 @@ found that known local endpoint configuration failures consumed document recover
 stop those failures after one permanent attempt, while retaining service/rate-limit
 recovery, provider-local timeouts and caller cancellation. The prior acceptance and
 original report remain dated history. New exact-head research/CI and coordinator
-acceptance are separate live events; #111 has not started at this checkpoint.
+acceptance are separate live events. The narrow repair was integrated at
+`413cb6045d6cfd0c893624dc87277dffb04e683a` (PR119); live #110 acceptance governs it.
+
+[#111 v0.1.3](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6431600098)
+now has acknowledged identity, semantic and integration writers. Its
+[node helper report](reports/2026-10-27-v013-node-fidelity.md) records bounded
+helper controls and the authentic retained-response/category-filter loss boundary.
+Implementation/review/CI/acceptance are separate live events; no whole-original
+semantic success or new provider run is implied. Structural member/source coverage
+does not substitute for checked surviving node semantics. Existing-target summary
+application and ordinary full/changed construction wiring remain #113/#114;
+`reflow.go` remains #111-exclusive until explicit accepted release to #112.
 
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/
@@ -69,8 +80,12 @@ disposition for v0.1. There were205 initial rows across all six originals.
 The172 distinct accepted document–member incidences became171 by the earliest saved05
 extraction result. Later selection/SQLite agree on171. NodeSourcesInserted172 counts
 raw input rows including one duplicate; it is not distinct committed provenance.
-The precise LLM/parser/filter origin of the early missing member remains unresolved.
-Do not attribute it to a whole-node or SQLite insertion loss. v0.1.1 records the boundary,
+The [2026-10-27 v0.1.3 retained-response diagnosis](reports/2026-10-27-v013-node-fidelity.md)
+locates this loss at category validation: raw response13 includes the accepted
+member in `entities[]` with `label:"Concept"`; parsing drops that mismatched row.
+Why generation chose the inconsistent category remains unknown. The saved outcome
+counts are unchanged. Do not attribute this to a whole-node or SQLite insertion loss.
+v0.1.1 records the earlier boundary,
 .2/.3 repair their stages, .5 reports true persisted sets, and .6 accepts the full source
 semantics without reducing the six-original denominator. The original diagnostic report
 and private packet remain unchanged; fixed packet identity is in the new plan.
