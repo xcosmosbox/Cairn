@@ -24,6 +24,7 @@
 package extract
 
 import (
+	"encoding/json"
 	"log"
 	"sort"
 	"strings"
@@ -84,6 +85,15 @@ func NodeUUID(members []string) string {
 	// 排序，保证 members 集合的任何排列都得到同一 uuid。
 	// Sort so any permutation of the same members set yields the same uuid.
 	sort.Strings(uniq)
+	// 旧的安全成员保持 UUID 兼容；含分隔符的外部成员用独立命名空间和无歧义数组编码。
+	// Preserve legacy safe-member UUIDs; frame delimiter-bearing external identities.
+	for _, m := range uniq {
+		if strings.Contains(m, ",") {
+			wire, _ := json.Marshal(uniq)
+			namespace := uuid.NewSHA1(cairnNamespace, []byte("framed-member-set-v1"))
+			return uuid.NewSHA1(namespace, wire).String()
+		}
+	}
 	return uuid.NewSHA1(cairnNamespace, []byte(strings.Join(uniq, ","))).String()
 }
 

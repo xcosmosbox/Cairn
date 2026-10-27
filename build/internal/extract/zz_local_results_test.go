@@ -14,7 +14,7 @@ func TestExtractionRetainsValidSiblingAndReportsOmissionWithoutRepair(t *testing
 	c := llm.NewMockClient()
 	c.Response = &llm.CompleteResponse{Text: `{"domains":[{"name":"D","subdomains":[{"name":"S","entities":[{"id":"good","label":"Entity","name":"Good","confidence":0.69,"members":["known"]},{"id":"bad-type","label":"Entity","name":"Bad","confidence":"unknown","members":["known"]},{"id":"bad-member","label":"Entity","name":"Bad member","confidence":0.9,"members":["known","invented"]}],"concepts":[],"relations":[{"source":"bad-member","target":"good","kind":"references"}]}]}]}`, FinishReason: "stop"}
 	docs := []*dktypes.AnnotatedDocument{{Skill: "s", FilePath: "a.md", Items: []dktypes.AnnotatedItem{{ID: "known", Content: "fact"}, {ID: "omitted", Content: "another fact"}}}}
-	res, rpt, err := NewExtractor(c, 0).ExtractWithCoverage(context.Background(), docs)
+	res, rpt, err := NewExtractor(c, 0).ExtractWithCoverageOptions(context.Background(), docs, CoverageOptions{MaxRetries: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestAllSameNameSourceIncidencesReachExtractionAndDescriptions(t *testing.T)
 	if !strings.Contains(input, "2020 condition") || !strings.Contains(input, "2024 condition") {
 		t.Fatal("same-name input was winner-deduplicated")
 	}
-	detail := aggregateMemberDetails([]string{docs[0].Items[0].ID}, buildDetailIndex(docs))
+	detail := aggregateMemberDetails([]string{docs[0].Items[0].ID, docs[1].Items[0].ID}, buildDetailIndex(docs))
 	if !strings.Contains(detail, "2020 detail") || !strings.Contains(detail, "2024 detail") {
 		t.Fatal("description lost a source incidence")
 	}

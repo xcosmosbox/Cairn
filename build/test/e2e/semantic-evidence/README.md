@@ -106,3 +106,66 @@ revision and whole-candidate recheck. The C4 adapter uses this same helper with 
 outside-block source text. Full-entry wiring and final six-original-plus-supplement
 graph/aggregate acceptance remain #114. Source-preservation fixtures do not constitute
 a new model judgment of the private originals or general semantic-completeness proof.
+
+## v0.1.3 node helper evidence and integration handoff
+
+The [node fidelity report](../../../../docs/coordination/reports/2026-10-27-v013-node-fidelity.md)
+documents exact historical category-validation attribution, bounded synthetic
+controls and an opt-in authentic retained-response replay. Frozen v0.1.1 inputs and
+historical packets remain unchanged. Run affected node checks with:
+
+```sh
+go test ./build/internal/annotation ./build/internal/extract ./build/internal/incremental
+CAIRN_V013_HISTORICAL_PACKET=/authorized/diagnostic105 go test ./build/internal/extract -run TestV013HistoricalAcceptedMemberRecovery -count=1
+```
+
+`AssignIDs` derives semantic member identity from exact skill/tag/name/content/detail,
+independently of path, candidate order and duplicate source additions.
+`LookupMemberContributions` separately retains source path, candidate digest, item
+index and item material for every matched contribution. Exact accepted annotation
+repeat stability does not prove model-paraphrase stability from raw-source reruns.
+
+`ExtractWithCoverageOptions` and `RepairFinalCoverage` repair only unresolved mapping
+members and retain good siblings. `CoverageOptions.MaxRetries` and shared
+`FuseNodeDescriptions` maxRetries use positive N = N extra recoveries, zero = default3,
+negative = none. The initial call is separate; a failed scope shares one allowance
+across retries/revisions. `CoverageReport.Attempts` records actual targeted identities,
+candidate digests and outcomes. Recovered mapping nodes still need description and
+semantic assessment before final acceptance; `CoverageReport.NeedsDescription`
+names every new/touched node. Read-only `retained#N` mapping aliases and accepted
+alignment group keys join unresolved members to established semantic objects
+without rederiving pinned UUIDs or resetting successful sibling work.
+When repair consumes a post-UUID selected graph, #114 assigns UUIDs only to newly
+created nodes; it must not rerun first-creation UUID derivation over retained
+targets whose member sets have grown. Touched retained targets require complete
+semantic recheck of their old plus newly contributed material.
+
+`FuseNodeDescriptions` checks complete node Name/Summary/Description against all
+source-bound member Name/Content/Detail plus existing machine description. Concrete
+semantic critique revises the full candidate; unknown/malformed assessment retries
+the same candidate. `NodeDescriptionOutcome` preserves complete/partial/unavailable/
+cancelled, reason, actual attempts, exhaustion, and exact candidate/material digests.
+Only complete candidates authorize applying both Summary and Description. Human
+content stays outside model input; protection alone cannot certify new material.
+
+After description, UUID assignment and candidate filtering, #114 recomputes
+`ComputeFinalCoverage` on actual survivors. Its complete outcome is STRUCTURAL only.
+Semantic candidate/material identity is recorded before UUID assignment: retain the
+temporary-alias→UUID mapping or before/after snapshots and verify checked text,
+members and full material remain identical. Combine exact surviving semantic
+outcomes with final structural coverage; neither old counts nor a stale whole-graph
+digest is a semantic pass. Existing data structures suffice; no new ledger is required.
+
+Existing-target reflow cannot persist a repaired summary through its legacy
+description-only boundary. It retains old content and reports partial/unresolved;
+the verified repaired Summary+Description remains factual handoff for #113/#114.
+Ordinary full/changed entry wiring, persisted graph acceptance and aggregate product
+status remain #114. The node report and task acknowledgement record the eventual
+serialized `reflow.go` release to #112; no relation work starts from this handoff text.
+
+The explicit #112 handoff preserves .3's node wrapper/shared helper and
+`nodeDescriptionOutcomes` interface; I-7 relation code remains byte-identical to
+the starting main. After accepted integration, the coordinator records the actual
+release in #111/#112. The next relation owner then holds the whole file exclusively;
+node corrections require another serialized ownership amendment. Until that event,
+#111 retains the file and #112 remains blocked. This text starts no worker.

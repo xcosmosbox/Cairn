@@ -47,7 +47,11 @@ func (c *localContradictionPipelineClient) Complete(ctx context.Context, req llm
 		}
 		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "知识融合重写专家"):
-		return &llm.CompleteResponse{Text: `{"descriptions":[{"node_id":"admission","description":"Admission source detail."},{"node_id":"quota","description":"Quota source detail."}]}`, FinishReason: "stop"}, nil
+		detail := "Admission source detail."
+		if strings.Contains(req.User, `"name":"Quota"`) {
+			detail = "Quota source detail."
+		}
+		return pipelineNodeDescriptionResponse(req, detail)
 	case strings.Contains(req.System, "领域知识关系识别专家"):
 		return &llm.CompleteResponse{Text: `{"relations":[]}`, FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "跨子域关系的原文验证专家"):

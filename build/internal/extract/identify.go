@@ -1,42 +1,24 @@
-// Package extract 的本文件实现「04 id 规则化」（重构第二期 D 阶段）。
-//
-// 标注阶段（04）产出的 AnnotatedItem 没有稳定 id：提取阶段若用 name 引用做融合映射，
-// 一旦 LLM 改写 name 就会对齐失败。为此在提取投喂之前，由**规则脚本**（而非 LLM）
-// 为每个标注单元刷入确定性 id：
-//
-//	id = <slug(skill)>-<tag>-<slug(name)>
-//
-// 该 id 含 skill 段，故跨 skill 同名不冲突；同一 skill 下不同文档若出现同名单元会得到
-// **相同**的 04 id——由下游按 id 去重 / 覆盖（collectUnitIDs、buildCovered 天然按 id 去重），
-// 无需在此合并文档、破坏 per-document 结构与 FilePath 溯源。
-//
-// 注意：同 skill 同名单元的 detail 多源聚合，推迟到第三期「融合重写」阶段按 members(04 id)
-// 聚合处理（那里才真正消费 detail）；本阶段只负责刷 id，保持文档结构与溯源完整。
-//
-// This file implements rule-based 04 id assignment (refactor phase 2, part D). Before
-// extraction, each annotated item gets a deterministic id "<slug(skill)>-<tag>-<slug(name)>"
-// by code (not the LLM). The skill segment keeps cross-skill same-names distinct; the
-// same name across documents of one skill yields the same id, de-duplicated downstream by
-// id — the per-document structure (and FilePath provenance) is preserved.
 package extract
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"path"
+	"sort"
+	"strings"
+
 	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
-// Build04ID 按规则构造 04 标识：<slug(skill)>-<tag>-<slug(name)>。
-// tag 已是小写枚举（entity/concept），skill/name 走 slugify（保留中文、非字母数字折叠为连字符）。
-//
-// Build04ID builds the 04 identifier "<slug(skill)>-<tag>-<slug(name)>".
+// Build04ID 保留旧的可读前缀；名称归一化本身不再承担语义身份。
+// Build04ID returns the legacy readable prefix, not a unique semantic identity.
 func Build04ID(skill string, tag dktypes.AnnotationTag, name string) string {
 	return slugify(skill) + "-" + string(tag) + "-" + slugify(name)
 }
 
-// AssignIDs 为所有标注单元刷入规则化 04 id，并**保留原有 per-document 结构**（不合并文档）。
-// 每篇 reference 文档仍是独立的 AnnotatedDocument（FilePath 完整保留，供溯源与 dump）。
-//
-// AssignIDs assigns the rule-based 04 id to every item while preserving the per-document
-// structure (FilePath intact).
+// AssignIDs 用逐项语义签名避免同名或 slug 碰撞；路径、行号、置信度和候选顺序不改变身份。
+// Exact duplicates share an identity while their separate source contributions remain intact.
 func AssignIDs(docs []*dktypes.AnnotatedDocument) []*dktypes.AnnotatedDocument {
 	out := make([]*dktypes.AnnotatedDocument, 0, len(docs))
 	for _, d := range docs {
@@ -46,10 +28,63 @@ func AssignIDs(docs []*dktypes.AnnotatedDocument) []*dktypes.AnnotatedDocument {
 		nd := &dktypes.AnnotatedDocument{Skill: d.Skill, FilePath: d.FilePath}
 		for _, it := range d.Items {
 			ni := it
-			ni.ID = Build04ID(d.Skill, it.Tag, it.Name)
+			signature, _ := json.Marshal([]string{d.Skill, string(it.Tag), it.Name, it.Content, it.Detail})
+			ni.ID = fmt.Sprintf("%s-%x", Build04ID(d.Skill, it.Tag, it.Name), sha256.Sum256(signature))
 			nd.Items = append(nd.Items, ni)
 		}
 		out = append(out, nd)
 	}
 	return out
+}
+
+// MemberContribution 是候选内的一次真实来源贡献；不能作为持久节点身份种子。
+// MemberContribution identifies evidence, separately from persistent semantic identity.
+type MemberContribution struct {
+	Skill       string                `json:"skill"`
+	FilePath    string                `json:"file_path"`
+	CandidateID string                `json:"candidate_id"`
+	ItemIndex   int                   `json:"item_index"`
+	MemberID    string                `json:"member_id"`
+	Item        dktypes.AnnotatedItem `json:"item"`
+}
+
+// LookupMemberContributions 保留每个匹配成员的全部来源，不以首见文本覆盖其他文档。
+// LookupMemberContributions returns all matching incidences in deterministic evidence order.
+func LookupMemberContributions(docs []*dktypes.AnnotatedDocument, members []string) []MemberContribution {
+	want := map[string]bool{}
+	for _, m := range members {
+		want[m] = true
+	}
+	var out []MemberContribution
+	for _, d := range docs {
+		if d == nil {
+			continue
+		}
+		wire, _ := json.Marshal(d.Items)
+		candidate := fmt.Sprintf("%x", sha256.Sum256(wire))
+		for i, it := range d.Items {
+			if want[it.ID] {
+				out = append(out, MemberContribution{d.Skill, d.FilePath, candidate, i, it.ID, it})
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Skill != b.Skill {
+			return a.Skill < b.Skill
+		}
+		if a.FilePath != b.FilePath {
+			return a.FilePath < b.FilePath
+		}
+		if a.CandidateID != b.CandidateID {
+			return a.CandidateID < b.CandidateID
+		}
+		return a.ItemIndex < b.ItemIndex
+	})
+	return out
+}
+
+func contributionKey(c MemberContribution) string {
+	wire, _ := json.Marshal([]string{c.Skill, path.Clean(strings.ReplaceAll(c.FilePath, "\\", "/")), c.MemberID})
+	return string(wire)
 }

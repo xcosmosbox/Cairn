@@ -22,7 +22,23 @@ import (
 type crossPipelineClient struct {
 	root       string
 	originals  map[string]string
+	members    map[string]string
 	crossCalls atomic.Int64
+}
+
+// The node helper now emits one call-scoped alias and checks Summary+Description.
+// These relation-routing controls retain their existing semantic fixture behavior.
+func pipelineNodeDescriptionResponse(req llm.CompleteRequest, detail string) (*llm.CompleteResponse, error) {
+	alias := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(req.User)
+	parts := strings.SplitN(req.User, "## Complete candidate / 完整候选\n", 2)
+	var candidate struct {
+		Summary string `json:"summary"`
+	}
+	if len(alias) != 2 || len(parts) != 2 || json.NewDecoder(strings.NewReader(parts[1])).Decode(&candidate) != nil {
+		return nil, fmt.Errorf("missing fixture node alias/candidate")
+	}
+	b, err := json.Marshal(map[string]any{"descriptions": []map[string]string{{"node_id": alias[1], "summary": candidate.Summary, "description": detail}}})
+	return &llm.CompleteResponse{Text: string(b), FinishReason: "stop"}, err
 }
 
 func (c *crossPipelineClient) ProviderName() string { return "offline-cross-pipeline" }
@@ -36,32 +52,33 @@ func (c *crossPipelineClient) Complete(_ context.Context, req llm.CompleteReques
 		}
 		text = fmt.Sprintf(`{"items":[{"tag":"concept","name":%q,"content":%q,"detail":%q,"confidence":0.95}]}`, name, body, body+" Generated annotation detail.")
 	case strings.Contains(req.System, "语义核验专家"):
-		text = `{"idempotent":true,"reason":"fixture retains each complete prerequisite sentence; generated-detail label adds no domain claim","unsupported_items":[],"omissions":[]}`
+		text = `{"supported":true,"reason":"fixture retains each complete prerequisite sentence; generated-detail label adds no domain claim","unsupported_items":[],"omissions":[]}`
 	case strings.Contains(req.System, "领域知识融合专家"):
 		matches := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindAllStringSubmatch(req.User, -1)
 		members := map[string]string{}
 		for _, m := range matches {
-			if strings.HasSuffix(m[1], "-admission") {
+			if strings.HasPrefix(m[1], "system-concept-admission-") {
 				members["a"] = m[1]
 			}
-			if strings.HasSuffix(m[1], "-quota") {
+			if strings.HasPrefix(m[1], "system-concept-quota-") {
 				members["q"] = m[1]
 			}
 		}
 		if len(members) != 2 {
 			return nil, fmt.Errorf("expected both original members: %v", members)
 		}
+		c.members = members
 		text = fmt.Sprintf(`{"domains":[{"name":"工程","summary":"工程知识","reusability_rationale":"可复用","subdomains":[{"name":"接纳","summary":"接纳规则","concepts":[{"id":"admission","label":"Concept","name":"Admission","summary":"Admission rule","confidence":0.95,"members":[%q]}],"relations":[{"source":"admission","target":"quota","kind":"depends_on","description":"Admission requires quota","confidence":0.9}]},{"name":"容量","summary":"容量规则","concepts":[{"id":"quota","label":"Concept","name":"Quota","summary":"Quota rule","confidence":0.95,"members":[%q]}],"relations":[]}]}]}`, members["a"], members["q"])
 	case strings.Contains(req.System, "知识融合重写专家"):
-		id, rel := "admission", "references/admission.md"
-		if strings.Contains(req.User, "node_id=quota") {
-			id, rel = "quota", "references/quota.md"
+		rel := "references/admission.md"
+		if strings.Contains(req.User, `"name":"Quota"`) {
+			rel = "references/quota.md"
 		}
 		// 模拟标注之后磁盘内容变化；验证仍必须使用实际标注输入，而不是再次读取磁盘。
 		if err := os.WriteFile(filepath.Join(c.root, rel), []byte("Later disk version is not the annotation source.\n"), 0o644); err != nil {
 			return nil, err
 		}
-		text = fmt.Sprintf(`{"descriptions":[{"node_id":%q,"description":"Generated fused description cannot establish a cross relation."}]}`, id)
+		return pipelineNodeDescriptionResponse(req, "Generated fused description cannot establish a cross relation.")
 	case strings.Contains(req.System, "跨子域关系的原文验证专家"):
 		c.crossCalls.Add(1)
 		var input struct {
@@ -159,7 +176,7 @@ func TestFullPipelineFreezesOriginalSourceForCrossRelations(t *testing.T) {
 	}
 	defer db.Close()
 	var count int
-	if err := db.Conn().QueryRow(`SELECT COUNT(*) FROM edges WHERE source_id=? AND target_id=? AND kind='depends_on'`, extract.NodeUUID([]string{"system-concept-admission"}), extract.NodeUUID([]string{"system-concept-quota"})).Scan(&count); err != nil || count != 1 {
+	if err := db.Conn().QueryRow(`SELECT COUNT(*) FROM edges WHERE source_id=? AND target_id=? AND kind='depends_on'`, extract.NodeUUID([]string{client.members["a"]}), extract.NodeUUID([]string{client.members["q"]})).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("UUID edge was not persisted: %d %v", count, err)
 	}
 	if err := db.Close(); err != nil {
@@ -228,7 +245,7 @@ func TestFullPipelineFreezesOriginalSourceForCrossRelations(t *testing.T) {
 	if beforeCross == nil || !reflect.DeepEqual(beforeCross, afterCross) {
 		t.Fatalf("incremental changed protected cross edge metadata: before=%+v after=%+v", beforeCross, afterCross)
 	}
-	curated, err := storage.NewNodeRepo(check).GetByID(context.Background(), extract.NodeUUID([]string{"system-concept-admission"}))
+	curated, err := storage.NewNodeRepo(check).GetByID(context.Background(), extract.NodeUUID([]string{client.members["a"]}))
 	if err != nil || curated == nil || curated.Provenance != dktypes.ProvenanceHumanCurated || curated.Description != "Human curated admission description." {
 		t.Fatalf("human content/identity not preserved: %+v %v", curated, err)
 	}

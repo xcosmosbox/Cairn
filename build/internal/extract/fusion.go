@@ -15,7 +15,11 @@
 package extract
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"github.com/xcosmosbox/cairn/core/dktypes"
+	"sort"
 )
 
 // FusionReport 是融合映射校准的结果摘要（可观测，随 RepairReport 一并写盘）。
@@ -119,33 +123,57 @@ func CleanFusionMapping(domains []Domain, unitIDs map[string]bool) []string {
 	return removedIDs
 }
 
-// DedupFusionNodes 就地合并同一 subdomain 内 id 重复的融合节点（LLM 偶尔输出重复节点，
-// 如同一 subdomain 出现两个相同 id 的 "metric-definition"）。合并规则：members 取并集、
-// confidence 取最高、synonyms 取并集，其余字段保留首见。分别对 entities / concepts 去重。
-// 返回被合并掉的重复节点总数。
-//
-// DedupFusionNodes merges fusion nodes sharing the same id within a subdomain (LLM
-// sometimes emits duplicates), unioning members/synonyms and taking the max confidence.
+// DedupFusionNodes 仅合并语义字段与成员集合相同的对象；相同临时别名不是等价证据。
+// 无歧义的旧别名引用跟随对象移动，真正的歧义留待所属关系范围修复。
+// DedupFusionNodes merges exact semantic duplicates and conserves proven endpoint identity.
 func DedupFusionNodes(domains []Domain) int {
 	merged := 0
+	before := indexEndpoints(domains)
+	canonicalByScope := map[endpointScope]map[string]string{}
+	var currentScope endpointScope
 	dedup := func(nodes []Node) ([]Node, int) {
-		if len(nodes) <= 1 {
-			return nodes, 0
+
+		// 相同临时 id 不代表相同对象；只有语义字段和成员集合相同才可合并。
+		// Equal aliases alone never establish semantic equivalence.
+		aliases := map[string]map[string]bool{}
+		for _, n := range nodes {
+			key := nodeSemanticKey(n)
+			if aliases[n.ID] == nil {
+				aliases[n.ID] = map[string]bool{}
+			}
+			aliases[n.ID][key] = true
 		}
-		idxByID := make(map[string]int, len(nodes))
+		signatureCounts := map[string]int{}
+		for _, n := range nodes {
+			signatureCounts[nodeSemanticKey(n)]++
+		}
+		idxBySignature := make(map[string]int, len(nodes))
 		out := make([]Node, 0, len(nodes))
 		m := 0
 		for _, n := range nodes {
-			if j, ok := idxByID[n.ID]; ok {
+			members := unionStrings(nil, n.Members)
+			sort.Strings(members)
+			wire, _ := json.Marshal([]any{n.Label, n.Name, n.Summary, n.Description, members})
+			signature := string(wire)
+			if j, ok := idxBySignature[signature]; ok {
 				out[j].Members = unionStrings(out[j].Members, n.Members)
 				out[j].Synonyms = unionStrings(out[j].Synonyms, n.Synonyms)
+				out[j].SourceSkills = unionStrings(out[j].SourceSkills, n.SourceSkills)
 				if n.Confidence > out[j].Confidence {
 					out[j].Confidence = n.Confidence
 				}
+				canonicalByScope[currentScope][signature] = out[j].ID
 				m++
 				continue
 			}
-			idxByID[n.ID] = len(out)
+			if signatureCounts[signature] > 1 {
+				qualified, _ := json.Marshal([]string{currentScope.domain, currentScope.subdomain, signature})
+				n.ID = fmt.Sprintf("fusion-%x", sha256.Sum256(qualified))
+			} else if len(aliases[n.ID]) > 1 {
+				n.ID = fmt.Sprintf("%s-distinct-%x", n.ID, sha256.Sum256(wire))
+			}
+			idxBySignature[signature] = len(out)
+			canonicalByScope[currentScope][signature] = n.ID
 			out = append(out, n)
 		}
 		return out, m
@@ -154,10 +182,51 @@ func DedupFusionNodes(domains []Domain) int {
 		d := &domains[di]
 		for si := range d.Subdomains {
 			sd := &d.Subdomains[si]
+			currentScope = endpointScope{d.Slug, sd.Slug}
+			canonicalByScope[currentScope] = map[string]string{}
 			var me, mc int
 			sd.Entities, me = dedup(sd.Entities)
 			sd.Concepts, mc = dedup(sd.Concepts)
 			merged += me + mc
+		}
+	}
+	// 先前无歧义的旧引用必须跟随去重后的对象；真正歧义不能猜目标。
+	// Preserve proven alias redirects without inventing relation semantics.
+	after := indexEndpoints(domains)
+	unresolved := func(scope endpointScope, alias string) string {
+		wire, _ := json.Marshal([]string{scope.domain, scope.subdomain, alias})
+		candidate := fmt.Sprintf("unresolved-fusion-%x", sha256.Sum256(wire))
+		for len(after.global[candidate]) > 0 {
+			candidate += "-missing"
+		}
+		return candidate
+	}
+	redirect := func(scope endpointScope, alias string) string {
+		refs := before.local[scope][alias]
+		if len(refs) == 0 {
+			refs = before.global[alias]
+		}
+		target := ""
+		for _, ref := range refs {
+			id := canonicalByScope[ref.scope][nodeSemanticKey(*ref.node)]
+			if id == "" || (target != "" && target != id) {
+				return unresolved(scope, alias)
+			}
+			target = id
+		}
+		if target != "" {
+			return target
+		}
+		return alias
+	}
+	for di := range domains {
+		for si := range domains[di].Subdomains {
+			sd := &domains[di].Subdomains[si]
+			scope := endpointScope{domains[di].Slug, sd.Slug}
+			for ri := range sd.Relations {
+				sd.Relations[ri].Source = redirect(scope, sd.Relations[ri].Source)
+				sd.Relations[ri].Target = redirect(scope, sd.Relations[ri].Target)
+			}
 		}
 	}
 	return merged
@@ -224,4 +293,13 @@ func ComputeCoverage(domains []Domain, docs []*dktypes.AnnotatedDocument) Fusion
 		}
 	}
 	return rpt
+}
+
+// nodeSemanticKey 不以别名、置信度或来源顺序猜测对象等价。
+// nodeSemanticKey compares retained semantic material and the canonical member set.
+func nodeSemanticKey(n Node) string {
+	members := unionStrings(nil, n.Members)
+	sort.Strings(members)
+	wire, _ := json.Marshal([]any{n.Label, n.Name, n.Summary, n.Description, members})
+	return string(wire)
 }

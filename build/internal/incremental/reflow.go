@@ -27,7 +27,9 @@ import (
 	"log"
 	"math"
 	"strings"
+	"sync"
 
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dktypes"
@@ -51,9 +53,11 @@ type reflowResult struct {
 // reflower 封装 I-6/I-7 的依赖（llm.Client 注入，测试 mock）。
 // reflower bundles I-6/I-7 dependencies (mockable llm.Client).
 type reflower struct {
-	client    llm.Client
-	maxTokens int
-	st        *stores
+	client       llm.Client
+	maxTokens    int
+	st           *stores
+	nodeMu       sync.Mutex
+	nodeOutcomes []extract.NodeDescriptionOutcome
 }
 
 // newReflower 构造 I-6/I-7 执行器。
@@ -74,56 +78,70 @@ type reflowNode struct {
 	name        string
 	summary     string
 	existing    string // 现有 description（融入节点；新建为空）/ existing description
-	newMaterial string // 新融入 members 的 detail 聚合 / new members' detail material
+	newMaterial string // 新融入 members 的全部语义素材 / complete new-member material
+	isNew       bool
 }
 
 // fuseDescriptions 执行 I-6：对 dirty.NodesFused 的 node 重融合 description。
-// 按 subdomain 分组批量调用 LLM（与全量 describe 同构）；human_curated 跳过（R8）；
-// 单子域失败降级（保持原 description），不阻断流水线。
+// 按 subdomain 并发，逐节点复用全量语义修订 helper；human_curated 零调用保护（R8）。
+// 只发布能按当前写入契约应用的核验结果，其余保留旧内容并报告未完成。
 //
 // fuseDescriptions runs I-6: re-fuse descriptions for member-dirty nodes only,
-// batched per subdomain; human_curated nodes are skipped (R8).
+// parallel per subdomain; every node retains an explicit outcome (R8/R9).
 func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *alignOutcome, rs *runState) map[string]string {
+	r.nodeMu.Lock()
+	r.nodeOutcomes = nil // 每次调用只发布本轮证据，不能重用前次成功来改写新候选。
+	r.nodeMu.Unlock()
 	out := make(map[string]string)
-	if len(dirty.NodesFused) == 0 {
+	if dirty == nil || len(dirty.NodesFused) == 0 {
 		return out
 	}
 
 	// 收集每个脏 node 的素材视图（human_curated 跳过）。
 	bySub := make(map[SubdomainKey][]*reflowNode)
 	for _, uuid := range dirty.SortedFusedNodes() {
-		pn := ao.pending[uuid]
-		if pn == nil {
-			continue // 防御：脏集与 pending 不一致（不应发生）/ defensive
+		var pn *pendingNode
+		if ao != nil {
+			pn = ao.pending[uuid]
 		}
-		rn := &reflowNode{uuid: uuid}
+		if pn == nil {
+			reason := "I-6: dirty node has no pending member mapping"
+			r.recordNodeOutcome(extract.NodeDescriptionOutcome{ID: uuid, Outcome: annotation.DocumentUnavailable, Reason: reason})
+			rs.warnf(reason + ": " + uuid)
+			continue
+		}
+		rn := &reflowNode{uuid: uuid, isNew: pn.IsNew}
 		if pn.IsNew {
 			// 新建 node：素材 = 全部 members（都是新单元）的 detail。
 			rn.label = pn.Label
 			rn.name = pn.Name
 			rn.summary = pn.Summary
-			rn.newMaterial = aggregateUnitDetails(pn.NewMembers, ao.unitsByID)
+			rn.newMaterial = aggregateReflowMemberDetails(pn.NewMembers, ao)
 		} else {
+			if r.st == nil || r.st.nodes == nil {
+				reason := "I-6: existing node store is unavailable"
+				r.recordNodeOutcome(extract.NodeDescriptionOutcome{ID: uuid, Domain: pn.Domain, Subdomain: pn.Subdomain, Outcome: annotation.DocumentUnavailable, Reason: reason})
+				rs.warnf(reason + ": " + uuid)
+				continue
+			}
 			node, err := r.st.nodes.GetByID(ctx, uuid)
 			if err != nil || node == nil {
-				rs.warnf(fmt.Sprintf("I-6：脏 node %s 在 KG 中不存在（跳过重融合）", uuid))
+				reason := fmt.Sprintf("I-6: existing node %s is unavailable: %v", uuid, err)
+				r.recordNodeOutcome(extract.NodeDescriptionOutcome{ID: uuid, Domain: pn.Domain, Subdomain: pn.Subdomain, Outcome: annotation.DocumentUnavailable, Reason: reason})
+				rs.warnf(reason)
 				continue
 			}
 			// R8：human_curated 的 description 不被增量重融合覆盖。
 			if node.Provenance == dktypes.ProvenanceHumanCurated {
-				log.Printf("[incremental-reflow] node %s 为 human_curated，跳过重融合（R8）", uuid)
+				r.recordNodeOutcome(extract.NodeDescriptionOutcome{ID: uuid, Domain: pn.Domain, Subdomain: pn.Subdomain, Summary: node.Summary, Description: node.Description, Outcome: annotation.DocumentPartial, Reason: "human_curated content protected; added material is not verified or applied"})
+				log.Printf("[incremental-reflow] node %s 为 human_curated，跳过重融合（R8）；新增素材尚未验证/应用", uuid)
 				continue
 			}
 			rn.label = string(node.Label)
 			rn.name = node.Name
 			rn.summary = node.Summary
 			rn.existing = node.Description
-			rn.newMaterial = aggregateUnitDetails(pn.NewMembers, ao.unitsByID)
-			// 融入 node 无任何新素材（极端边界：member 的 detail 全空）→ 跳过，
-			// 避免 LLM 对着空素材臆造（无新信息时不重写）。
-			if rn.newMaterial == "" {
-				continue
-			}
+			rn.newMaterial = aggregateReflowMemberDetails(pn.NewMembers, ao)
 		}
 		key := SubdomainKey{Domain: pn.Domain, Subdomain: pn.Subdomain}
 		bySub[key] = append(bySub[key], rn)
@@ -147,54 +165,68 @@ func (r *reflower) fuseDescriptions(ctx context.Context, dirty *DirtySet, ao *al
 			out[uuid] = desc
 		}
 	}
+	for _, result := range r.nodeDescriptionOutcomes() {
+		if result.Outcome == annotation.DocumentComplete && ao != nil {
+			if pn := ao.pending[result.ID]; pn != nil && pn.IsNew {
+				pn.Summary = result.Summary
+			}
+		}
+	}
 	return out
 }
 
-// fuseSubdomainBatch 为一个子域内的脏 node 批量重融合 description（一次 LLM 调用，
-// 缺失/空 description 保留原值或原始 summary，不补写）。
-// LLM 只见 alias（<subdomain-slug>#<序号>），uuid 只存在代码侧映射（R1）。
-//
-// fuseSubdomainBatch re-fuses one subdomain's dirty nodes in a single LLM call
-// retaining old descriptions or original summaries for omitted items.
+// fuseSubdomainBatch 逐节点核验摘要与详述，调用只含 alias，UUID 保留在代码侧。
+// Existing summaries requiring a persistence change remain explicitly unresolved.
 func (r *reflower) fuseSubdomainBatch(ctx context.Context, key SubdomainKey, nodes []*reflowNode, rs *runState) map[string]string {
 	written := make(map[string]string)
-	if len(nodes) == 0 {
-		return written
-	}
-	// alias 分配（call-scoped）：<subdomain-slug>#<序号>。
-	uuidByAlias := make(map[string]string)
-	aliasByUUID := make(map[string]string)
-	for i, n := range nodes {
-		alias := fmt.Sprintf("%s#%d", key.Subdomain, i+1)
-		uuidByAlias[alias] = n.uuid
-		aliasByUUID[n.uuid] = alias
-	}
-
-	resp, err := r.client.Complete(ctx, llm.CompleteRequest{
-		System:    reflowSystemPrompt,
-		User:      buildReflowPrompt(key, nodes, aliasByUUID, ""),
-		MaxTokens: r.maxTokens,
-	})
-	if err != nil || resp == nil {
-		rs.warnf(fmt.Sprintf("I-6 子域 %s 无有效响应（保持原 description）: %v", key, err))
-		return written
-	}
-	var out reflowOutput
-	if err := json.Unmarshal([]byte(stripAlignFence(strings.TrimSpace(resp.Text))), &out); err != nil {
-		rs.warnf(fmt.Sprintf("I-6 子域 %s 非法 JSON（保持原 description）: %v", key, err))
-		return written
-	}
-	for _, d := range out.Descriptions {
-		uuid, ok := uuidByAlias[strings.TrimSpace(d.NodeID)]
-		if !ok || strings.TrimSpace(d.Description) == "" {
+	var inputs []extract.NodeDescriptionInput
+	byID := map[string]*reflowNode{}
+	for _, n := range nodes {
+		if n == nil {
 			continue
 		}
-		written[uuid] = strings.TrimSpace(d.Description)
+		inputs = append(inputs, extract.NodeDescriptionInput{ID: n.uuid, Label: n.label, Name: n.name, Summary: n.summary, ExistingDescription: n.existing, Material: n.newMaterial})
+		byID[n.uuid] = n
 	}
-	if len(written) < len(nodes) {
-		rs.warnf(fmt.Sprintf("I-6 子域 %s 缺失 %d 个 description（保留原值，不补写）", key, len(nodes)-len(written)))
+	result := extract.FuseNodeDescriptions(ctx, r.client, r.maxTokens, 0, key.Domain, key.Subdomain, inputs)
+	for _, out := range result.Nodes {
+		n := byID[out.ID]
+		if out.Outcome == annotation.DocumentComplete && n != nil {
+			if !n.isNew && out.Summary != n.summary {
+				// 既有 I-8 只写 description，不能把未能持久化的新摘要冒充完成。
+				// Expose the verified correction, retain the old pair, and hand off to .5/.6.
+				out.Outcome = annotation.DocumentPartial
+				out.Reason = "verified summary repair requires persistence hook; existing summary and description retained"
+			} else {
+				written[out.ID] = out.Description
+			}
+		}
+		r.recordNodeOutcome(out)
+		if out.Outcome != annotation.DocumentComplete {
+			rs.warnf(fmt.Sprintf("I-6 node %s: %s (%s)", out.ID, out.Reason, out.Outcome))
+		}
 	}
 	return written
+}
+
+// nodeDescriptionOutcomes 返回实际结果供调用者汇总；保存原文不代表核验通过。
+// The caller, not this node helper, decides product-level completion.
+func (r *reflower) nodeDescriptionOutcomes() []extract.NodeDescriptionOutcome {
+	r.nodeMu.Lock()
+	defer r.nodeMu.Unlock()
+	out := append([]extract.NodeDescriptionOutcome(nil), r.nodeOutcomes...)
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1].ID > out[j].ID; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out
+}
+
+func (r *reflower) recordNodeOutcome(out extract.NodeDescriptionOutcome) {
+	r.nodeMu.Lock()
+	defer r.nodeMu.Unlock()
+	r.nodeOutcomes = append(r.nodeOutcomes, out)
 }
 
 // aggregateUnitDetails 聚合若干 member（04 id）的 detail 为带来源标记的素材文本
@@ -202,72 +234,49 @@ func (r *reflower) fuseSubdomainBatch(ctx context.Context, key SubdomainKey, nod
 // aggregateUnitDetails concatenates member details with source markers.
 func aggregateUnitDetails(memberIDs []string, unitsByID map[string]*alignUnit) string {
 	var sb strings.Builder
+	seen := map[string]bool{}
 	for _, m := range memberIDs {
-		u := unitsByID[m]
-		if u == nil || strings.TrimSpace(u.Detail) == "" {
+		if seen[m] {
 			continue
 		}
-		fmt.Fprintf(&sb, "【成员 %s / 来源 %s】\n%s\n\n", m, u.FilePath, strings.TrimSpace(u.Detail))
+		seen[m] = true
+		u := unitsByID[m]
+		if u == nil || (strings.TrimSpace(u.Content) == "" && strings.TrimSpace(u.Detail) == "") {
+			return ""
+		}
+		fmt.Fprintf(&sb, "【成员 %s / skill %s / 来源 %s】\n名称：%s\n内容：%s\n详述：%s\n\n", m, u.Skill, u.FilePath, u.Name, u.Content, u.Detail)
 	}
 	return strings.TrimSpace(sb.String())
 }
 
-// reflowOutput 是 I-6 LLM 返回的 JSON。
-// reflowOutput is the I-6 LLM JSON output.
-type reflowOutput struct {
-	Descriptions []struct {
-		NodeID      string `json:"node_id"`
-		Description string `json:"description"`
-	} `json:"descriptions"`
-}
-
-// reflowSystemPrompt 是 I-6 增量重融合的 system 提示（参照全量 describeSystemPrompt，
-// 增加「现有详述 + 新增素材」的增量语义）。
-// reflowSystemPrompt is the I-6 system prompt (full-pipeline style + incremental).
-const reflowSystemPrompt = `你是知识融合重写专家。用户会给你一个子域内若干需要更新的节点，
-每个节点有名称、摘要、【现有详述】（可能为空）和【新增素材】（新融入来源单元的原文详述）。
-你的任务是为每个节点产出一段新的完整详述（description）：
-
-- 把新增素材融合进现有详述：现有详述中仍然成立的内容必须保留，新增素材中与现有内容
-  重复的部分去重合并，互补的部分补充进去，保持语义连贯完整；
-- 若现有详述为空，则直接依据新增素材写出完整详述；
-- 绝不臆造素材与现有详述之外的信息，也不要混入其他节点的内容。
-
-严格要求：
-1. 只返回一个 JSON 对象（json 格式），形如 {"descriptions":[{"node_id":"...","description":"..."}]}，
-   不要输出任何解释性文字或代码围栏。
-2. node_id 必须逐字取自输入给出的节点 alias，不得编造或改写。
-3. 必须为输入中的【每一个】节点都产出一条【非空】description——一个都不能遗漏、绝不允许留空。`
-
-// buildReflowPrompt 组装 I-6 的 user 消息（子域内全部待重融合节点 + 上轮反馈）。
-// buildReflowPrompt assembles the I-6 user message.
-func buildReflowPrompt(key SubdomainKey, nodes []*reflowNode, aliasByUUID map[string]string, prevErr string) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "## 子域：%s（所属域：%s）\n\n", key.Subdomain, key.Domain)
-	sb.WriteString("请为下列每个节点，把【新增素材】融合进【现有详述】，产出新的完整详述：\n\n")
-	for _, n := range nodes {
-		fmt.Fprintf(&sb, "### 节点 alias=%s [%s]：%s\n", aliasByUUID[n.uuid], n.label, n.name)
-		if strings.TrimSpace(n.summary) != "" {
-			fmt.Fprintf(&sb, "摘要：%s\n", n.summary)
-		}
-		if strings.TrimSpace(n.existing) != "" {
-			fmt.Fprintf(&sb, "现有详述：%s\n", n.existing)
-		} else {
-			sb.WriteString("现有详述：（空）\n")
-		}
-		sb.WriteString("新增素材：\n")
-		if strings.TrimSpace(n.newMaterial) != "" {
-			sb.WriteString(n.newMaterial)
-		} else {
-			sb.WriteString("（无）")
-		}
-		sb.WriteString("\n\n")
+// aggregateReflowMemberDetails 优先使用每条来源贡献，不把聚合行的首个路径冒充所有来源。
+// Preserve all source-bound contributions when alignment has retained them.
+func aggregateReflowMemberDetails(memberIDs []string, ao *alignOutcome) string {
+	if ao == nil {
+		return ""
 	}
-	sb.WriteString("只返回 descriptions JSON。\n")
-	if strings.TrimSpace(prevErr) != "" {
-		fmt.Fprintf(&sb, "\n## 上一轮的问题（请修正后重试）\n- %s\n", prevErr)
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, member := range memberIDs {
+		if strings.TrimSpace(member) == "" {
+			return ""
+		}
+		if seen[member] {
+			continue
+		}
+		seen[member] = true
+		rows := ao.sourcesByID[member]
+		if len(rows) == 0 {
+			rows = []*alignUnit{ao.unitsByID[member]}
+		}
+		for _, u := range rows {
+			if u == nil || strings.TrimSpace(u.FilePath) == "" || (strings.TrimSpace(u.Content) == "" && strings.TrimSpace(u.Detail) == "") {
+				return ""
+			}
+			fmt.Fprintf(&b, "【成员 %s / skill %s / 来源 %s】\n名称：%s\n内容：%s\n详述：%s\n\n", member, u.Skill, u.FilePath, u.Name, u.Content, u.Detail)
+		}
 	}
-	return sb.String()
+	return strings.TrimSpace(b.String())
 }
 
 // ——————————————————————————————————————————————————————————————————————————————

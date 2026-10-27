@@ -21,7 +21,7 @@ func (writebackFixtureLLM) Complete(ctx context.Context, req llm.CompleteRequest
 	case strings.Contains(req.System, "知识结构化标注专家"):
 		text = `{"items":[{"tag":"concept","name":"幂等键","content":"重复请求只处理一次。","detail":"通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95}]}`
 	case strings.Contains(req.System, "语义核验专家"):
-		text = `{"idempotent":true,"reason":"fixture detail retains the complete idempotency source sentence","unsupported_items":[],"omissions":[]}`
+		text = `{"supported":true,"reason":"fixture detail retains the complete idempotency source sentence","unsupported_items":[],"omissions":[]}`
 	case strings.Contains(req.System, "领域知识融合专家"):
 		match := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindStringSubmatch(req.User)
 		if len(match) != 2 {
@@ -29,7 +29,7 @@ func (writebackFixtureLLM) Complete(ctx context.Context, req llm.CompleteRequest
 		}
 		text = fmt.Sprintf(`{"domains":[{"name":"工程","summary":"工程知识","reusability_rationale":"可复用","subdomains":[{"name":"可靠性","summary":"可靠性方法","concepts":[{"id":"idempotency-key","label":"Concept","name":"幂等键","summary":"重复请求只处理一次。","confidence":0.95,"members":[%q]}],"entities":[],"relations":[]}]}]}`, match[1])
 	case strings.Contains(req.System, "知识融合重写专家"):
-		text = `{"descriptions":[{"node_id":"idempotency-key","description":"通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。"}]}`
+		return pipelineNodeDescriptionResponse(req, "通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。")
 	default:
 		text = "idempotency-key"
 	}
