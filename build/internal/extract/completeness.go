@@ -9,7 +9,8 @@ import (
 )
 
 // ValidateFusionCompleteness validates source association per node. Missing
-// descriptions and unknown members remove only that node and incident edges;
+// descriptions and unknown members remove only that node; relation candidates
+// remain available for finite source-aware repair instead of disappearing here.
 // coverage/annotation detail length/confidence are not admission thresholds.
 func ValidateFusionCompleteness(res *Result, docs []*dktypes.AnnotatedDocument, _ float64, requireDescriptions bool) error {
 	if res == nil {
@@ -58,6 +59,7 @@ func ValidateFusionCompleteness(res *Result, docs []*dktypes.AnnotatedDocument, 
 			sd.Concepts = filter(sd.Concepts)
 		}
 	}
-	cleanDangling(res.Domains)
+	// 悬空候选交给关系 helper，以保留修复上下文；不在节点过滤中静默删除。
+	// Defer relation selection/repair to the source-aware relation stage.
 	return nil
 }

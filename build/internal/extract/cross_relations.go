@@ -152,12 +152,13 @@ type crossContradiction struct {
 }
 
 type crossVerdict struct {
-	Disposition        string              `json:"disposition"`
-	Reason             string              `json:"reason"`
-	RelationSupported  *bool               `json:"relation_supported"`
-	DirectionSupported *bool               `json:"direction_supported"`
-	Contradiction      *crossContradiction `json:"contradiction"`
-	Evidence           []crossQuote        `json:"evidence"`
+	ExplicitSourceAssertion *bool               `json:"explicit_source_assertion,omitempty"`
+	Disposition             string              `json:"disposition"`
+	Reason                  string              `json:"reason"`
+	RelationSupported       *bool               `json:"relation_supported"`
+	DirectionSupported      *bool               `json:"direction_supported"`
+	Contradiction           *crossContradiction `json:"contradiction"`
+	Evidence                []crossQuote        `json:"evidence"`
 }
 
 var sourceUUIDPattern = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
@@ -592,6 +593,7 @@ func cloneCrossDecision(in CrossRelationDecision) CrossRelationDecision {
 		v := *in.Verifier
 		v.Evidence = crossCopySlice(v.Evidence)
 		v.RelationSupported = boolean(v.RelationSupported)
+		v.ExplicitSourceAssertion = boolean(v.ExplicitSourceAssertion)
 		v.DirectionSupported = boolean(v.DirectionSupported)
 		if v.Contradiction != nil {
 			c := *v.Contradiction

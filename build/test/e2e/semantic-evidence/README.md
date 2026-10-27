@@ -177,3 +177,40 @@ while preserving stored content and making no model call. The
 keeps the earlier acceptance as history. The previous #112 handoff is suspended;
 the acknowledged .3 repair owner holds the file until a new explicit accepted
 release. I-7 remains unchanged, and no .4 worker starts from this correction.
+
+
+## v0.1.4 source-aware relation helper and handoff
+
+The [dated relation report](../../../../docs/coordination/reports/2026-10-27-v014-relation-fidelity.md)
+records the new #112 execution group and helper acceptance separately from the
+ordinary six-original product campaign. The cancellation suspension above is dated
+history: PR121 was reaccepted and the coordinator
+[renewed the explicit release](https://github.com/xcosmosbox/Cairn/issues/112#issuecomment-6432388051).
+The [acknowledged .4 claims](https://github.com/xcosmosbox/Cairn/issues/112#issuecomment-6433074114)
+name the exclusive writers and frozen source-aware interface.
+
+`ProcessRelations` consumes complete frozen originals and accepted member material;
+new selections require exact original evidence, direction, qualifying meaning and
+explicit assertion credit. Supplied old candidates remain auditable without promotion
+to original assertions. The source-aware changed-document adapter uses the same helper
+and retains full persistent edge objects separately on absence, unknown or failure;
+human data remains protected. Unknown assessment repeats the same candidate; actual
+semantic defects revise the full candidate with original material and critique.
+Positive N means N shared extra recoveries per source scope, zero defaults to three,
+negative disables. Factual per-scope outcomes and attempts remain visible.
+
+The original fixture/expectation inventory stays read-only and outside prompts.
+Deterministic helper cases do not certify a real model's reconstruction of all six
+private originals. The dated report records actual combined tests and source fixes.
+Unsupported predicates retain their exact source-bound graph detail rather than false
+edge-enum claims. Verified relation facets use `cairn_relation_assertions_v1` in the
+existing description string, with explicit sources/evidence and separately labeled
+`legacy_unverified` text. Prior JSON labels are not trusted: only exact current
+verified `Selected` description/source/evidence matches keep explicit credit;
+unmatched prior facets are downgraded and unknown-shape raw content stays intact.
+Distinct full legacy duplicate rows defer their affected
+replacement scope as unavailable, preserving all rows and reporting selected facts as
+unapplied there. #113 owns complete persistence/readback; #114 owns ordinary entry
+wiring and final aggregate/source-to-graph acceptance. The narrow terminal structural
+reselection after node filtering preserves early repair inputs and starts no #114
+work. Missing in-scope relation behavior still blocks #112 and the parent.

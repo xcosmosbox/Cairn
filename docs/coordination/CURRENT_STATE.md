@@ -52,8 +52,23 @@ New exact-source research, normal CI and coordinator acceptance remain separate 
 events. No whole-original semantic success or new provider run is implied. Structural
 coverage does not substitute for checked surviving node semantics. Existing-target
 summary application and ordinary full/changed construction wiring remain #113/#114.
-The prior #112 next-writer handoff is suspended; the acknowledged narrow .3 owner
-holds `reflow.go` until new accepted release. No v0.1.4 worker has started.
+The narrow cancellation repair was merged at PR121/main
+`f92d7dfa87cba5c51b12ad38265b05ddc828ec3f` and
+[reaccepted](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6432381826).
+A [fresh three-session recheck](https://github.com/xcosmosbox/Cairn/issues/111#issuecomment-6432972299)
+confirmed scoped PASS; the [renewed explicit release](https://github.com/xcosmosbox/Cairn/issues/112#issuecomment-6432388051)
+transfers whole-file `reflow.go` ownership to the next acknowledged #112 writer.
+
+The [acknowledged v0.1.4 execution group](https://github.com/xcosmosbox/Cairn/issues/112#issuecomment-6433074114)
+has prepared source-aware relation selection, finite repair and changed-document
+retention under disjoint write scopes. Its [dated helper/evidence report](reports/2026-10-27-v014-relation-fidelity.md)
+records actual passing combined local tests, independent probes, corrected source-budget/
+state defects, prior-envelope false explicit-credit correction, and the narrow
+terminal structural-selection compatibility repair.
+Final exact-head review, normal CI and maintainer acceptance remain live events;
+#112 is not declared accepted by this snapshot;
+#113 persistence/readback and #114 ordinary source plumbing/final product campaign remain
+separate owners. No new paid or six-original model construction is implied.
 
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/

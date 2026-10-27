@@ -30,6 +30,12 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	if err := extract.ValidateFusionCompleteness(candidate, docs, o.minConf, true); err != nil {
 		return report, fmt.Errorf("pipeline: materialization candidate incomplete: %w", err)
 	}
+	// 早期悬空候选要留给有限修复；终端节点过滤之后，两个输出必须使用同一有效端点集合。
+	// Repair keeps early candidates; terminal selection reconciles the actual surviving graph.
+	candidate, _, err = extract.SelectMaterializationCandidates(candidate, o.minConf)
+	if err != nil {
+		return report, fmt.Errorf("pipeline: final materialization candidate: %w", err)
+	}
 	// Selection and output counts refer to the same validated subset.
 	nodes, relations := 0, 0
 	for _, d := range candidate.Domains {
