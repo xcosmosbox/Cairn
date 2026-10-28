@@ -81,11 +81,14 @@ func (r *IncrementalMutationRepo) ApplyContentEdit(ctx context.Context, id strin
 
 // SourceDeletionResult 是一次 C2 引用计数删除的原子提交结果。
 type SourceDeletionResult struct {
-	Node          *dktypes.Node
-	SourceDocs    []string
-	RemainingDocs int
-	Deleted       bool
-	Phantom       bool
+	// 关系删除也会使独立来源的另一端 sidecar 失效；与删边同事务捕获其原始文档。
+	// Original documents of surviving incident endpoints whose snapshots need refresh.
+	AffectedSourceDocs []string
+	Node               *dktypes.Node
+	SourceDocs         []string
+	RemainingDocs      int
+	Deleted            bool
+	Phantom            bool
 	// NoContribution means the node exists but the requested document did not
 	// contribute any node_sources row.  This is a fail-closed C2 replay result:
 	// the node, edges, FTS, and provenance remain untouched.
@@ -127,6 +130,10 @@ func (r *IncrementalMutationRepo) ApplySourceDeletion(ctx context.Context,
 		// nodes.rowid, while no durable UUID -> rowid mapping remains after the
 		// node row is gone.  Guessing a rowid could delete an unrelated node's
 		// index entry after SQLite rowid reuse.
+		affectedDocs, err := incidentSourceDocsTx(ctx, tx, nodeUUID)
+		if err != nil {
+			return nil, err
+		}
 		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM node_sources WHERE node_uuid = ?`, nodeUUID); err != nil {
 			return nil, fmt.Errorf("IncrementalMutationRepo.ApplySourceDeletion phantom source: %w", err)
@@ -138,7 +145,7 @@ func (r *IncrementalMutationRepo) ApplySourceDeletion(ctx context.Context,
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("IncrementalMutationRepo.ApplySourceDeletion phantom commit: %w", err)
 		}
-		return &SourceDeletionResult{SourceDocs: preDocs, Phantom: true}, nil
+		return &SourceDeletionResult{SourceDocs: preDocs, AffectedSourceDocs: affectedDocs, Phantom: true}, nil
 	}
 	if loadErr != nil {
 		return nil, fmt.Errorf("IncrementalMutationRepo.ApplySourceDeletion load %s: %w", nodeUUID, loadErr)
@@ -185,7 +192,14 @@ func (r *IncrementalMutationRepo) ApplySourceDeletion(ctx context.Context,
 		}
 	}
 	deleted := remaining == 0 && node.Provenance != dktypes.ProvenanceHumanCurated && curatedEdges == 0
+	var affectedDocs []string
 	if deleted {
+		// 必须在删边前取两端来源；事后只看 node_sources 无法找回独立存活邻居。
+		// Snapshot both incoming and outgoing neighbors before removing the edges.
+		affectedDocs, err = incidentSourceDocsTx(ctx, tx, nodeUUID)
+		if err != nil {
+			return nil, err
+		}
 		// FTS 与 node/边/来源同事务删除。若只留给后续 I-8 清理，进程在旁路提交后
 		// 崩溃会丢失 rowid 快照，形成永久 FTS 幽灵。
 		if _, err := tx.ExecContext(ctx, `DELETE FROM nodes_fts WHERE rowid = ?`, rowID); err != nil {
@@ -222,8 +236,35 @@ func (r *IncrementalMutationRepo) ApplySourceDeletion(ctx context.Context,
 	}
 	return &SourceDeletionResult{
 		Node: node, SourceDocs: preDocs, RemainingDocs: remaining,
-		Deleted: deleted, RowID: rowID,
+		Deleted: deleted, RowID: rowID, AffectedSourceDocs: affectedDocs,
 	}, nil
+}
+
+// incidentSourceDocsTx 只返回仍存在的邻居的原始来源路径，不把语义脏集扩大到邻居。
+// Capture distinct original docs for writeback only; self-loops/orphan endpoints add none.
+func incidentSourceDocsTx(ctx context.Context, tx *sql.Tx, nodeUUID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT DISTINCT s.file_path FROM edges e
+		JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
+		JOIN node_sources s ON s.node_uuid = n.id
+		WHERE (e.source_id = ? OR e.target_id = ?) AND n.id != ? AND s.file_path != ''
+		ORDER BY s.file_path`, nodeUUID, nodeUUID, nodeUUID, nodeUUID)
+	if err != nil {
+		return nil, fmt.Errorf("IncrementalMutationRepo incident source docs %s: %w", nodeUUID, err)
+	}
+	defer rows.Close()
+	var docs []string
+	for rows.Next() {
+		var doc string
+		if err := rows.Scan(&doc); err != nil {
+			return nil, fmt.Errorf("IncrementalMutationRepo incident source docs scan %s: %w", nodeUUID, err)
+		}
+		docs = append(docs, doc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("IncrementalMutationRepo incident source docs rows %s: %w", nodeUUID, err)
+	}
+	return docs, nil
 }
 
 // reconcileNodeProvenanceTx refreshes a node's denormalized source_refs from

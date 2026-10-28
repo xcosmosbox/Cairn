@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -191,6 +192,16 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 	}
 
 	// —— 4. 脏子域语义边：按子域在 storage 层单事务替换 ——
+	// I-9 在每个端点文件保存完整入/出边快照；仅脏源子域不足以刷新独立目标。
+	// Compare actual committed rows so protected/no-op relations don't expand writeback.
+	var beforeRelations []*dktypes.Edge
+	if rr != nil && len(rr.relations) > 0 {
+		var err error
+		beforeRelations, err = st.edges.ListAll(ctx)
+		if err != nil {
+			return fmt.Errorf("I-8 snapshot incident relations: %w", err)
+		}
+	}
 	for _, key := range dirty.SortedSubdomains() {
 		// map 缺 key 表示 I-7 因读取/LLM 等失败未形成权威结果；它与
 		// “成功判定最终集合为空”（key 存在、slice=nil）语义不同。前者必须
@@ -236,6 +247,16 @@ func applyIncrementalIngest(ctx context.Context, st *stores, dirty *DirtySet,
 		}
 		if err := st.edges.ReplaceSemanticBySubdomain(ctx, key.Domain, key.Subdomain, replacement); err != nil {
 			return fmt.Errorf("I-8 replace semantic edges %s: %w", key, err)
+		}
+	}
+
+	if rr != nil && len(rr.relations) > 0 {
+		afterRelations, err := st.edges.ListAll(ctx)
+		if err != nil {
+			return fmt.Errorf("I-8 read committed incident relations: %w", err)
+		}
+		if err := affectChangedRelationDocs(ctx, st, rs, beforeRelations, afterRelations); err != nil {
+			return err
 		}
 	}
 
@@ -416,6 +437,39 @@ func ensureSkillNode(ctx context.Context, st *stores, skill string, now time.Tim
 		Confidence: 1, Provenance: dktypes.ProvenanceLLMInferred,
 		CreatedAt: now, UpdatedAt: now,
 	})
+}
+
+// affectChangedRelationDocs 只传播真正变动边的两端来源；不加入 touched/dirty。
+// Retain removed endpoints and new endpoints, without certifying stale selected assertions.
+func affectChangedRelationDocs(ctx context.Context, st *stores, rs *runState, before, after []*dktypes.Edge) error {
+	oldByID := make(map[int64]*dktypes.Edge, len(before))
+	for _, edge := range before {
+		oldByID[edge.ID] = edge
+	}
+	endpoints := make(map[string]bool)
+	for _, edge := range after {
+		if old := oldByID[edge.ID]; old != nil && *old == *edge {
+			delete(oldByID, edge.ID)
+			continue
+		}
+		endpoints[edge.SourceID], endpoints[edge.TargetID] = true, true
+	}
+	for _, old := range oldByID {
+		endpoints[old.SourceID], endpoints[old.TargetID] = true, true
+	}
+	ids := make([]string, 0, len(endpoints))
+	for id := range endpoints {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		sources, err := st.sources.ListByNode(ctx, id)
+		if err != nil {
+			return fmt.Errorf("I-8 incident source docs %s: %w", id, err)
+		}
+		rs.affectDocs(distinctFilePaths(sources)...)
+	}
+	return nil
 }
 
 // ——————————————————————————————————————————————————————————————————————————————

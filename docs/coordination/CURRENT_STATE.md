@@ -1,6 +1,6 @@
 # Current evidence snapshot
 
-As of **2026-10-27 UTC**. Product source starting baseline:
+As of **2026-10-28 UTC**. Product source starting baseline:
 `d2fa342312809b1d632308433ec507b523d86655` (merged PR106).
 Live [#107](https://github.com/xcosmosbox/Cairn/issues/107), task comments/PR heads and raw
 outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
@@ -97,6 +97,21 @@ still defers repaired summaries pending #114 wiring. #114 remains the sole ordin
 full/changed integration and final source-first campaign owner. Exact-head review, CI
 and acceptance are live task/PR events; this snapshot does not accept #113 or parent
 #108 and no paid model run is implied.
+
+Fresh [v0.1.5 research](https://github.com/xcosmosbox/Cairn/issues/113#issuecomment-6473317956)
+reopened #113 on main `69bd583426b578d103468e0fa55e1673d2d8f7c8`.
+Deleting an endpoint's last source removes its SQLite edges but leaves independently
+sourced neighbors' sidecars stale; a later legal human edit is misclassified and
+overwritten. The [new bounded repair report](reports/2026-10-28-v015-neighbor-writeback-repair.md)
+preserves actual C2/I8 failed-before and intermediate failure-retry-fail evidence.
+The new .5 correction propagates actual incident graph changes to surviving source
+documents and repairs only proven stale relation caches through existing mutating
+recovery, preserving the original editable baseline. Combined actual-Run normal,
+pending/later human edit, failure/retry, shared/clean/repeat controls and affected
+tests/build/vet pass at `92c5c0ffe376864c9adb591941e27718695b00da`.
+PR124's earlier acceptance remains dated history. Exact-head review,
+normal CI and new maintainer acceptance remain pending. #114 ordinary wiring/status
+and its actual six-original campaign remain unstarted; parent #108 remains unaccepted.
 
 The maintainer now requires semantic fidelity, meaningful source coverage, provenance,
 finite failed-step retry/revision and stable repeats. This supersedes #105's one-shot/

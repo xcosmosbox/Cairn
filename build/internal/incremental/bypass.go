@@ -139,6 +139,10 @@ func applyBypassD(ctx context.Context, st *stores, docPath, uuid string, rs *run
 	if err != nil {
 		return err
 	}
+	// 删边使独立邻居的只读快照同样失效；仅传播回写路径，不能将邻居加入
+	// touched/dirty 触发无关的内容融合或关系重算。I-9 已有独立 primary 同步通道。
+	// Refresh surviving incident docs without expanding semantic recomputation.
+	rs.affectDocs(result.AffectedSourceDocs...)
 	preDocs := result.SourceDocs
 	if result.Phantom {
 		// phantom：KG 无此 node（可能是旧版本留下的半提交删除）→ storage 已在

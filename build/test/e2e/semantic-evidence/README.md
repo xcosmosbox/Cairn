@@ -276,3 +276,19 @@ The composed tests exercise actually verified .3/.4 candidates, I-8 SQLite appli
 I-9 primary/mirror/complete-block readback, repeated selections and zero confidence.
 Separate injected failures prove their operational behavior; they do not replace the
 normal selected-graph retention checks or the later source-first semantic campaign.
+
+
+Fresh .5 research reopened #113 after an actual last-source deletion left stale
+incident relation snapshots in independently sourced survivor sidecars, causing a
+later human edit to be overwritten as C3. The
+[neighbor writeback repair receipt](../../../../docs/coordination/reports/2026-10-28-v015-neighbor-writeback-repair.md)
+retains the original failure and new actual-Run incoming/outgoing/shared-primary/
+mirror/human/clean/repeat controls. Its injected postcommit sidecar failure also
+checks the old baseline and a human edit made before retry. Both actual invalidation triggers (C2 deletion and source-aware
+semantic I8 relation application) now propagate changed incident endpoints to existing I9 publication.
+Guarded existing Run recovery refreshes only a derived stale relation cache after
+exact core/source/hash proof, preserving Markdown and original editable baselines;
+read-only Detect and the exact matcher are unchanged. The preserved failed retry
+now recovers the later human edit normally, and same-Run pending human edits plus
+shared/clean/repeat and affected package checks pass. New review, CI and
+acceptance remain live #113 events; #114 is still unstarted.
