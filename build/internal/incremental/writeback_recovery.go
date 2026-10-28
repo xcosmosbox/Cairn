@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/xcosmosbox/cairn/build/internal/writeback"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // collectOwnedWritebacks is read-only. Verify ownership and every journal path
@@ -94,7 +97,111 @@ func recoverIndependentWritebacks(ctx context.Context, st *stores, root, identit
 			rs.warnf(fmt.Sprintf("recover owned writeback %s: %v", doc, err))
 		}
 	}
+	// Journal conflicts also block sharing siblings before any metadata refresh.
+	if err := expandFailedSourceDocs(ctx, st, rs); err != nil {
+		return err
+	}
+	if err := recoverRelationSnapshots(ctx, st, root, identity, rs); err != nil {
+		return err
+	}
 	return expandFailedSourceDocs(ctx, st, rs)
+}
+
+// recoverRelationSnapshots 修复已提交图谱之后失败的只读关系缓存写入，保留人工基线。
+// Run-only owned recovery: detection stays read-only, and core identity/hash guards stay exact.
+func recoverRelationSnapshots(ctx context.Context, st *stores, root, identity string, rs *runState) error {
+	paths := map[string]bool{}
+	sources, err := st.sources.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+	for _, source := range sources {
+		paths[source.FilePath] = true
+	}
+	files, err := st.files.ListByRepo(ctx, identity)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		paths[file.FilePath] = true
+	}
+	_, primaryByPath, err := listExpectedSharedPrimaryDocs(ctx, st)
+	if err != nil {
+		return err
+	}
+	for path := range primaryByPath {
+		paths[path] = true
+	}
+	ordered := make([]string, 0, len(paths))
+	for path := range paths {
+		ordered = append(ordered, path)
+	}
+	sort.Strings(ordered)
+	for _, path := range ordered {
+		if rs.failedDocsSnapshot()[path] {
+			continue
+		}
+		abs, err := writeback.ValidateRepositoryPath(root, path)
+		if err != nil {
+			return err
+		}
+		if _, err := writeback.ValidateRepositoryPath(root, path+".kg.yaml"); err != nil {
+			return err
+		}
+		if _, err := os.ReadFile(abs); err != nil {
+			continue // Missing/deleted or unreadable files retain their existing detection path.
+		}
+		sc, err := writeback.ReadSidecar(abs)
+		if err != nil {
+			continue // Corrupt/missing sidecars cannot prove a trusted editable baseline.
+		}
+		primaryID := primaryByPath[path]
+		views, err := authoritativeSidecarViews(ctx, st, path, primaryID != "", primaryID)
+		if err != nil {
+			return err
+		}
+		if primaryID != "" {
+			// Legacy primary views omit relations; recovery has authoritative DB context.
+			edges, err := st.edges.ListAll(ctx)
+			if err != nil {
+				return err
+			}
+			for i := range views {
+				views[i].Relations = writeback.IncidentRelations(edges, views[i].UUID)
+				if views[i].Relations == nil {
+					views[i].Relations = []*dktypes.Edge{}
+				}
+			}
+		}
+		if writeback.SidecarMetadataMatches(*sc, path, views) {
+			continue
+		}
+		// 只允许派生的关系缓存过期：路径/UUID/member/原始来源/只读字段/可编辑
+		// hash 仍须与 SQLite 精确一致；绝不据此接受新的人工来源或伪造基线。
+		// Compare every existing identity and baseline guard before refreshing relations.
+		withoutRelations := append([]writeback.NodeUpdate(nil), views...)
+		for i := range withoutRelations {
+			withoutRelations[i].Relations = nil
+		}
+		if !writeback.SidecarMetadataMatches(*sc, path, withoutRelations) {
+			continue
+		}
+		refreshErr := writeback.RefreshGraphMetadataContext(ctx, root, path, views)
+		if refreshErr == nil {
+			fresh, err := writeback.ReadSidecar(abs)
+			refreshErr = err
+			if err == nil && !writeback.SidecarMetadataMatches(*fresh, path, views) {
+				refreshErr = fmt.Errorf("refreshed relation metadata still differs from authoritative graph")
+			}
+		}
+		if refreshErr != nil {
+			rs.failDoc(path)
+			rs.warnf(fmt.Sprintf("recover relation snapshot %s: %v", path, refreshErr))
+			continue
+		}
+		log.Printf("[incremental] refreshed derived relation snapshot, preserving editable baseline: %s", path)
+	}
+	return nil
 }
 
 // expandFailedSourceDocs 使用 node_sources 已有共享关系闭包；不引入恢复状态。
