@@ -10,6 +10,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -28,6 +29,7 @@ import (
 	"github.com/xcosmosbox/cairn/build/internal/controller/runner"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"github.com/xcosmosbox/cairn/build/internal/controller/workspace"
+	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/core/dkconfig"
 	"github.com/xcosmosbox/cairn/core/kbbundle"
 	"github.com/xcosmosbox/cairn/core/repoidentity"
@@ -316,12 +318,20 @@ func (r *Reconciler) stepFullBuild(ctx context.Context, run *model.Run, repo *mo
 	// 重试场景：清理旧 candidate DB + 确保父目录存在（SQLite CANTOPEN=14 伪装成 OOM）。
 	os.MkdirAll(filepath.Dir(candidateDB), 0o755)
 	os.Remove(candidateDB)
-	// 全量构建（RunFullRebuild 内部会 os.Remove(db)）。
+	// 全量冻结产物在 mutable source worktree 之外；后续增量只使用明确的原文交接。
+	// Existing private 00/04 artifacts provide source context without a new storage schema.
+	contextDir := r.sourceContextDir(run.RunID, repoCfg)
+	if err := runner.ValidateSourceContextDirectory(wt, contextDir); err != nil {
+		return r.failBuild(ctx, run, "source_context_configuration", err, "permanent", res)
+	}
 	buildRes, err := r.runner.Full(ctx, runner.FullRequest{
-		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity,
+		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity, DumpDir: contextDir,
 	})
+	if reportErr := r.preserveBuildReport(ctx, run, "full", buildRes); reportErr != nil {
+		return r.failBuild(ctx, run, "build_report", reportErr, "unavailable", res)
+	}
 	if err != nil {
-		return r.failRetryable(ctx, run, "full_build", err, res)
+		return r.failBuild(ctx, run, "full_build", err, buildRes.FailureKind, res)
 	}
 	if err := r.transition(ctx, run.RunID, model.StateValidateCandidate, fmt.Sprintf("full build: %d nodes", buildRes.NodesCreated)); err != nil {
 		return res, err
@@ -339,11 +349,21 @@ func (r *Reconciler) stepIncremental(ctx context.Context, run *model.Run, repo *
 
 	wt := r.ws.SourceWorktree(run.RunID)
 	candidateDB := r.candidateDBPath(run.RunID)
-	buildRes, err := r.runner.Incremental(ctx, runner.IncrementalRequest{
-		RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity,
-	})
+	sourceContext, contextErr := r.loadSourceContext(run.RunID, repoCfg, wt)
+	if contextErr != nil {
+		return r.failBuild(ctx, run, "source_context_configuration", contextErr, "permanent", res)
+	}
+	request := runner.IncrementalRequest{RepoPath: wt, DBPath: candidateDB, MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity}
+	if sourceContext != nil {
+		request.Sources = sourceContext.Sources
+		request.SourceDocuments = sourceContext.Documents
+	}
+	buildRes, err := r.runner.Incremental(ctx, request)
+	if reportErr := r.preserveBuildReport(ctx, run, "incremental", buildRes); reportErr != nil {
+		return r.failBuild(ctx, run, "build_report", reportErr, "unavailable", res)
+	}
 	if err != nil {
-		return r.failRetryable(ctx, run, "incremental", err, res)
+		return r.failBuild(ctx, run, "incremental", err, buildRes.FailureKind, res)
 	}
 	// 记录是否有回写差异。
 	if buildRes.HasWriteback {
@@ -624,9 +644,21 @@ func (r *Reconciler) stepReconcileMerged(ctx context.Context, run *model.Run, re
 		if err != nil {
 			return r.failRetryable(ctx, run, "repository_identity", err, res)
 		}
-		_, err = r.runner.Incremental(ctx, runner.IncrementalRequest{RepoPath: wt, DBPath: r.candidateDBPath(run.RunID), MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity})
-		if err != nil {
-			return r.failRetryable(ctx, run, "reconverge_incremental", err, res)
+		sourceContext, contextErr := r.loadSourceContext(run.RunID, repoCfg, wt)
+		if contextErr != nil {
+			return r.failBuild(ctx, run, "source_context_configuration", contextErr, "permanent", res)
+		}
+		request := runner.IncrementalRequest{RepoPath: wt, DBPath: r.candidateDBPath(run.RunID), MinConfidence: repoCfg.Rewrite.MinConfidence, RepositoryIdentity: identity}
+		if sourceContext != nil {
+			request.Sources = sourceContext.Sources
+			request.SourceDocuments = sourceContext.Documents
+		}
+		buildRes, buildErr := r.runner.Incremental(ctx, request)
+		if reportErr := r.preserveBuildReport(ctx, run, "reconverge", buildRes); reportErr != nil {
+			return r.failBuild(ctx, run, "build_report", reportErr, "unavailable", res)
+		}
+		if buildErr != nil {
+			return r.failBuild(ctx, run, "reconverge_incremental", buildErr, buildRes.FailureKind, res)
 		}
 	}
 	vr, err := r.runner.Validate(ctx, runner.ValidateRequest{DBPath: r.candidateDBPath(run.RunID), RepoPath: wt})
@@ -1226,4 +1258,99 @@ func shortSHA(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// sourceContextDir 复用每轮候选目录；配置可指定调用方维护的跨轮私有原文目录。
+// These artifacts are not Bundle contents and never come from generated Markdown.
+func (r *Reconciler) sourceContextDir(runID string, cfg dkconfig.RepoConfig) string {
+	if cfg.Rewrite.SourceContextDir != "" {
+		return cfg.Rewrite.SourceContextDir
+	}
+	return filepath.Join(filepath.Dir(r.candidateDBPath(runID)), "source-context")
+}
+func (r *Reconciler) loadSourceContext(runID string, cfg dkconfig.RepoConfig, repoPath string) (*extract.SourceContext, error) {
+	dir := r.sourceContextDir(runID, cfg)
+	if err := runner.ValidateSourceContextDirectory(repoPath, dir); err != nil {
+		return nil, err
+	}
+	frozen := filepath.Join(dir, "00_frozen_sources.json")
+	documents := filepath.Join(dir, "04_extract_input.json")
+	if cfg.Rewrite.SourceContextDir == "" {
+		_, first := os.Stat(frozen)
+		_, second := os.Stat(documents)
+		if os.IsNotExist(first) && os.IsNotExist(second) {
+			return nil, nil
+		}
+	}
+	return extract.LoadSourceContext(frozen, documents)
+}
+
+// reportContext 保留原 lease/fence 值，允许 caller 取消后写入已结束尝试的事实结果。
+// Cancellation stops model work; a fenced synchronous receipt write may still complete.
+func reportContext(ctx context.Context) context.Context { return context.WithoutCancel(ctx) }
+func (r *Reconciler) preserveBuildReport(ctx context.Context, run *model.Run, stage string, result runner.BuildResult) error {
+	ctx, cancel := context.WithTimeout(reportContext(ctx), 5*time.Second)
+	defer cancel()
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
+	path := filepath.Join(filepath.Dir(r.candidateDBPath(run.RunID)), fmt.Sprintf("build-report-%s-%d.json", stage, run.Attempt))
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("controller: encode build report: %w", err)
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".build-report-*.json")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
+	defer os.Remove(temporary)
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	if err := store.CheckLease(ctx); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		return err
+	}
+	if err := r.store.SetRunReportPath(ctx, run.RunID, path); err != nil {
+		return err
+	}
+	run.ReportPath = path
+	return nil
+}
+func (r *Reconciler) failBuild(ctx context.Context, run *model.Run, code string, cause error, kind string, res StepResult) (StepResult, error) {
+	writeCtx, cancel := context.WithTimeout(reportContext(ctx), 5*time.Second)
+	defer cancel()
+	if code == "source_context_configuration" || run.ReportPath == "" {
+		factual := runner.BuildResult{Status: "failed", FailureKind: kind, Reasons: []string{cause.Error()}}
+		if ctx.Err() != nil || errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+			factual.FailureKind = "cancelled"
+		}
+		if err := r.preserveBuildReport(writeCtx, run, "configuration", factual); err != nil {
+			return res, err
+		}
+	}
+	if ctx.Err() != nil || errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) || kind == "cancelled" {
+		return r.failRetryable(writeCtx, run, "cancelled_"+code, cause, res)
+	}
+	if kind != "permanent" {
+		return r.failRetryable(writeCtx, run, code, cause, res)
+	}
+	// Reuse the existing terminal state only for a proven local permanent/configuration failure.
+	if err := r.store.SetRunError(writeCtx, run.RunID, "permanent_"+code, cause.Error(), time.Time{}); err != nil {
+		return res, err
+	}
+	if err := r.transition(writeCtx, run.RunID, model.StateFailedPermanent, "permanent_"+code+": "+cause.Error()); err != nil {
+		return res, err
+	}
+	res.To = model.StateFailedPermanent
+	res.Advanced = true
+	res.Message = "permanent_" + code + ": " + cause.Error()
+	return res, nil
 }

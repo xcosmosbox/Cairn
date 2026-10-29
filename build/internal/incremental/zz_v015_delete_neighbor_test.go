@@ -20,7 +20,7 @@ func TestV015R2RoundtripDeleteEndpointRefreshesSurvivor(t *testing.T) {
 	dir := t.TempDir()
 	root, dbPath := filepath.Join(dir, "repo"), filepath.Join(dir, "kg.db")
 	identityFixture(t, root, dbPath, "git:github.com/owner/a", true)
-	if err := os.WriteFile(filepath.Join(root, "old-skill/SKILL.md"), []byte("---\nname: old-skill\n---\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "old-skill/SKILL.md"), []byte{}, 0644); err != nil {
 		t.Fatal(err)
 	}
 	db, err := storage.NewDB(storage.DBOptions{Path: dbPath})

@@ -10,20 +10,29 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/build/internal/pipeline"
 	"github.com/xcosmosbox/cairn/core/dkconfig"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/storage"
 )
 
 // BuildResult 是一轮构建（全量/增量）的类型化结果。
 type BuildResult struct {
+	FailureKind        string          `json:"failure_kind,omitempty"`
+	Status             string          `json:"status"`
+	Reasons            []string        `json:"reasons,omitempty"`
 	DBPath             string          `json:"-"`
 	NodesCreated       int             `json:"nodes_created"`
 	EdgesCreated       int             `json:"edges_created"`
@@ -56,6 +65,7 @@ type ValidationReport struct {
 
 // FullRequest 是全量构建输入。
 type FullRequest struct {
+	DumpDir            string
 	RepoPath           string
 	DBPath             string
 	MinConfidence      float64
@@ -64,6 +74,8 @@ type FullRequest struct {
 
 // IncrementalRequest 是增量构建输入。
 type IncrementalRequest struct {
+	Sources            []extract.FrozenSource
+	SourceDocuments    []*dktypes.AnnotatedDocument
 	RepoPath           string
 	DBPath             string
 	MinConfidence      float64
@@ -137,7 +149,15 @@ func NewRunnerWithClient(client llm.Client, cfg dkconfig.LLMConfig) *Runner {
 }
 
 func (r *Runner) Full(ctx context.Context, req FullRequest) (BuildResult, error) {
+	if err := r.knownConfigurationError(); err != nil {
+		kind := "permanent"
+		if ctx.Err() != nil {
+			kind = "cancelled"
+		}
+		return BuildResult{Status: "failed", FailureKind: kind, Reasons: []string{err.Error()}}, err
+	}
 	orch, err := pipeline.NewOrchestrator(pipeline.Options{
+		DumpDir:            req.DumpDir,
 		Client:             r.client,
 		MaxTokens:          r.maxTokens,
 		MaxRetries:         r.maxRetries,
@@ -145,17 +165,28 @@ func (r *Runner) Full(ctx context.Context, req FullRequest) (BuildResult, error)
 		RepositoryIdentity: req.RepositoryIdentity,
 	})
 	if err != nil {
-		return BuildResult{}, err
+		return BuildResult{Status: "failed", FailureKind: "permanent", Reasons: []string{err.Error()}}, err
 	}
 	rpt, err := orch.RunFullRebuild(ctx, req.RepoPath, req.DBPath)
-	if err != nil {
-		return BuildResult{}, err
+	result := pipelineToBuildResult(rpt, req.DBPath)
+	var documents []annotation.DocumentResult
+	if rpt != nil {
+		documents = rpt.Documents
 	}
-	return pipelineToBuildResult(rpt, req.DBPath), nil
+	result.FailureKind = buildFailureKind(ctx, err, documents)
+	return result, err
 }
 
 func (r *Runner) Incremental(ctx context.Context, req IncrementalRequest) (BuildResult, error) {
+	if err := r.knownConfigurationError(); err != nil {
+		kind := "permanent"
+		if ctx.Err() != nil {
+			kind = "cancelled"
+		}
+		return BuildResult{Status: "failed", FailureKind: kind, Reasons: []string{err.Error()}}, err
+	}
 	orch, err := incremental.NewIncrementalOrchestrator(incremental.Options{
+		Sources: req.Sources, SourceDocuments: req.SourceDocuments,
 		Client:             r.client,
 		MaxTokens:          r.maxTokens,
 		MaxRetries:         r.maxRetries,
@@ -164,13 +195,16 @@ func (r *Runner) Incremental(ctx context.Context, req IncrementalRequest) (Build
 		RecallK:            r.recallK,
 	})
 	if err != nil {
-		return BuildResult{}, err
+		return BuildResult{Status: "failed", FailureKind: "permanent", Reasons: []string{err.Error()}}, err
 	}
 	rpt, err := orch.Run(ctx, req.RepoPath, req.DBPath)
-	if err != nil {
-		return BuildResult{}, err
+	result := incrementalToBuildResult(rpt, req.DBPath)
+	var documents []annotation.DocumentResult
+	if rpt != nil {
+		documents = rpt.Documents
 	}
-	return incrementalToBuildResult(rpt, req.DBPath), nil
+	result.FailureKind = buildFailureKind(ctx, err, documents)
+	return result, err
 }
 
 func (r *Runner) RebalanceCheck(ctx context.Context, req RebalanceRequest) (RebalanceDecision, error) {
@@ -255,7 +289,10 @@ func validateDB(dbPath string) (ValidationReport, error) {
 // ─── 报告转换 ────────────────────────────────────────────────────
 
 func pipelineToBuildResult(rpt *pipeline.RunReport, dbPath string) BuildResult {
-	res := BuildResult{DBPath: dbPath, DocsRewritten: rpt.DocsRewritten}
+	if rpt == nil {
+		return BuildResult{DBPath: dbPath, Status: "failed", Reasons: []string{"unavailable: no full construction report"}}
+	}
+	res := BuildResult{DBPath: dbPath, Status: rpt.Status, Reasons: append([]string(nil), rpt.Reasons...), DocsRewritten: rpt.DocsRewritten}
 	if rpt.Ingest != nil {
 		res.NodesCreated = rpt.Ingest.NodesInserted
 		res.EdgesCreated = rpt.Ingest.EdgesInserted
@@ -273,7 +310,10 @@ func pipelineToBuildResult(rpt *pipeline.RunReport, dbPath string) BuildResult {
 }
 
 func incrementalToBuildResult(rpt *incremental.RunReport, dbPath string) BuildResult {
-	res := BuildResult{DBPath: dbPath, NodesCreated: rpt.NodesCreated, DocsRewritten: rpt.DocsRewritten}
+	if rpt == nil {
+		return BuildResult{DBPath: dbPath, Status: "failed", Reasons: []string{"unavailable: no incremental construction report"}}
+	}
+	res := BuildResult{DBPath: dbPath, Status: rpt.Status, Reasons: append([]string(nil), rpt.Reasons...), NodesCreated: rpt.NodesCreated, DocsRewritten: rpt.DocsRewritten}
 	res.HasWriteback = rpt.DocsRewritten > 0
 	res.Warnings = rpt.Warnings
 	if data, err := json.Marshal(rpt); err == nil {
@@ -344,4 +384,77 @@ func ensureDB(dbPath string) error {
 		return err
 	}
 	return db.Close()
+}
+
+// ValidateSourceContextDirectory 防止下一次回写把冻结原文一起覆盖；同时检查既有 symlink。
+// Keep reusable raw snapshots outside the mutable generated source tree.
+func ValidateSourceContextDirectory(repoPath, dir string) error {
+	root, err := filepath.Abs(repoPath)
+	if err != nil {
+		return err
+	}
+	target, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	resolve := func(path string) string {
+		suffix := []string{}
+		probe := path
+		for {
+			if resolved, e := filepath.EvalSymlinks(probe); e == nil {
+				for i := len(suffix) - 1; i >= 0; i-- {
+					resolved = filepath.Join(resolved, suffix[i])
+				}
+				return resolved
+			}
+			parent := filepath.Dir(probe)
+			if parent == probe {
+				return path
+			}
+			suffix = append(suffix, filepath.Base(probe))
+			probe = parent
+		}
+	}
+	for _, pair := range [][2]string{{root, target}, {resolve(root), resolve(target)}} {
+		rel, e := filepath.Rel(pair[0], pair[1])
+		if e != nil {
+			return e
+		}
+		if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			return fmt.Errorf("source context: directory must be outside mutable source worktree")
+		}
+	}
+	return nil
+}
+
+// buildFailureKind 只传播可证明的永久配置/调用方取消；partial 和 exhausted 本身不等于永久错误。
+// Preserve the shared helper's permanent-attempt classification without guessing from provider text.
+func buildFailureKind(ctx context.Context, err error, docs []annotation.DocumentResult) string {
+	if err == nil {
+		return ""
+	}
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "cancelled"
+	}
+	for _, doc := range docs {
+		if doc.Outcome != annotation.DocumentComplete && len(doc.Attempts) > 0 && doc.Attempts[len(doc.Attempts)-1].Outcome == "permanent" {
+			return "permanent"
+		}
+	}
+	return "unavailable"
+}
+
+// knownConfigurationError 覆盖共享处理器在实际尝试前拒绝的明确本地配置。
+// Zero recorded attempts do not turn a known invalid configuration into a retryable outage.
+func (r *Runner) knownConfigurationError() error {
+	if r == nil || r.client == nil {
+		return fmt.Errorf("runner: nil construction client")
+	}
+	if reflect.ValueOf(r.client).Kind() == reflect.Ptr && reflect.ValueOf(r.client).IsNil() {
+		return fmt.Errorf("runner: nil construction client")
+	}
+	if r.maxTokens < 0 {
+		return fmt.Errorf("runner: maxTokens must be nonnegative")
+	}
+	return nil
 }

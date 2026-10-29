@@ -22,7 +22,10 @@ package incremental
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"log"
 	"math"
@@ -51,7 +54,7 @@ type Options struct {
 	Client llm.Client
 	// MaxTokens 是单次 LLM 请求的 max_tokens；≤0 交由 client 默认。
 	MaxTokens int
-	// MaxRetries 是标注/语义门的原地重试上限；≤0 取各自默认。
+	// MaxRetries>0 为每个失败范围共享的额外恢复次数；0默认3，负值禁用。
 	MaxRetries int
 	// MaxNameRunes 是 Gate A 的名称长度上限；≤0 取默认。
 	MaxNameRunes int
@@ -61,6 +64,10 @@ type Options struct {
 	RecallK int
 	// Rules 是 discovery 扫描规则（与全量一致；零值用其内置默认）。
 	Rules discovery.DiscoveryRules
+	// Sources/SourceDocuments 是调用方冻结的完整当前原文及已接受成员绑定；不从生成 Markdown 重建。
+	// For a changed key supply one authoritative complete current raw snapshot, never old+C4 fragments.
+	Sources         []extract.FrozenSource
+	SourceDocuments []*dktypes.AnnotatedDocument
 }
 
 // IncrementalOrchestrator 是增量流水线的编排器。
@@ -74,6 +81,8 @@ type IncrementalOrchestrator struct {
 	maxNameRunes       int
 	recallK            int
 	rules              discovery.DiscoveryRules
+	sources            []extract.FrozenSource
+	sourceDocuments    []*dktypes.AnnotatedDocument
 	// beforeWriteback is a package-test fault-injection hook. Production
 	// constructors leave it nil.
 	beforeWriteback func(context.Context) error
@@ -82,6 +91,9 @@ type IncrementalOrchestrator struct {
 // NewIncrementalOrchestrator 组装增量编排器。Client 不可为 nil。
 // NewIncrementalOrchestrator assembles the orchestrator. Client must not be nil.
 func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) {
+	if err := extract.ValidateSourceContext(opts.Sources, opts.SourceDocuments); err != nil {
+		return nil, fmt.Errorf("incremental: %w", err)
+	}
 	if opts.Client == nil {
 		return nil, fmt.Errorf("incremental: llm client is nil")
 	}
@@ -98,6 +110,8 @@ func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) 
 		maxNameRunes:       opts.MaxNameRunes,
 		recallK:            recallK,
 		rules:              opts.Rules,
+		sources:            append([]extract.FrozenSource(nil), opts.Sources...),
+		sourceDocuments:    cloneSourceDocuments(opts.SourceDocuments),
 	}, nil
 }
 
@@ -105,22 +119,33 @@ func NewIncrementalOrchestrator(opts Options) (*IncrementalOrchestrator, error) 
 // RunReport 是一轮增量运行的结果摘要（可观测）。
 // RunReport summarizes one incremental run.
 type RunReport struct {
-	DocumentMoves    []DocumentMove // 已核验的来源路径迁移；UUID/member/span 不变
-	DocsScanned      int            // 候选文档总数（sidecar 文档 + 扫描文档 + file_states 文档）
-	DocsChanged      int            // 细判有实质变更的文档数
-	C1Edits          int            // C1 块内编辑数
-	C2Deletions      int            // C2 块删除数
-	C3Violations     int            // C3 只读区篡改数（忽略+还原）
-	C4Segments       int            // C4 块外新增段数
-	UnitsAnnotated   int            // I-3 产出的新标注单元数
-	NodesMerged      int            // 融入已有 node 数
-	NodesCreated     int            // 新建 node 数
-	NodesDeleted     int            // 真删 node 数（引用计数归零）
-	SubdomainsReflow int            // relation 重算的脏子域数
-	DocsRewritten    int            // 实际写盘的文档数（含路径迁移 sidecar 更新）
-	PrimariesWritten int            // I-9 写盘的 primary 数
-	PrimariesDeleted int            // I-9 删除的 primary 数
-	AnnotateSkipped  []string       // I-3 降级跳过的文档
+	SourceAssociations         storage.NodeSourceBatchResult
+	SourceAssociationsVerified bool
+	NodesSelectedCreated       int
+	NodesSelectedMerged        int
+	Status                     string
+	Reasons                    []string
+	Discovery                  *discovery.Report
+	Documents                  []annotation.DocumentResult
+	NodeOutcomes               []extract.NodeDescriptionOutcome
+	Relations                  *extract.RelationProcessReport
+	RelationOutcomes           []relationReflowOutcome
+	DocumentMoves              []DocumentMove // 已核验的来源路径迁移；UUID/member/span 不变
+	DocsScanned                int            // 候选文档总数（sidecar 文档 + 扫描文档 + file_states 文档）
+	DocsChanged                int            // 细判有实质变更的文档数
+	C1Edits                    int            // C1 块内编辑数
+	C2Deletions                int            // C2 块删除数
+	C3Violations               int            // C3 只读区篡改数（忽略+还原）
+	C4Segments                 int            // C4 块外新增段数
+	UnitsAnnotated             int            // I-3 产出的新标注单元数
+	NodesMerged                int            // 融入已有 node 数
+	NodesCreated               int            // 新建 node 数
+	NodesDeleted               int            // 真删 node 数（引用计数归零）
+	SubdomainsReflow           int            // relation 重算的脏子域数
+	DocsRewritten              int            // 实际写盘的文档数（含路径迁移 sidecar 更新）
+	PrimariesWritten           int            // I-9 写盘的 primary 数
+	PrimariesDeleted           int            // I-9 删除的 primary 数
+	AnnotateSkipped            []string       // I-3 降级跳过的文档
 	// UnresolvedDocs 是 C4 未完全吸收的文档及原因（问题 2：散文已保留、baseline 未前移、
 	// 下一轮可重试——绝不被「成功回写」掩盖）。
 	// UnresolvedDocs lists docs whose C4 additions were not fully absorbed.
@@ -133,21 +158,29 @@ type RunReport struct {
 // （局部 upsert，绝不删除重建）。
 //
 // Run executes one incremental round over the existing KG at dbPath.
-func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath string) (*RunReport, error) {
-	report := &RunReport{}
+func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath string) (report *RunReport, runErr error) {
+	report = &RunReport{}
 	rs := newRunState()
+	defer func() {
+		report.finish(ctx, runErr, rs)
+		if runErr == nil && report.Status != "complete" {
+			runErr = fmt.Errorf("incremental: %s: %s", report.Status, strings.Join(report.Reasons, "; "))
+		}
+	}()
+	relationDocs := cloneSourceDocuments(o.sourceDocuments)
+	originals := append([]extract.FrozenSource(nil), o.sources...)
 
 	// ══════════ 前置验证（问题 4：任何扫描/数据库写入/文档写入之前）══════════
 	// DB 文件必须已存在（绝不自动创建空库——NewDB 会建 schema，必须先检查）。
 	if err := preflightPaths(repoPath, dbPath); err != nil {
-		return nil, err
+		return report, err
 	}
 	for _, root := range o.rules.SkillRootPaths {
 		if root == "." {
 			continue
 		}
 		if _, err := writeback.ValidateRepositoryPath(repoPath, root); err != nil {
-			return nil, fmt.Errorf("incremental: unsafe discovery scan root: %w", err)
+			return report, fmt.Errorf("incremental: unsafe discovery scan root: %w", err)
 		}
 	}
 
@@ -155,7 +188,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	// 执行 DDL/迁移。错误、空或拿错的 DB 在拒绝前必须保持字节与 mtime 不变。
 	preflightDB, err := storage.OpenPreflightReadOnly(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("incremental: 只读验证 db %s: %w", dbPath, err)
+		return report, fmt.Errorf("incremental: 只读验证 db %s: %w", dbPath, err)
 	}
 	preflightStores := newStores(preflightDB)
 	identity, adopting, preflightErr := o.preflightKG(ctx, preflightStores, repoPath)
@@ -164,31 +197,31 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	}
 	closeErr := preflightDB.Close()
 	if preflightErr != nil {
-		return nil, preflightErr
+		return report, preflightErr
 	}
 	if closeErr != nil {
-		return nil, fmt.Errorf("incremental: 关闭只读预检 db %s: %w", dbPath, closeErr)
+		return report, fmt.Errorf("incremental: 关闭只读预检 db %s: %w", dbPath, closeErr)
 	}
 	if err := store.CheckLease(ctx); err != nil {
-		return nil, err
+		return report, err
 	}
 	if adopting && identity == "" {
 		identity, err = repoidentity.Ensure(ctx, repoPath, o.repositoryIdentity)
 		if err != nil {
-			return nil, fmt.Errorf("incremental: establish adopted repository identity: %w", err)
+			return report, fmt.Errorf("incremental: establish adopted repository identity: %w", err)
 		}
 	}
 
 	// 验证通过后才以读写模式打开既有库（局部 upsert，绝不删除重建）。
 	db, err := storage.NewDB(storage.DBOptions{Path: dbPath})
 	if err != nil {
-		return nil, fmt.Errorf("incremental: open db %s: %w", dbPath, err)
+		return report, fmt.Errorf("incremental: open db %s: %w", dbPath, err)
 	}
 	defer db.Close()
 	st := newStores(db)
 	if adopting {
 		if err := st.identity.Set(ctx, identity); err != nil {
-			return nil, fmt.Errorf("incremental: stamp adopted repository identity: %w", err)
+			return report, fmt.Errorf("incremental: stamp adopted repository identity: %w", err)
 		}
 	}
 	repoURL := identity // file_states 使用稳定归属，不再绑定临时 worktree 路径。
@@ -197,7 +230,7 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	log.Printf("══════════ I-1 变化检测 / detect ══════════")
 	changesets, scanned, err := o.detect(ctx, st, repoPath, repoURL)
 	if err != nil {
-		return nil, err
+		return report, err
 	}
 	changesets = excludeFailedChanges(changesets, scanned, rs)
 	if len(scanned.moves) > 0 {
@@ -214,6 +247,10 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		if len(scanned.moves) > 0 {
 			return report, fmt.Errorf("incremental: document moves did not converge")
 		}
+	}
+	report.Discovery = scanned.discovery
+	if scanned.discoveryError != "" {
+		report.Reasons = append(report.Reasons, "discovery unavailable: "+scanned.discoveryError)
 	}
 	report.DocsScanned = len(scanned.all)
 	var changed []*DocChangeSet
@@ -269,6 +306,52 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 			}
 		}
 		annotated := ant.annotateC4Docs(ctx, pp, c4TextByDoc)
+		report.Documents = append(report.Documents, annotated.Results...)
+		// A stale original cannot certify new C4 semantics merely because its path matches.
+		for _, doc := range annotated.Docs {
+			for si, source := range originals {
+				if source.Skill != doc.Skill || source.Path != doc.FilePath {
+					continue
+				}
+				current := true
+				for _, segment := range pp.C4ByDoc[doc.FilePath] {
+					if !strings.Contains(source.Content, strings.TrimSpace(segment.Text)) {
+						current = false
+						break
+					}
+				}
+				if !current {
+					report.Reasons = append(report.Reasons, "source "+doc.FilePath+" unavailable: supplied current raw snapshot does not contain actual C4 additions")
+					originals = append(originals[:si], originals[si+1:]...)
+				}
+				break
+			}
+		}
+		// 本轮新增成员使用实际接受的标注；有完整快照时，片段不能遮盖旧来源。
+		// Retain old accepted endpoint materials, then add the actual C4 members.
+		for _, doc := range annotated.Docs {
+			present := false
+			for _, source := range originals {
+				if source.Skill == doc.Skill && source.Path == doc.FilePath {
+					present = true
+					break
+				}
+			}
+			if present {
+				continue
+			}
+			// Only a genuinely new source can use C4's complete outside-block input as its original.
+			managed, sourceErr := st.sources.ListByFile(ctx, doc.FilePath)
+			if sourceErr != nil {
+				report.Reasons = append(report.Reasons, "source membership unavailable: "+sourceErr.Error())
+				continue
+			}
+			if len(managed) == 0 {
+				originals = append(originals, extract.FreezeSource(doc.Skill, doc.FilePath, c4TextByDoc[doc.FilePath]))
+			}
+		}
+		rebaseC4SourceSpans(annotated.Docs, originals)
+		relationDocs = append(relationDocs, cloneSourceDocuments(annotated.Docs)...)
 		for _, s := range annotated.Skipped {
 			report.AnnotateSkipped = append(report.AnnotateSkipped, s.Path+": "+s.Reason)
 		}
@@ -343,10 +426,27 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		if ao == nil {
 			ao = &alignOutcome{pending: map[string]*pendingNode{}, unitsByID: map[string]*alignUnit{}}
 		}
-		rr.descriptions = rf.fuseDescriptions(ctx, rs.dirty, ao, rs)
-		rr.relations, rr.keptCross = rf.recomputeRelations(ctx, rs.dirty, ao, rr.descriptions, rs)
+		if len(rs.dirty.NodesFused) == 0 && len(ao.pending) == 0 {
+			// C1 只改人工正文，C2 只移除端点；不需要从原文重新发现关系。
+			// Retain the actual surviving graph for deletion-only topology, without new source credit.
+			if err := retainStructuralRelations(ctx, st, rs.dirty, rr, report); err != nil {
+				return report, err
+			}
+		} else {
+			rr.descriptions, rr.verifiedNodeContent = rf.fuseDescriptionsWithVerifiedContent(ctx, rs.dirty, ao, rs)
+			report.NodeOutcomes = rf.nodeDescriptionOutcomes()
+			rr.relations, rr.keptCross = rf.recomputeRelationsWithSources(ctx, rs.dirty, ao, rr.descriptions, relationDocs, originals, extract.RelationProcessOptions{MaxRetries: o.maxRetries}, rs)
+			report.Relations = rf.relationProcessReport()
+			report.RelationOutcomes = rf.relationReflowOutcomes()
+		}
 		report.SubdomainsReflow = len(rs.dirty.Subdomains)
 	}
+	var selectedSourceRows []storage.NodeSource
+	if ao != nil {
+		selectedSourceRows = append(selectedSourceRows, ao.sourceRows...)
+	}
+	report.SourceAssociations = sourceSelectionCounts(selectedSourceRows)
+	preserveIncompleteRelationDocuments(report, ao, rr, relationDocs, pp, changed, c4ProseByDoc, rs)
 	if err := omitFailedRelationNodes(ao, rr, rs, c4ProseByDoc); err != nil {
 		return report, fmt.Errorf("incremental: reflow: %w", err)
 	}
@@ -378,8 +478,19 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	// syncProvenance/source_refs/provides 同步。
 	if !rs.dirty.Empty() || len(rs.touched) > 0 || len(rs.deleted) > 0 || (ao != nil && len(ao.pending) > 0) {
 		log.Printf("══════════ I-8 增量入库 / local upsert ══════════")
-		if err := applyIncrementalIngest(ctx, st, rs.dirty, ao, rr, rs); err != nil {
-			return report, fmt.Errorf("incremental: ingest: %w", err)
+		report.NodesSelectedCreated, report.NodesSelectedMerged = report.NodesCreated, report.NodesMerged
+		report.NodesCreated, report.NodesMerged = 0, 0
+		ingestErr := applyIncrementalIngest(ctx, st, rs.dirty, ao, rr, rs)
+		confirmed, verified, readErr := confirmSelectedSources(ctx, st, selectedSourceRows)
+		report.SourceAssociations, report.SourceAssociationsVerified = confirmed, verified
+		if verified {
+			report.NodesCreated, report.NodesMerged = confirmedPendingNodes(ctx, st, ao, rr, selectedSourceRows)
+		}
+		if ingestErr != nil {
+			return report, fmt.Errorf("incremental: ingest: %w", ingestErr)
+		}
+		if readErr != nil {
+			return report, fmt.Errorf("incremental: source readback unavailable: %w", readErr)
 		}
 		logIngestStats(rs.dirty, ao, rs)
 	}
@@ -614,10 +725,12 @@ func (o *IncrementalOrchestrator) preflightKG(ctx context.Context, st *stores, r
 // scanResult 是文档枚举的结果（候选全集 + skill 映射 + sidecar 文档计数）。
 // scanResult is the doc enumeration result.
 type scanResult struct {
-	moves       []managedMove     // 完整预检后才允许 Run 原子迁移；detect 自身只读
-	all         []string          // 候选文档全集（去重，相对 repo 根）
-	skillByDoc  map[string]string // 文档 → 所属 skill（discovery 扫描）
-	sidecarDocs int               // 有 sidecar 的文档数（manifest 分母）
+	discovery      *discovery.Report
+	discoveryError string
+	moves          []managedMove     // 完整预检后才允许 Run 原子迁移；detect 自身只读
+	all            []string          // 候选文档全集（去重，相对 repo 根）
+	skillByDoc     map[string]string // 文档 → 所属 skill（discovery 扫描）
+	sidecarDocs    int               // 有 sidecar 的文档数（manifest 分母）
 	// primaryUUIDByPath 是 KG 权威的「primary 路径 → node UUID」映射。
 	// 引入 file_slug 后 primary 文件名是可读 slug、不再等于 UUID，因此禁止再从
 	// 路径 basename 反解身份（会把 slug 当 UUID 查库、误判 node 已删除）。
@@ -670,15 +783,26 @@ func (o *IncrementalOrchestrator) detect(ctx context.Context, st *stores, repoPa
 	}
 	// (b) discovery 扫描的 reference 文档（含全新文档；提供 skill 映射）。
 	scanner := discovery.NewFSScanner()
-	skills, serr := scanner.Scan(ctx, repoPath, o.rules)
+	scan, serr := scanner.ScanReport(ctx, repoPath, o.rules)
+	sr.discovery = &scan
 	if serr != nil {
 		// 扫描失败降级：不阻断（sidecar 文档仍可检测），仅告警。
 		log.Printf("[incremental] ⚠ discovery 扫描失败（全新文档将无法发现，继续）: %v", serr)
+		sr.discoveryError = serr.Error()
 	}
-	for _, sk := range skills {
-		for _, rel := range sk.ReferenceFiles {
-			addDoc(rel)
-			sr.skillByDoc[rel] = sk.Name
+	for _, source := range scan.Sources {
+		if source.Disposition != discovery.Supported {
+			continue
+		}
+		addDoc(source.Path)
+		longest := -1
+		for _, sk := range scan.Skills {
+			if source.Path == sk.MarkerFile || sk.Path == "." || strings.HasPrefix(source.Path, strings.TrimSuffix(sk.Path, "/")+"/") {
+				if len(sk.Path) > longest {
+					sr.skillByDoc[source.Path] = sk.Name
+					longest = len(sk.Path)
+				}
+			}
 		}
 	}
 	// (c) file_states 已记录的文档（整篇删除的检测：记录在、文件系统无）。
@@ -1498,4 +1622,393 @@ func countSegments(m map[string][]TextSegment) int {
 		n += len(v)
 	}
 	return n
+}
+
+// cloneSourceDocuments 隔离共享 caller 输入，AssignIDs 和 helper 不能改写缓存证据。
+// Source snapshots stay caller-owned; generated Markdown is never an original source.
+func cloneSourceDocuments(docs []*dktypes.AnnotatedDocument) []*dktypes.AnnotatedDocument {
+	out := make([]*dktypes.AnnotatedDocument, 0, len(docs))
+	for _, doc := range docs {
+		if doc != nil {
+			copy := *doc
+			copy.Items = append([]dktypes.AnnotatedItem(nil), doc.Items...)
+			for i := range copy.Items {
+				if copy.Items[i].SourceSpan != nil {
+					span := *copy.Items[i].SourceSpan
+					copy.Items[i].SourceSpan = &span
+				}
+			}
+			out = append(out, &copy)
+		}
+	}
+	return out
+}
+
+// finish 汇总全部实际范围；告警不自动等于失败，但未解决工作绝不等于 complete。
+// The sole incremental product aggregate retains distinct unavailable/cancelled reasons.
+func (r *RunReport) finish(ctx context.Context, err error, rs *runState) {
+	if r.SourceAssociationsVerified && r.SourceAssociations.Committed != r.SourceAssociations.DistinctSelected {
+		r.Reasons = append(r.Reasons, fmt.Sprintf("sources partial: committed %d/%d distinct selected associations (%d attempted, %d duplicate rows)", r.SourceAssociations.Committed, r.SourceAssociations.DistinctSelected, r.SourceAssociations.Attempted, r.SourceAssociations.DuplicateRows))
+	}
+	for _, doc := range r.Documents {
+		if doc.Outcome != annotation.DocumentComplete {
+			r.Reasons = append(r.Reasons, fmt.Sprintf("document %s %s: %s", doc.FilePath, doc.Outcome, doc.Reason))
+		}
+	}
+	for _, out := range r.NodeOutcomes {
+		if out.Outcome != annotation.DocumentComplete {
+			r.Reasons = append(r.Reasons, fmt.Sprintf("node %s %s: %s", out.ID, out.Outcome, out.Reason))
+		}
+	}
+	if r.Relations != nil {
+		for _, out := range r.Relations.Scopes {
+			if out.Outcome != annotation.DocumentComplete {
+				r.Reasons = append(r.Reasons, fmt.Sprintf("relations %s %s: %s", out.Scope, out.Outcome, out.Reason))
+			}
+		}
+	}
+	for _, out := range r.RelationOutcomes {
+		if out.Outcome != annotation.DocumentComplete && out.State != "retained_old" && out.State != "retained_old_audited" {
+			r.Reasons = append(r.Reasons, fmt.Sprintf("relation %s %s: %s", out.Scope.String(), out.Outcome, out.Reason))
+		}
+	}
+	for _, doc := range r.UnresolvedDocs {
+		r.Reasons = append(r.Reasons, "document "+doc.Path+" partial: "+doc.Reason)
+	}
+	if r.Discovery != nil {
+		for _, source := range r.Discovery.Sources {
+			if source.Disposition == discovery.Unreadable || source.Disposition == discovery.Cancelled {
+				r.Reasons = append(r.Reasons, fmt.Sprintf("discovery %s %s: %s", source.Disposition, source.Path, source.Reason))
+			}
+		}
+	}
+	if rs != nil {
+		for path := range rs.failedDocsSnapshot() {
+			r.Reasons = append(r.Reasons, "document "+path+" partial: source or baseline retained")
+		}
+		r.Warnings = rs.warningsSnapshot()
+	}
+	if err != nil {
+		reason := "unavailable: "
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+			reason = "cancelled: "
+		}
+		r.Reasons = append(r.Reasons, reason+err.Error())
+	}
+	sort.Strings(r.Reasons)
+	reasons := r.Reasons
+	r.Reasons = nil
+	for _, reason := range reasons {
+		if len(r.Reasons) == 0 || r.Reasons[len(r.Reasons)-1] != reason {
+			r.Reasons = append(r.Reasons, reason)
+		}
+	}
+	r.Status = "complete"
+	if len(r.Reasons) > 0 {
+		r.Status = "failed"
+		if r.DocsRewritten > 0 || r.NodesCreated+r.NodesMerged > 0 || len(r.DocumentMoves) > 0 || (rs != nil && (len(rs.touched) > 0 || len(rs.deleted) > 0)) {
+			r.Status = "partial"
+		}
+	}
+}
+
+// rebaseC4SourceSpans 只把实际逐字引文定位到调用方原文；生成文档坐标不能冒充原文行号。
+// Missing/composite quotes retain unknown spans instead of invented bounding ranges.
+func rebaseC4SourceSpans(docs []*dktypes.AnnotatedDocument, originals []extract.FrozenSource) {
+	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
+		var raw *extract.FrozenSource
+		for i := range originals {
+			if originals[i].Skill == doc.Skill && originals[i].Path == doc.FilePath {
+				raw = &originals[i]
+				break
+			}
+		}
+		for i := range doc.Items {
+			item := &doc.Items[i]
+			quote := ""
+			if item.SourceSpan != nil {
+				quote = item.SourceSpan.Quote
+			}
+			// C4 was annotated in generated-worktree coordinates. Unknown original means unknown span.
+			item.SourceSpan = nil
+			if raw == nil || quote == "" {
+				continue
+			}
+			offset := strings.Index(raw.Content, quote)
+			if offset < 0 {
+				continue
+			}
+			item.SourceSpan = &dktypes.SourceSpan{StartLine: 1 + strings.Count(raw.Content[:offset], "\n"), EndLine: 1 + strings.Count(raw.Content[:offset+len(quote)], "\n"), Quote: quote}
+		}
+	}
+}
+
+// retainStructuralRelations 仅编排 C2 后实际存活边的原样保留，不执行语义推断或授予明示信用。
+// Deleting an endpoint is not a request to reverify or regenerate unrelated surviving relations.
+func retainStructuralRelations(ctx context.Context, st *stores, dirty *DirtySet, rr *reflowResult, report *RunReport) error {
+	for _, key := range dirty.SortedSubdomains() {
+		nodes, err := st.nodes.ListBySubdomain(ctx, key.Domain, key.Subdomain)
+		if err != nil {
+			return fmt.Errorf("incremental: structural relation nodes: %w", err)
+		}
+		var retained []*dktypes.Edge
+		for _, node := range nodes {
+			if node.Label != dktypes.LabelEntity && node.Label != dktypes.LabelConcept {
+				continue
+			}
+			edges, err := st.edges.GetOutgoing(ctx, node.ID, 0)
+			if err != nil {
+				return fmt.Errorf("incremental: structural relation readback: %w", err)
+			}
+			for _, edge := range edges {
+				if extract.IsValidRelationKind(string(edge.Kind)) {
+					copy := *edge
+					retained = append(retained, &copy)
+				}
+			}
+		}
+		rr.relations[key] = nil
+		rr.keptCross[key] = retained
+		report.RelationOutcomes = append(report.RelationOutcomes, relationReflowOutcome{Scope: key, State: "retained_existing", Classification: "unchanged", Outcome: annotation.DocumentComplete, Reason: "deletion-only structural maintenance; surviving persisted relations retained verbatim without new explicit-source credit"})
+	}
+	return nil
+}
+
+// MarshalJSON 不把调用方完整原文或接受候选附到公共状态；保留所有实际尝试与原因。
+// Raw snapshots remain in the explicitly selected private source context.
+func (r RunReport) MarshalJSON() ([]byte, error) {
+	type reportJSON RunReport
+	safe := reportJSON(r)
+	safe.Documents = append([]annotation.DocumentResult(nil), r.Documents...)
+	for i := range safe.Documents {
+		safe.Documents[i].Document = nil
+	}
+	if r.Discovery != nil {
+		copy := *r.Discovery
+		copy.Sources = append([]discovery.Source(nil), r.Discovery.Sources...)
+		for i := range copy.Sources {
+			copy.Sources[i].Content = nil
+		}
+		safe.Discovery = &copy
+	}
+	return json.Marshal(safe)
+}
+
+// preserveIncompleteRelationDocuments 关系范围未完成时保留其 C4 原文/旧 baseline。
+// A partial first run must remain retryable; an unchanged rerun cannot erase missing source verification.
+func preserveIncompleteRelationDocuments(runReport *RunReport, ao *alignOutcome, rr *reflowResult, docs []*dktypes.AnnotatedDocument, plan *PipelinePlan, changed []*DocChangeSet, prose map[string]string, rs *runState) {
+	report := runReport.Relations
+	if report == nil || ao == nil {
+		return
+	}
+	failedPaths := map[string]bool{}
+	for _, scope := range report.Scopes {
+		if scope.Outcome == annotation.DocumentComplete {
+			continue
+		}
+		paths := map[string]bool{}
+		for _, source := range scope.Sources {
+			paths[source.Path] = true
+		}
+		members := map[string]bool{}
+		for _, member := range scope.MemberIDs {
+			members[member] = true
+		}
+		for _, doc := range docs {
+			if doc == nil {
+				continue
+			}
+			for _, item := range doc.Items {
+				if members[item.ID] {
+					paths[doc.FilePath] = true
+				}
+			}
+		}
+		for _, row := range ao.sourceRows {
+			if pn := ao.pending[row.NodeUUID]; pn != nil && (SubdomainKey{pn.Domain, pn.Subdomain}).String() == scope.Scope {
+				paths[row.FilePath] = true
+			}
+		}
+		if len(paths) == 0 {
+			for _, row := range ao.sourceRows {
+				paths[row.FilePath] = true
+			}
+		}
+		for path := range paths {
+			if _, isC4 := plan.C4ByDoc[path]; isC4 {
+				failedPaths[path] = true
+			}
+		}
+	}
+	// A verified fused pair depends on every member it was checked against. Do not apply a
+	// failed scope's pair/source rows then let the old sidecar turn pending C4 into C3 repair.
+	blocked := map[string]bool{}
+	for _, row := range ao.sourceRows {
+		if failedPaths[row.FilePath] {
+			blocked[row.NodeUUID] = true
+		}
+	}
+	for _, row := range ao.sourceRows {
+		if blocked[row.NodeUUID] {
+			if _, isC4 := plan.C4ByDoc[row.FilePath]; isC4 {
+				failedPaths[row.FilePath] = true
+			}
+		}
+	}
+	for id := range blocked {
+		delete(ao.pending, id)
+		delete(rs.dirty.NodesFused, id)
+		if rr != nil {
+			delete(rr.descriptions, id)
+			delete(rr.verifiedNodeContent, id)
+		}
+	}
+	rows := ao.sourceRows[:0]
+	for _, row := range ao.sourceRows {
+		if !blocked[row.NodeUUID] {
+			rows = append(rows, row)
+		}
+	}
+	ao.sourceRows = rows
+	if rr != nil {
+		for key, relations := range rr.relations {
+			kept := make([]extract.Relation, 0, len(relations))
+			for _, relation := range relations {
+				if blocked[relation.Source] || blocked[relation.Target] {
+					continue
+				}
+				var envelope reflowAssertionEnvelope
+				if json.Unmarshal([]byte(relation.Description), &envelope) == nil && len(envelope.Assertions) > 0 {
+					assertions := envelope.Assertions[:0]
+					for _, assertion := range envelope.Assertions {
+						bad := false
+						if assertion.Classification == "explicit" {
+							for _, source := range assertion.Sources {
+								if failedPaths[source.Path] {
+									bad = true
+									break
+								}
+							}
+						}
+						if !bad {
+							assertions = append(assertions, assertion)
+						}
+					}
+					if len(assertions) == 0 {
+						continue
+					}
+					envelope.Assertions = assertions
+					wire, _ := json.Marshal(envelope)
+					relation.Description = string(wire)
+				}
+				kept = append(kept, relation)
+			}
+			rr.relations[key] = kept
+		}
+	}
+	unresolved := map[string]bool{}
+	for _, doc := range runReport.UnresolvedDocs {
+		unresolved[doc.Path] = true
+	}
+	for path := range failedPaths {
+		rs.c4Preserve[path] = prose[path]
+		if !unresolved[path] {
+			runReport.UnresolvedDocs = append(runReport.UnresolvedDocs, UnresolvedDoc{Path: path, Reason: "dependent relation verification incomplete; pending source and previous node state retained"})
+		}
+		// Other successful edits may still require a coherent writeback of this document.
+		// Preserve its retry baseline while I-9 retains the unresolved C4 prose.
+		for _, cs := range changed {
+			if cs.Path == path && cs.Sidecar != nil && cs.Sidecar.DocHash != "" {
+				rs.retryBaselines[path] = cs.Sidecar.DocHash
+				break
+			}
+		}
+	}
+}
+
+// canonicalSelectedSources 与 .5 选择同一真实代表位置；该只读统计不制造新来源行。
+// Complete known span wins over a hint/unknown; ties keep the earliest actual occurrence.
+func canonicalSelectedSources(rows []storage.NodeSource) map[[3]string]storage.NodeSource {
+	selected := map[[3]string]storage.NodeSource{}
+	rank := func(row storage.NodeSource) int {
+		if row.StartLine > 0 && row.EndLine >= row.StartLine {
+			return 0
+		}
+		if row.StartLine > 0 || row.EndLine > 0 {
+			return 1
+		}
+		return 2
+	}
+	for _, row := range rows {
+		key := [3]string{row.NodeUUID, row.MemberID, row.FilePath}
+		old, ok := selected[key]
+		if !ok || rank(row) < rank(old) || (rank(row) == rank(old) && (row.StartLine < old.StartLine || (row.StartLine == old.StartLine && row.EndLine < old.EndLine))) {
+			selected[key] = row
+		}
+	}
+	return selected
+}
+func sourceSelectionCounts(rows []storage.NodeSource) storage.NodeSourceBatchResult {
+	distinct := len(canonicalSelectedSources(rows))
+	return storage.NodeSourceBatchResult{Attempted: len(rows), DistinctSelected: distinct, DuplicateRows: len(rows) - distinct}
+}
+func confirmSelectedSources(ctx context.Context, st *stores, rows []storage.NodeSource) (storage.NodeSourceBatchResult, bool, error) {
+	counts := sourceSelectionCounts(rows)
+	loaded := map[string][]storage.NodeSource{}
+	for key, want := range canonicalSelectedSources(rows) {
+		existing, ok := loaded[want.NodeUUID]
+		if !ok {
+			var err error
+			existing, err = st.sources.ListByNode(ctx, want.NodeUUID)
+			if err != nil {
+				return counts, false, err
+			}
+			loaded[want.NodeUUID] = existing
+		}
+		for _, actual := range existing {
+			if [3]string{actual.NodeUUID, actual.MemberID, actual.FilePath} == key && actual == want {
+				counts.Committed++
+				break
+			}
+		}
+	}
+	return counts, true, nil
+}
+
+// confirmedPendingNodes 区分计划候选与实际核验 pair/source 已落库的节点；I-8 后续失败不抹掉成功兄弟。
+// Existing confirmed repeat associations are successful applications, not new inserted-row claims.
+func confirmedPendingNodes(ctx context.Context, st *stores, ao *alignOutcome, rr *reflowResult, rows []storage.NodeSource) (created, merged int) {
+	if ao == nil || rr == nil {
+		return
+	}
+	selected := canonicalSelectedSources(rows)
+	for id, pending := range ao.pending {
+		content, ok := rr.verifiedNodeContent[id]
+		if !ok {
+			continue
+		}
+		actual, err := st.nodes.GetByID(ctx, id)
+		if err != nil || actual == nil || actual.Summary != content.Summary || actual.Description != content.Description {
+			continue
+		}
+		expected := []storage.NodeSource{}
+		for _, row := range selected {
+			if row.NodeUUID == id {
+				expected = append(expected, row)
+			}
+		}
+		counts, verified, err := confirmSelectedSources(ctx, st, expected)
+		if err != nil || !verified || len(expected) == 0 || counts.Committed != counts.DistinctSelected {
+			continue
+		}
+		if pending.IsNew {
+			created++
+		} else {
+			merged++
+		}
+	}
+	return
 }

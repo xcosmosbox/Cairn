@@ -41,10 +41,48 @@ func pipelineNodeDescriptionResponse(req llm.CompleteRequest, detail string) (*l
 	return &llm.CompleteResponse{Text: string(b), FinishReason: "stop"}, err
 }
 
+// The accepted relation helper generates per frozen source with call-scoped aliases.
+// Empty structural markers remain enumerated but have no relation material.
+func pipelineFixtureSourceRelations(req llm.CompleteRequest, kind, description string) (*llm.CompleteResponse, error) {
+	var in struct {
+		Focus   string `json:"focus_source_id"`
+		Nodes   []struct{ Alias, Name string }
+		Sources []struct{ ID, Content string } `json:"original_sources"`
+	}
+	if err := json.Unmarshal([]byte(req.User), &in); err != nil {
+		return nil, err
+	}
+	rows := []map[string]any{}
+	for _, source := range in.Sources {
+		if source.ID != in.Focus || strings.TrimSpace(source.Content) == "" {
+			continue
+		}
+		a, b := "", ""
+		for _, node := range in.Nodes {
+			if node.Name == "Admission" {
+				a = node.Alias
+			}
+			if node.Name == "Quota" {
+				b = node.Alias
+			}
+		}
+		if a == "" || b == "" {
+			return nil, fmt.Errorf("missing actual relation endpoint aliases")
+		}
+		rows = append(rows, map[string]any{"source": a, "target": b, "kind": kind, "description": description, "confidence": .9})
+	}
+	data, err := json.Marshal(map[string]any{"relations": rows})
+	return &llm.CompleteResponse{Text: string(data), FinishReason: "stop"}, err
+}
+
 func (c *crossPipelineClient) ProviderName() string { return "offline-cross-pipeline" }
 func (c *crossPipelineClient) Complete(_ context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
 	var text string
 	switch {
+	case strings.Contains(req.System, "SOURCE-RELATION GENERATE"):
+		return pipelineFixtureSourceRelations(req, "depends_on", "Admission requires quota")
+	case strings.Contains(req.System, "SOURCE-RELATION COVERAGE"):
+		return &llm.CompleteResponse{Text: `{"complete":true,"supported":true,"reason":"all fixed source prerequisite relations retained"}`, FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "知识结构化标注专家"):
 		name, body := "Admission", "Admission requires an available quota before accepting work."
 		if strings.Contains(req.User, "references/quota.md") {
@@ -106,7 +144,7 @@ func (c *crossPipelineClient) Complete(_ context.Context, req llm.CompleteReques
 			}
 			quotes = append(quotes, map[string]string{"endpoint": role, "member_id": member, "source_id": original.ID, "quote": quote})
 		}
-		verdict := map[string]any{"disposition": "supported", "reason": "Original prerequisites support admission depending on quota.", "relation_supported": true, "direction_supported": true, "evidence": quotes}
+		verdict := map[string]any{"disposition": "supported", "reason": "Original prerequisites support admission depending on quota.", "relation_supported": true, "direction_supported": true, "explicit_source_assertion": true, "evidence": quotes}
 		data, _ := json.Marshal(verdict)
 		text = string(data)
 	case strings.Contains(req.System, "文件命名助手"):
@@ -120,8 +158,11 @@ func (c *crossPipelineClient) Complete(_ context.Context, req llm.CompleteReques
 // 跨边从实际冻结输入验证，随后 UUID/筛选/入库/回写全部走正式路径，不能靠生成 description 验真。
 func TestFullPipelineFreezesOriginalSourceForCrossRelations(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "SKILL.md"), []byte("---\nname: system\ndescription: engineering\n---\n# Skill\n"), 0o644); err != nil {
+	root := filepath.Join(t.TempDir(), "system")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "SKILL.md"), []byte{}, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "references"), 0o755); err != nil {
@@ -144,8 +185,18 @@ func TestFullPipelineFreezesOriginalSourceForCrossRelations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rpt.DocsRewritten != 2 || rpt.Repair.DanglingFound != 0 || rpt.CrossRelations.Candidates != 1 || rpt.CrossRelations.Accepted != 1 || client.crossCalls.Load() != 1 || rpt.Ingest.SemanticEdges != 1 || rpt.Ingest.EdgesSkipped != 0 {
-		t.Fatalf("incomplete production path: %+v cross=%+v ingest=%+v", rpt, rpt.CrossRelations, rpt.Ingest)
+	if rpt.DocsTotal != 3 || rpt.DocsRewritten != 3 || rpt.Status != "complete" || rpt.FinalCoverage == nil || rpt.FinalCoverage.Outcome != "complete" || rpt.Relations == nil || len(rpt.Relations.Scopes) != 3 || len(rpt.Relations.Selected) == 0 || client.crossCalls.Load() == 0 || rpt.Ingest.SemanticEdges != 1 || rpt.Ingest.EdgesSkipped != 0 {
+		t.Fatalf("incomplete source-aware production path: %+v relations=%+v ingest=%+v", rpt, rpt.Relations, rpt.Ingest)
+	}
+	for _, scope := range rpt.Relations.Scopes {
+		if scope.Outcome != "complete" {
+			t.Fatalf("source scope did not complete: %+v", scope)
+		}
+	}
+	for _, selected := range rpt.Relations.Selected {
+		if selected.Classification != "explicit" || selected.Relation.Kind != "depends_on" || selected.Outcome != "complete" || len(selected.Evidence) != 2 {
+			t.Fatalf("source verification not selected: %+v", selected)
+		}
 	}
 	data, err := os.ReadFile(filepath.Join(dump, "00_frozen_sources.json"))
 	if err != nil {
@@ -155,10 +206,20 @@ func TestFullPipelineFreezesOriginalSourceForCrossRelations(t *testing.T) {
 	if err := json.Unmarshal(data, &snapshots); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshots) != 2 {
+	if len(snapshots) != 3 {
 		t.Fatalf("wrong original denominator: %+v", snapshots)
 	}
 	for _, snapshot := range snapshots {
+		if snapshot.Path == "SKILL.md" {
+			if snapshot.Content != "" || snapshot.SHA256 != extract.FreezeSource("system", "SKILL.md", "").SHA256 {
+				t.Fatalf("empty structural marker changed: %+v", snapshot)
+			}
+			written, err := os.ReadFile(filepath.Join(root, "SKILL.md"))
+			if err != nil || len(written) != 0 {
+				t.Fatal("empty marker was overwritten")
+			}
+			continue
+		}
 		if snapshot.Content != originals[snapshot.Path] || snapshot.SHA256 != extract.FreezeSource(snapshot.Skill, snapshot.Path, snapshot.Content).SHA256 {
 			t.Fatalf("not frozen original: %+v", snapshot)
 		}

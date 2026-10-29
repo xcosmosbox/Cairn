@@ -28,7 +28,7 @@ func main() {
 }
 
 func run() error {
-	mode := flag.String("mode", "prepare", "prepare or run")
+	mode := flag.String("mode", "prepare", "prepare, run, or v016 (ordinary finite acceptance phase)")
 	corpus := flag.String("corpus", "", "declared source-only JSON document array")
 	out := flag.String("out", "", "new preparation directory, or prepared directory for run")
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "per-request output tokens")
@@ -40,6 +40,12 @@ func run() error {
 	}
 	if *mode == "prepare" {
 		return prepare(*corpus, *out)
+	}
+	if *mode == "v016" {
+		if *corpus != "" {
+			return fmt.Errorf("v016: use only the declared source-tree input")
+		}
+		return runV016Phase(*out, *maxTokens, *requestTimeout, *concurrency)
 	}
 	if *mode != "run" {
 		return fmt.Errorf("unknown mode; historical continuation routes are retired")

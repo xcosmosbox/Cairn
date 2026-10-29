@@ -41,7 +41,7 @@ func run() int {
 	endpoint := flag.String("endpoint", dkconfig.DeepSeekEndpoint, "LLM endpoint")
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "单次 LLM 最大输出 token（DeepSeek 上限 393216）/ max output tokens per call")
 	timeout := flag.String("timeout", "1800s", "单请求超时 / per-request timeout")
-	maxRetries := flag.Int("max-retries", 3, "各 LLM 阶段原地重试上限 / in-place retry cap per LLM stage")
+	maxRetries := flag.Int("max-retries", 3, "标注/映射/关系每范围额外恢复数；0默认3，负数禁用；节点融合默认3 / EXTRA recoveries; HTTP retries separate")
 	minConf := flag.Float64("min-confidence", 0.0, "entity/concept 入库置信度门控 / ingest confidence gate")
 	traceDir := flag.String("trace-dir", "", "私有原始请求/响应记录目录 / private raw request and response directory")
 	dumpDir := flag.String("dump-dir", "", "把每个阶段的中间产物(标注/双门/提取/入库 JSON)写到该目录，便于逐环节观察真实产出 / dump intermediate artifacts for inspection")
@@ -93,15 +93,18 @@ func run() int {
 		return 1
 	}
 
-	report, err := orch.RunFullRebuild(context.Background(), *repo, *dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "流水线执行失败: %v\n", err)
+	report, runErr := orch.RunFullRebuild(context.Background(), *repo, *dbPath)
+	if report == nil {
+		fmt.Fprintf(os.Stderr, "流水线执行失败: %v\n", runErr)
 		return 1
 	}
 
 	// 打印运行摘要。
 	fmt.Fprintf(os.Stderr, "══════════ 运行摘要 / Run Summary ══════════\n")
-	fmt.Fprintf(os.Stderr, "[cairn-ingest] 完成 → %s\n", *dbPath)
+	fmt.Fprintf(os.Stderr, "[cairn-ingest] %s → %s\n", report.Status, *dbPath)
+	for _, reason := range report.Reasons {
+		fmt.Fprintf(os.Stderr, "  %s\n", reason)
+	}
 	fmt.Fprintf(os.Stderr, "  skills 扫描: %d\n", report.SkillsScanned)
 	fmt.Fprintf(os.Stderr, "  文档总数: %d  通过双门: %d  降级跳过: %d\n",
 		report.DocsTotal, report.DocsRewritten, len(report.Skipped))
@@ -112,6 +115,7 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "  边入库: provides=%d composes=%d semantic=%d (共 %d, 跳过 %d)\n",
 			report.Ingest.ProvidesEdges, report.Ingest.ComposesEdges, report.Ingest.SemanticEdges,
 			report.Ingest.EdgesInserted, report.Ingest.EdgesSkipped)
+		fmt.Fprintf(os.Stderr, "  来源: attempted=%d distinct_selected=%d duplicate_rows=%d committed=%d\n", report.Ingest.NodeSourcesAttempted, report.Ingest.NodeSourcesSelectedDistinct, report.Ingest.NodeSourcesDuplicates, report.Ingest.NodeSourcesInserted)
 	}
 	if *dumpDir != "" {
 		fmt.Fprintf(os.Stderr, "  中间产物已 dump 到: %s\n", *dumpDir)
@@ -126,7 +130,7 @@ func run() int {
 	fmt.Fprintf(os.Stderr, "══════════════════════════════════════════\n")
 
 	// E-3 演化记录旁路收尾（R-ev-1：失败仅告警，绝不影响构建退出码与产物）。
-	if !*noEvolve {
+	if !*noEvolve && report.Ingest != nil {
 		evDir := *evolutionDir
 		if evDir == "" {
 			evDir = evolve.DefaultDir(*dbPath)
@@ -136,6 +140,10 @@ func run() int {
 		} else {
 			fmt.Fprintf(os.Stderr, "\n══ 本次变更 / Changeset ══\n%s\n", summary)
 		}
+	}
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "流水线未完整完成: %v\n", runErr)
+		return 1
 	}
 	return 0
 }

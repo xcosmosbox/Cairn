@@ -292,3 +292,53 @@ read-only Detect and the exact matcher are unchanged. The preserved failed retry
 now recovers the later human edit normally, and same-Run pending human edits plus
 shared/clean/repeat and affected package checks pass. New review, CI and
 acceptance remain live #113 events; #114 is still unstarted.
+
+## v0.1.6 ordinary integration and fixed campaign
+
+The [dated integration report](../../../../docs/coordination/reports/2026-10-29-v016-integrated-acceptance.md)
+supersedes the earlier unstarted snapshot: #109–#113 are accepted on main
+`2ae4eef654e99e5d84de43b72e7dc65247c18bf1`; the newly acknowledged #114 group
+owns ordinary wiring/status, integrated controls and the fixed actual-model campaign.
+Its implementation/checks and provider outcomes remain separate from parent acceptance.
+Frozen v0.1.1 sources, inventory and all 19 supplement cases remain unchanged.
+
+`corpus-capacity --mode v016` consumes only a prepared Markdown tree containing
+the exact six originals, `supplement.sources[].content` and separately empty
+discovery markers. Do not point it at a directory containing inventories, cases,
+expectations or other judge material. Each phase uses a new output directory.
+
+```sh
+go build -o /tmp/cairn-v016 ./build/test/e2e/corpus-capacity
+/tmp/cairn-v016 --mode v016 --phase full --source-tree /authorized/fixed-source-tree --out /private/full-01 --max-tokens 32768 --semantic-retries 1
+/tmp/cairn-v016 --mode v016 --phase repeat --source-tree /authorized/fixed-source-tree --previous /private/full-01 --out /private/repeat-01 --max-tokens 32768 --semantic-retries 1
+/tmp/cairn-v016 --mode v016 --phase unchanged --source-tree /authorized/fixed-source-tree --previous /private/repeat-01 --out /private/unchanged-01 --max-tokens 32768 --semantic-retries 1
+/tmp/cairn-v016 --mode v016 --phase changed --source-tree /authorized/fixed-source-tree --previous /private/unchanged-01 --change-path fixtures/operations/references/sibling.md --change-file /authorized/changed-addition.md --out /private/changed-01 --max-tokens 32768 --semantic-retries 1
+```
+
+Full/repeat call ordinary `RunFullRebuild` on pristine frozen bytes. Unchanged/changed
+call ordinary incremental `Run` on a copied existing DB/generated tree. The latter
+receive the caller-held full raw snapshots and accepted annotation documents from
+the preceding phase. The declared changed prose updates its complete raw snapshot
+at the same skill/path; generated blocks are never claimed as originals. Changed
+source span evidence must match the actual raw revision or remain unknown.
+
+Source/config hashes, actual attempts, reasons, raw transport outcomes, reports and
+SQLite graph/source readback stay in the private evidence directory. A first actual
+authentication denial stops repeating identical provider requests and keeps local
+unavailable errors for other sources; it never supplies a fake model verdict. A
+failed full construction prevents unchanged/changed phases from claiming a usable baseline.
+An independent raw full repeat can run even after partial prior construction.
+A partial but usable DB/tree/context may support in-place work; prior incompleteness
+remains explicit in the phase aggregate even when that new operation succeeds.
+No runtime key or provider success is assumed. Source-first semantic comparison and
+independent review are required after an actual successful graph; runner/unit success
+does not establish the 360-unit/194-context or all-case semantic acceptance.
+
+The 2026-10-29 ordinary full attempt was interrupted by
+[automatic approval review](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6486588729).
+Only one request-start record exists; there is no observed response, completion
+report or usable DB. The earlier source-free endpoint 401 is a separate diagnostic.
+All actual-model 360-unit/194-context and 19-case semantic results remain unknown;
+repeat/unchanged/changed were not run. No campaign process remains, and no alternate
+source-payload route was attempted. The dated report preserves the exact rejection,
+artifact digests and the supported authorization step required before resumption.

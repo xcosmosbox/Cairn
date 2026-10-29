@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"github.com/xcosmosbox/cairn/core/storage"
 	"log"
 
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
@@ -48,6 +49,9 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	selection.NodesSelected = nodes
 	selection.RelationsFiltered += selection.RelationsSelected - relations
 	selection.RelationsSelected = relations
+	finalCoverage := extract.ComputeFinalCoverage(candidate, docs)
+	report.FinalCoverage = &finalCoverage
+	o.dumpJSON("05h_final_coverage.json", finalCoverage)
 	o.dumpJSON("05h_materialization_candidate.json", candidate)
 	log.Printf("[pipeline] 候选筛选: 节点保留 %d/%d，置信度过滤 %d（entity=%d concept=%d）；关系保留 %d/%d，端点过滤 %d",
 		selection.NodesSelected, selection.NodesInput, selection.NodesFiltered, selection.EntitiesFiltered, selection.ConceptsFiltered,
@@ -67,7 +71,24 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	log.Printf("[pipeline] 入库完成: %d 节点, %d 边 (跳过 %d), node_sources %d 行",
 		report.Ingest.NodesInserted, report.Ingest.EdgesInserted, report.Ingest.EdgesSkipped, report.Ingest.NodeSourcesInserted)
 	logStage("4.5", "结构化回写 / write-back（md + sidecar + _shared）")
-	report.Writeback, err = writeback.WritebackContext(ctx, candidate, toWritebackMemberSources(memberSources), repoPath)
+	persistedDB, openErr := storage.NewDB(storage.DBOptions{Path: dbPath})
+	if openErr != nil {
+		return report, fmt.Errorf("pipeline: persisted relation readback: %w", openErr)
+	}
+	persistedRelations, readErr := storage.NewEdgeRepo(persistedDB).ListAll(ctx)
+	closeErr := persistedDB.Close()
+	if readErr != nil {
+		return report, fmt.Errorf("pipeline: persisted relation readback: %w", readErr)
+	}
+	if closeErr != nil {
+		return report, closeErr
+	}
+	// nil 代表未读取；成功读到零行必须传非 nil 空集合。
+	// An empty successful read is known-empty, never unknown relation context.
+	if persistedRelations == nil {
+		persistedRelations = []*dktypes.Edge{}
+	}
+	report.Writeback, err = writeback.WritebackContextWithRelations(ctx, candidate, toWritebackMemberSources(memberSources), persistedRelations, repoPath)
 	o.dumpJSON("06b_writeback_report.json", report.Writeback)
 	if err != nil {
 		return report, fmt.Errorf("pipeline: writeback incomplete (candidate not publishable): %w", err)

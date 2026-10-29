@@ -26,9 +26,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
 	"github.com/xcosmosbox/cairn/core/dkconfig"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 	"github.com/xcosmosbox/cairn/core/evolve"
 )
 
@@ -41,11 +43,13 @@ func main() {
 	endpoint := flag.String("endpoint", dkconfig.DeepSeekEndpoint, "LLM endpoint")
 	maxTokens := flag.Int("max-tokens", dkconfig.DeepSeekDefaultThinkingTokens, "单次 LLM 最大输出 token（DeepSeek 上限 393216）/ max output tokens per call")
 	timeout := flag.String("timeout", "1800s", "单请求超时 / per-request timeout")
-	maxRetries := flag.Int("max-retries", 3, "标注/语义门原地重试上限 / in-place retry cap")
+	maxRetries := flag.Int("max-retries", 3, "标注/关系每范围额外恢复数；0默认3，负数禁用；节点融合默认3 / EXTRA recoveries; HTTP retries separate")
 	minConf := flag.Float64("min-confidence", 0.0, "新建 entity/concept 置信度门控 / confidence gate")
 	recallK := flag.Int("recall-k", 15, "FTS5 召回 top-K / FTS5 recall size")
 	evolutionDir := flag.String("evolution-dir", "", "演化产物目录（默认 <db 同级>/evolution）/ evolution workspace dir")
 	noEvolve := flag.Bool("no-evolve", false, "关闭演化记录旁路（默认开启）/ disable evolution sidecar recording")
+	frozenSources := flag.String("frozen-sources", "", "调用方当前完整原文 00_frozen_sources.json（与 source-documents 成对）/ complete caller-owned raw snapshots")
+	sourceDocuments := flag.String("source-documents", "", "已接受成员绑定 04_extract_input.json / accepted member bindings for the raw snapshots")
 	flag.Parse()
 
 	if *repo == "" || *dbPath == "" {
@@ -69,7 +73,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	sourceContext, err := extract.LoadSourceContext(*frozenSources, *sourceDocuments)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "原文交接配置失败: %v\n", err)
+		os.Exit(1)
+	}
+	var sources []extract.FrozenSource
+	var documents []*dktypes.AnnotatedDocument
+	if sourceContext != nil {
+		sources = sourceContext.Sources
+		documents = sourceContext.Documents
+	}
 	orch, err := incremental.NewIncrementalOrchestrator(incremental.Options{
+		Sources: sources, SourceDocuments: documents,
 		RepositoryIdentity: *repositoryIdentity,
 		AdoptLegacy:        *adoptLegacy,
 		Client:             client,
@@ -88,12 +104,16 @@ func main() {
 	// 打印运行摘要（部分失败也打印——可观测优先）。
 	fmt.Fprintf(os.Stderr, "══════════ 增量运行摘要 / Incremental Run Summary ══════════\n")
 	if report != nil {
-		fmt.Fprintf(os.Stderr, "[cairn-incremental] 完成 → %s (版本 %s)\n", *dbPath, report.Version)
+		fmt.Fprintf(os.Stderr, "[cairn-incremental] %s → %s (版本 %s)\n", report.Status, *dbPath, report.Version)
+		for _, reason := range report.Reasons {
+			fmt.Fprintf(os.Stderr, "  %s\n", reason)
+		}
 		fmt.Fprintf(os.Stderr, "  候选文档: %d  实质变更: %d\n", report.DocsScanned, report.DocsChanged)
 		fmt.Fprintf(os.Stderr, "  变更分类: C1=%d C2=%d C3=%d C4=%d\n",
 			report.C1Edits, report.C2Deletions, report.C3Violations, report.C4Segments)
 		fmt.Fprintf(os.Stderr, "  标注单元: %d  融入 node: %d  新建 node: %d  真删 node: %d\n",
 			report.UnitsAnnotated, report.NodesMerged, report.NodesCreated, report.NodesDeleted)
+		fmt.Fprintf(os.Stderr, "  来源: attempted=%d distinct_selected=%d duplicate_rows=%d committed=%d verified=%v\n", report.SourceAssociations.Attempted, report.SourceAssociations.DistinctSelected, report.SourceAssociations.DuplicateRows, report.SourceAssociations.Committed, report.SourceAssociationsVerified)
 		fmt.Fprintf(os.Stderr, "  relation 重算子域: %d  重写文档: %d  primary 写/删: %d/%d\n",
 			report.SubdomainsReflow, report.DocsRewritten, report.PrimariesWritten, report.PrimariesDeleted)
 		if len(report.UnresolvedDocs) > 0 {

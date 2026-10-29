@@ -715,3 +715,20 @@ func parseTS(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339, s)
 	return t
 }
+
+// SetRunReportPath 复用既有字段，使用与其他 run 更新相同的 lease/fence 写入保护。
+// Attach the private factual build receipt before a failed/partial stage transitions.
+func (s *Store) SetRunReportPath(ctx context.Context, runID, path string) error {
+	result, err := s.execWrite(ctx, `UPDATE runs SET report_path=? WHERE run_id=?`, path, runID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("controller store: run %s missing while attaching report", runID)
+	}
+	return nil
+}

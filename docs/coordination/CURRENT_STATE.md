@@ -1,12 +1,38 @@
 # Current evidence snapshot
 
-As of **2026-10-28 UTC**. Product source starting baseline:
+As of **2026-10-29 UTC**. Product source starting baseline:
 `d2fa342312809b1d632308433ec507b523d86655` (merged PR106).
 Live [#107](https://github.com/xcosmosbox/Cairn/issues/107), task comments/PR heads and raw
 outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
 answer-utility result is implied by code acceptance/CI.
 
 ## Current work
+
+The [fresh .5 acceptance](https://github.com/xcosmosbox/Cairn/issues/113#issuecomment-6486028430)
+rechecked main `2ae4eef654e99e5d84de43b72e7dc65247c18bf1`, tree
+`0be7e07577fbe94ebc189e2c03e522423bc845c6`, after PR125. All #109–#113
+dependencies are accepted; the dated failures and repair reports below remain history.
+A new [acknowledged #114 execution group](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6486072351)
+has implemented ordinary wiring/status and integrated tests; the sole
+[campaign/docs integrator](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6486090346)
+owns serial integration and reviewed current-file publication. #114 and parent #108
+remain unaccepted. The [integration report](reports/2026-10-29-v016-integrated-acceptance.md)
+records actual checks and the interrupted authentic construction attempt separately
+from semantic acceptance. Released production/test changes pass affected checks;
+normal CI belongs to the reviewable draft PR. No known code defect remains open in
+this bounded delivery; actual-model acceptance remains blocked.
+
+All six original byte identities and all 19 supplement cases are retained. The source-first
+span check passes 360 substantive units/194 relation contexts; this is input accounting,
+not graph completeness. Current configured provider authentication is unavailable:
+the declared runtime key/identity manifest and managed readiness tool are absent, and
+an actual source-free official endpoint diagnostic returned HTTP 401. Separately,
+automatic approval review [rejected the ordinary source-payload construction](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6486588729).
+The retained trace contains one request-start row and no response, error, finish or
+usable DB; source delivery and the full request's HTTP outcome are unknown. No
+campaign process remains and no retry or alternate egress occurred. The earlier
+source-free 401 is not a full construction result. All actual-model full/repeat/changed
+semantic outcomes remain unknown; deterministic controls cannot supply that evidence.
 
 [#107](https://github.com/xcosmosbox/Cairn/issues/107) publishes the
 [finite v0.1 construction plan](reports/2026-10-26-v01-build-completeness-plan.md),
