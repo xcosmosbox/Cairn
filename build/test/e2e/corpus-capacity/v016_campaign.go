@@ -32,7 +32,7 @@ var (
 	v016Previous   = flag.String("previous", "", "v016: preceding evidence directory; usable persisted data required only for unchanged/changed, with prior incompleteness retained")
 	v016ChangePath = flag.String("change-path", "", "v016 changed: existing repository-relative Markdown path")
 	v016ChangeFile = flag.String("change-file", "", "v016 changed: source-only prose to append outside generated blocks")
-	v016Retries    = flag.Int("semantic-retries", 1, "v016: shared extra recoveries per failed semantic scope; initial call is separate; zero defaults to three, negative disables")
+	v016Retries    = flag.Int("semantic-retries", 3, "v016: shared extra recoveries per failed semantic scope; initial call is separate; zero defaults to three, negative disables")
 )
 
 type v016SourceIdentity struct {
