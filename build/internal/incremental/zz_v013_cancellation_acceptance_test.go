@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -178,11 +177,11 @@ func (f *v013CancellationCase) response(t *testing.T, req llm.CompleteRequest) *
 	if strings.Contains(req.System, "语义核验专家") {
 		return &llm.CompleteResponse{Text: `{"supported":true,"reason":"source conditions and prohibition retained","unsupported_items":[],"omissions":[]}`, FinishReason: "stop"}
 	}
-	alias := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(req.User)
-	if len(alias) != 2 {
+	alias, ok := v013IncrementalNodeAlias(req.User)
+	if !ok {
 		t.Fatal("generation request lacks call-scoped alias")
 	}
-	b, err := json.Marshal(map[string]any{"descriptions": []map[string]string{{"node_id": alias[1], "summary": f.summary, "description": f.description}}})
+	b, err := json.Marshal(map[string]any{"descriptions": []map[string]string{{"node_id": alias, "summary": f.summary, "description": f.description}}})
 	if err != nil {
 		t.Fatal(err)
 	}

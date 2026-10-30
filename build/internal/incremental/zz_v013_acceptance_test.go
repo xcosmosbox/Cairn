@@ -33,6 +33,17 @@ func v013IncrementalWire(t *testing.T, v any) string {
 	return string(b)
 }
 
+func v013IncrementalNodeAlias(user string) (string, bool) {
+	_, data, ok := strings.Cut(user, "## Node metadata / 节点元数据\n")
+	var metadata struct {
+		NodeID string `json:"node_id"`
+	}
+	if !ok || json.NewDecoder(strings.NewReader(data)).Decode(&metadata) != nil {
+		return "", false
+	}
+	return metadata.NodeID, metadata.NodeID != ""
+}
+
 // Exercise real SQLite recall -> alias judge -> materialization -> shared node
 // reflow. Scripted semantic feedback is a control, not new model/source acceptance.
 func TestV013AcceptanceExistingIdentitySourcesAndProtectedBoundary(t *testing.T) {
@@ -131,11 +142,11 @@ func TestV013AcceptanceExistingIdentitySourcesAndProtectedBoundary(t *testing.T)
 			}
 			return &llm.CompleteResponse{Text: `{"supported":true,"reason":"old prohibition plus both new source-bound fields retained","unsupported_items":[],"omissions":[]}`, FinishReason: "stop"}, nil
 		}
-		m := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(req.User)
-		if len(m) != 2 {
+		alias, ok := v013IncrementalNodeAlias(req.User)
+		if !ok {
 			t.Fatal("no call-scoped fusion alias")
 		}
-		return &llm.CompleteResponse{Text: v013IncrementalWire(t, map[string]any{"descriptions": []map[string]string{{"node_id": m[1], "summary": correctSummary, "description": correctDetail}}}), FinishReason: "stop"}, nil
+		return &llm.CompleteResponse{Text: v013IncrementalWire(t, map[string]any{"descriptions": []map[string]string{{"node_id": alias, "summary": correctSummary, "description": correctDetail}}}), FinishReason: "stop"}, nil
 	})
 	dirty := NewDirtySet()
 	key := SubdomainKey{"operations", "pumps"}

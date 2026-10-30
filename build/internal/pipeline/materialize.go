@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/xcosmosbox/cairn/core/storage"
 	"log"
+	"strings"
 
 	"github.com/xcosmosbox/cairn/build/internal/controller/store"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
@@ -16,7 +17,7 @@ import (
 
 // MaterializeCompletedExtraction runs the production materialization gates for
 // a completed extraction, including a verified checkpoint. It makes no LLM
-// requests and does not reassign UUIDs. Callers must verify checkpoint origin.
+// requests. Existing exact source/member identities stay pinned; callers verify checkpoint origin.
 func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoPath, dbPath string, res *extract.Result, docs []*dktypes.AnnotatedDocument, skillMetas []ingest.SkillMeta) (*RunReport, error) {
 	report := &RunReport{}
 	if err := store.CheckLease(ctx); err != nil {
@@ -63,9 +64,27 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	// Both output paths consume this exact confidence-selected graph.
 	memberSources := buildMemberSources(docs)
 	logStage("4", "全量重建入库 / ingest（物化双层图）")
-	report.Ingest, err = o.fullRebuildIngest(ctx, dbPath, candidate, skillMetas, memberSources, identity)
+	represented := map[string]bool{}
+	for _, doc := range docs {
+		if doc != nil {
+			represented[doc.FilePath] = true
+		}
+	}
+	var existing *fullExistingOutcome
+	report.Ingest, existing, err = o.fullRebuildIngestScoped(ctx, dbPath, candidate, skillMetas, memberSources, identity, repoPath, represented)
 	if err != nil {
 		return report, fmt.Errorf("pipeline: ingest: %w", err)
+	}
+	if existing != nil {
+		report.UUIDCorrespondence = nodeCorrespondence(candidate)
+		for i := range report.UUIDCorrespondence {
+			id := report.UUIDCorrespondence[i].Alias
+			report.UUIDCorrespondence[i].UUID = id
+			if target := existing.remap[id]; target != "" {
+				report.UUIDCorrespondence[i].UUID = target
+			}
+		}
+		report.Reasons = append(report.Reasons, existing.conflicts...)
 	}
 	o.dumpJSON("06_ingest_result.json", report.Ingest)
 	log.Printf("[pipeline] 入库完成: %d 节点, %d 边 (跳过 %d), node_sources %d 行",
@@ -88,15 +107,24 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	if persistedRelations == nil {
 		persistedRelations = []*dktypes.Edge{}
 	}
-	report.Writeback, err = writeback.WritebackContextWithRelations(ctx, candidate, toWritebackMemberSources(memberSources), persistedRelations, repoPath)
+	if existing != nil {
+		report.Writeback, err = writeback.WritebackAuthoritativeContext(ctx, existing.updates, existing.docs, existing.refresh, existing.empty, repoPath)
+	} else {
+		report.Writeback, err = writeback.WritebackContextWithRelations(ctx, candidate, toWritebackMemberSources(memberSources), persistedRelations, repoPath)
+	}
 	o.dumpJSON("06b_writeback_report.json", report.Writeback)
 	if err != nil {
+		report.finish(ctx, err)
 		return report, fmt.Errorf("pipeline: writeback incomplete (candidate not publishable): %w", err)
 	}
 	if report.Writeback != nil {
 		wb := report.Writeback
 		log.Printf("[pipeline] 回写统计: 文档 %d, 节点块 %d, shared %d, 镜像块 %d, primary %d, sidecar %d",
 			wb.DocsWritten, wb.NodesWritten, wb.SharedNodes, wb.MirrorBlocks, wb.PrimaryFiles, wb.SidecarsWritten)
+	}
+	if existing != nil && len(existing.conflicts) > 0 {
+		report.Status = "partial"
+		return report, fmt.Errorf("pipeline: human_curated relation conflict: %s", strings.Join(existing.conflicts, "; "))
 	}
 	return report, nil
 }

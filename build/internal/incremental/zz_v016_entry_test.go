@@ -71,15 +71,15 @@ func (c *v016ChangedClient) Complete(_ context.Context, r llm.CompleteRequest) (
 		}
 		return result(map[string]any{"decisions": decisions, "groups": []any{}})
 	case strings.Contains(r.System, "知识融合重写专家"):
-		alias := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(r.User)
-		if len(alias) != 2 {
+		alias, ok := v013IncrementalNodeAlias(r.User)
+		if !ok {
 			return nil, fmt.Errorf("missing fusion alias")
 		}
 		summary, detail := v016ChangedSummary, v016ChangedDetail
 		if strings.Contains(r.User, `"name":"Safety valve"`) {
 			summary, detail = "Safety valve maintenance rule", v016ValveDetail
 		}
-		return result(map[string]any{"descriptions": []any{map[string]string{"node_id": alias[1], "summary": summary, "description": detail}}})
+		return result(map[string]any{"descriptions": []any{map[string]string{"node_id": alias, "summary": summary, "description": detail}}})
 	case strings.Contains(r.System, "SOURCE-RELATION GENERATE"):
 		var in struct {
 			FocusSourceID string `json:"focus_source_id"`

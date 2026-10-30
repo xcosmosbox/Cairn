@@ -55,13 +55,19 @@ func WritebackContextWithRelations(ctx context.Context, res *extract.Result, mem
 	if res == nil {
 		return report, fmt.Errorf("writeback: result is nil")
 	}
-	generatedAt := time.Now()
 
 	// 1. 派生全部 node 的回写视图（含 shared 判定 + 来源文档聚合）。
 	views := buildNodeViews(res, memberSources)
 	for i := range views {
 		views[i].Relations = IncidentRelations(edges, views[i].UUID)
 	}
+	return writebackViewsContext(ctx, views, nil, repoRoot)
+}
+
+// The exact same pair writer serves fresh and retained authoritative views.
+func writebackViewsContext(ctx context.Context, views []nodeView, docs map[string]bool, repoRoot string) (*Report, error) {
+	generatedAt := time.Now()
+	report := &Report{}
 	if len(views) == 0 {
 		return report, nil
 	}
@@ -78,6 +84,9 @@ func WritebackContextWithRelations(ctx context.Context, res *extract.Result, mem
 	// 3. 逐来源文档：渲染其所有 node 块 → 整篇覆盖写 .md + 写 sidecar。
 	//    shared node 在文档中渲染为镜像块；非 shared 渲染为完整块。
 	for _, g := range groups {
+		if docs != nil && !docs[g.FilePath] {
+			continue
+		}
 		mdAbsPath, pathErr := safeRepoPath(repoRoot, g.FilePath)
 		if pathErr != nil {
 			errs = append(errs, pathErr)
@@ -107,6 +116,17 @@ func WritebackContextWithRelations(ctx context.Context, res *extract.Result, mem
 
 	// 4. 逐 shared node：写 _shared/<domain-slug>/<uuid>.md primary + sidecar。
 	for _, v := range primaries {
+		if docs != nil {
+			affected := false
+			for _, f := range v.SourceFiles {
+				if docs[f] {
+					affected = true
+				}
+			}
+			if !affected {
+				continue
+			}
+		}
 		primaryAbs, pathErr := safeRepoPath(repoRoot, primaryFilePath(v))
 		if pathErr != nil {
 			errs = append(errs, pathErr)

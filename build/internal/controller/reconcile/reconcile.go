@@ -315,9 +315,37 @@ func (r *Reconciler) stepFullBuild(ctx context.Context, run *model.Run, repo *mo
 		return r.failRetryable(ctx, run, "checkout", err, res)
 	}
 	candidateDB := r.candidateDBPath(run.RunID)
-	// 重试场景：清理旧 candidate DB + 确保父目录存在（SQLite CANTOPEN=14 伪装成 OOM）。
-	os.MkdirAll(filepath.Dir(candidateDB), 0o755)
-	os.Remove(candidateDB)
+	// Full也需要稳定人工基线；fingerprint变化只替换机器构建，不抹除人工知识。
+	// Retry candidates are disposable, but never unlink a DB with live WAL ownership.
+	if err := store.CheckLease(ctx); err != nil {
+		return res, err
+	}
+	if err := os.MkdirAll(filepath.Dir(candidateDB), 0o755); err != nil {
+		return r.failRetryable(ctx, run, "full_base", err, res)
+	}
+	stableDB := ""
+	if repo.LastStableBundleDigest != "" {
+		stableDB = filepath.Join(r.cfg.Service.BundleDir, repo.KGGroup, "stable", "knowledge.db")
+		// Declared stable bytes may contain human state; absence is not a first build.
+		// Validate before resetting the disposable retry candidate as well.
+		if _, err := os.Stat(stableDB); err != nil {
+			return r.failRetryable(ctx, run, "full_base", fmt.Errorf("declared stable baseline unavailable: %w", err), res)
+		}
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if _, err := os.Lstat(candidateDB + suffix); !os.IsNotExist(err) {
+			return r.failRetryable(ctx, run, "full_base", fmt.Errorf("candidate has existing %s sidecar; close/checkpoint it first", suffix), res)
+		}
+	}
+	if err := os.Remove(candidateDB); err != nil && !os.IsNotExist(err) {
+		return r.failRetryable(ctx, run, "full_base", err, res)
+	}
+	if stableDB != "" {
+		if err := storage.SnapshotDatabase(ctx, stableDB, candidateDB); err != nil {
+			return r.failRetryable(ctx, run, "full_base", err, res)
+		}
+	}
+
 	// 全量冻结产物在 mutable source worktree 之外；后续增量只使用明确的原文交接。
 	// Existing private 00/04 artifacts provide source context without a new storage schema.
 	contextDir := r.sourceContextDir(run.RunID, repoCfg)

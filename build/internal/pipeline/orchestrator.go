@@ -103,7 +103,8 @@ type SkippedDoc struct {
 // RunReport 是一次全量重建运行的结果摘要（可观测）。
 // RunReport summarizes one full-rebuild run.
 // NodeCorrespondence 保留核验时的临时节点与实际 UUID 对应，不重算候选摘要冒充核验。
-// The exact checked text and member set survive UUID translation unchanged.
+// Checked candidate text/member sets remain trace evidence; UUID is the final pinned identity.
+// Human-curated persisted content remains authoritative and is read back separately.
 type NodeCorrespondence struct {
 	Domain, Subdomain, Alias, UUID string
 	Members                        []string
@@ -289,6 +290,15 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 		report.Ingest = materialized.Ingest
 		report.Writeback = materialized.Writeback
 		report.FinalCoverage = materialized.FinalCoverage
+		for i := range report.UUIDCorrespondence {
+			for _, pinned := range materialized.UUIDCorrespondence {
+				if report.UUIDCorrespondence[i].UUID == pinned.Alias {
+					report.UUIDCorrespondence[i].UUID = pinned.UUID
+					break
+				}
+			}
+		}
+		report.Reasons = append(report.Reasons, materialized.Reasons...)
 	}
 	return report, err
 }
@@ -481,34 +491,51 @@ func (o *Orchestrator) processDocument(ctx context.Context, skill, path, content
 // fullRebuildIngest 完整建立、checkpoint 并关闭临时库后，原子发布主文件。
 // A failed ingest must preserve the previous DB, including its WAL and ownership.
 func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res *extract.Result, metas []ingest.SkillMeta, memberSources map[string][]ingest.MemberSource, identity string) (*ingest.IngestDomainsResult, error) {
+	result, _, err := o.fullRebuildIngestScoped(ctx, dbPath, res, metas, memberSources, identity, "", nil)
+	return result, err
+}
+
+func (o *Orchestrator) fullRebuildIngestScoped(ctx context.Context, dbPath string, res *extract.Result, metas []ingest.SkillMeta, memberSources map[string][]ingest.MemberSource, identity, repoPath string, represented map[string]bool) (*ingest.IngestDomainsResult, *fullExistingOutcome, error) {
 	if err := store.CheckLease(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(dbPath), ".cairn-full-*.db")
 	if err != nil {
-		return nil, fmt.Errorf("pipeline: create temporary DB: %w", err)
+		return nil, nil, fmt.Errorf("pipeline: create temporary DB: %w", err)
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 	defer os.Remove(tmpPath + "-wal")
 	defer os.Remove(tmpPath + "-shm")
 	if err := tmp.Close(); err != nil {
-		return nil, fmt.Errorf("pipeline: close temporary DB file: %w", err)
+		return nil, nil, fmt.Errorf("pipeline: close temporary DB file: %w", err)
 	}
 	db, err := storage.NewDB(storage.DBOptions{Path: tmpPath})
 	if err != nil {
-		return nil, fmt.Errorf("open db %s: %w", dbPath, err)
+		return nil, nil, fmt.Errorf("open db %s: %w", dbPath, err)
 	}
 	defer db.Close()
 
+	published := false
+	var ingested *ingest.IngestDomainsResult
+	defer func() {
+		// 临时库成功不等于发布成功；失败保留选择诊断，不能伪报已提交来源。
+		// Discarded candidate rows never count as new commits to the authoritative DB.
+		if !published && ingested != nil {
+			ingested.NodesInserted, ingested.EdgesInserted, ingested.NodeSourcesInserted = 0, 0, 0
+			ingested.SkillNodes, ingested.DomainNodes, ingested.SubdomainNodes, ingested.EntityNodes, ingested.ConceptNodes = 0, 0, 0, 0, 0
+			ingested.ProvidesEdges, ingested.ComposesEdges, ingested.SemanticEdges = 0, 0, 0
+		}
+	}()
 	result, err := ingest.IngestDomains(ctx, db, ingest.IngestDomainsOptions{
 		Result:        res,
 		Skills:        metas,
 		MinConfidence: 0,
 		MemberSources: memberSources,
 	})
+	ingested = result
 	if err != nil {
-		return result, err
+		return result, nil, err
 	}
 	// Missing slugs or duplicate UUIDs must not silently discard eligible nodes.
 	// Check the temporary candidate before replacing an existing database.
@@ -523,32 +550,42 @@ func (o *Orchestrator) fullRebuildIngest(ctx context.Context, dbPath string, res
 		}
 	}
 	if actual := result.EntityNodes + result.ConceptNodes; actual != expectedLeaves {
-		return result, fmt.Errorf("pipeline: incomplete materialization: %d/%d eligible knowledge nodes inserted", actual, expectedLeaves)
+		return result, nil, fmt.Errorf("pipeline: incomplete materialization: %d/%d eligible knowledge nodes inserted", actual, expectedLeaves)
+	}
+	existing, err := mergeFullExisting(ctx, db, dbPath, repoPath, identity, memberSources, represented)
+	if err != nil {
+		return result, nil, err
+	}
+	if existing != nil {
+		if err := countFullMergedGraph(ctx, db, result); err != nil {
+			return result, nil, err
+		}
 	}
 	if err := storage.NewRepositoryIdentityRepo(db).Set(ctx, identity); err != nil {
-		return result, fmt.Errorf("pipeline: stamp repository identity: %w", err)
+		return result, nil, fmt.Errorf("pipeline: stamp repository identity: %w", err)
 	}
 	var busy, frames, checkpointed int
 	if err := db.Conn().QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &frames, &checkpointed); err != nil || busy != 0 {
-		return result, fmt.Errorf("pipeline: checkpoint candidate (busy=%d): %v", busy, err)
+		return result, nil, fmt.Errorf("pipeline: checkpoint candidate (busy=%d): %v", busy, err)
 	}
 	if err := db.Close(); err != nil {
-		return result, fmt.Errorf("pipeline: close candidate: %w", err)
+		return result, nil, fmt.Errorf("pipeline: close candidate: %w", err)
 	}
 	// Replacing a main file while old WAL/SHM connections remain would attach
 	// old pages to a new graph. Never delete those sidecars to force publication.
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if _, err := os.Lstat(dbPath + suffix); !os.IsNotExist(err) {
-			return result, fmt.Errorf("pipeline: cannot replace DB with existing %s sidecar; close/checkpoint existing connections first", suffix)
+			return result, nil, fmt.Errorf("pipeline: cannot replace DB with existing %s sidecar; close/checkpoint existing connections first", suffix)
 		}
 	}
 	if err := store.CheckLease(ctx); err != nil {
-		return result, err
+		return result, nil, err
 	}
 	if err := os.Rename(tmpPath, dbPath); err != nil {
-		return result, fmt.Errorf("pipeline: publish rebuilt DB: %w", err)
+		return result, nil, fmt.Errorf("pipeline: publish rebuilt DB: %w", err)
 	}
-	return result, nil
+	published = true
+	return result, existing, nil
 }
 
 // logStage 输出显著的阶段分隔线，便于在连续日志中辨认阶段边界。

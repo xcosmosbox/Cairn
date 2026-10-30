@@ -28,16 +28,27 @@ type crossPipelineClient struct {
 
 // The node helper now emits one call-scoped alias and checks Summary+Description.
 // These relation-routing controls retain their existing semantic fixture behavior.
+func pipelineFixtureNodeAlias(user string) (string, bool) {
+	_, data, ok := strings.Cut(user, "## Node metadata / 节点元数据\n")
+	var metadata struct {
+		NodeID string `json:"node_id"`
+	}
+	if !ok || json.NewDecoder(strings.NewReader(data)).Decode(&metadata) != nil {
+		return "", false
+	}
+	return metadata.NodeID, metadata.NodeID != ""
+}
+
 func pipelineNodeDescriptionResponse(req llm.CompleteRequest, detail string) (*llm.CompleteResponse, error) {
-	alias := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(req.User)
+	alias, ok := pipelineFixtureNodeAlias(req.User)
 	parts := strings.SplitN(req.User, "## Complete candidate / 完整候选\n", 2)
 	var candidate struct {
 		Summary string `json:"summary"`
 	}
-	if len(alias) != 2 || len(parts) != 2 || json.NewDecoder(strings.NewReader(parts[1])).Decode(&candidate) != nil {
+	if !ok || len(parts) != 2 || json.NewDecoder(strings.NewReader(parts[1])).Decode(&candidate) != nil {
 		return nil, fmt.Errorf("missing fixture node alias/candidate")
 	}
-	b, err := json.Marshal(map[string]any{"descriptions": []map[string]string{{"node_id": alias[1], "summary": candidate.Summary, "description": detail}}})
+	b, err := json.Marshal(map[string]any{"descriptions": []map[string]string{{"node_id": alias, "summary": candidate.Summary, "description": detail}}})
 	return &llm.CompleteResponse{Text: string(b), FinishReason: "stop"}, err
 }
 

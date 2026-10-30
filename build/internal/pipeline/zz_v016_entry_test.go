@@ -103,15 +103,15 @@ func (c *v016EntryClient) Complete(ctx context.Context, r llm.CompleteRequest) (
 		}
 		return v016Reply(map[string]any{"domains": []any{map[string]any{"name": "Operations", "summary": "Admission rules", "reusability_rationale": "Reusable source conditions", "subdomains": []any{map[string]any{"name": "Admission", "summary": "Qualified rules", "concepts": nodes, "relations": []any{}}}}}})
 	case strings.Contains(r.System, "知识融合重写专家"):
-		alias := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(r.User)
-		if len(alias) != 2 {
+		alias, ok := pipelineFixtureNodeAlias(r.User)
+		if !ok {
 			return nil, fmt.Errorf("fixture node alias missing")
 		}
 		body := v016Admission
 		if strings.Contains(r.User, `"name":"Quota"`) {
 			body = v016Quota
 		}
-		return v016Reply(map[string]any{"descriptions": []any{map[string]string{"node_id": alias[1], "summary": "Qualified " + strings.Split(body, " ")[0], "description": body}}})
+		return v016Reply(map[string]any{"descriptions": []any{map[string]string{"node_id": alias, "summary": "Qualified " + strings.Split(body, " ")[0], "description": body}}})
 	case strings.Contains(r.System, "SOURCE-RELATION GENERATE"):
 		var in struct {
 			Nodes   []struct{ Alias, Name string }
