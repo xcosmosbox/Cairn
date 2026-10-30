@@ -1,0 +1,87 @@
+{
+  "format": "cairn-mini-oracle/v1",
+  "sources": [
+    {
+      "path": "mini/SKILL.md",
+      "bytes": 252,
+      "sha256": "4be96fa2831738ed5fd5f195118b62a4e6364663ce28c1408dc454365385c767"
+    },
+    {
+      "path": "mini/references/log.md",
+      "bytes": 143,
+      "sha256": "12134a5e43b8099d97fcd0c4078c6bb37393f4ee6740263356e1e528d4a12368"
+    },
+    {
+      "path": "mini/references/pass.md",
+      "bytes": 163,
+      "sha256": "b629da1920566d7116a2ef84a0f47d26db7ba9025b07abe250c4a258bacfaadb"
+    }
+  ],
+  "change": {
+    "path": "mini/references/pass.md",
+    "file": "fixtures/change.md",
+    "sha256": "469241318c8d65c511c71d66a83ab4160fd241875871b30e756d1dc70ded943c"
+  },
+  "nodes": [
+    {
+      "name": "夜场入厅",
+      "aliases": [],
+      "sources": [
+        "mini/SKILL.md",
+        "mini/references/log.md"
+      ]
+    },
+    {
+      "name": "霜羽票签",
+      "aliases": [
+        "票签"
+      ],
+      "sources": [
+        "mini/SKILL.md",
+        "mini/references/pass.md",
+        "mini/references/log.md"
+      ]
+    },
+    {
+      "name": "檐铃清点",
+      "aliases": [],
+      "sources": [
+        "mini/SKILL.md",
+        "mini/references/log.md"
+      ]
+    }
+  ],
+  "relation": {
+    "source": "夜场入厅",
+    "target": "霜羽票签",
+    "kind": "depends_on",
+    "source_quote_fragments": [
+      "夜场入厅依赖霜羽票签",
+      "只有霜羽票签有效时，夜场入厅才可执行"
+    ]
+  },
+  "values": [
+    {
+      "name": "霜羽票签",
+      "patterns": [
+        "2026\\s*年\\s*0?1\\s*月",
+        "(?<![\\d零〇一二三四五六七八九十百千万两])9\\s*分钟"
+      ]
+    },
+    {
+      "name": "檐铃清点",
+      "patterns": [
+        "(?<![\\d零〇一二三四五六七八九十百千万两])4\\s*只"
+      ]
+    }
+  ],
+  "changed_patterns": [
+    "2026\\s*年\\s*0?2\\s*月",
+    "(?<![\\d零〇一二三四五六七八九十百千万两])6\\s*分钟"
+  ],
+  "semantic_review": [
+    "入厅依赖有效票签，过期票签不被接受。",
+    "清点只负责闭馆后纸鹤，与入厅无依赖。",
+    "changed的1月9分钟与2月6分钟须保留各自时间范围。"
+  ]
+}

@@ -20,6 +20,7 @@ no private chat, particular model, account or orchestrator is required.
    commands with exit status, tests, artifacts and remaining work in the Issue and PR.
    An unpushed local result or chat claim is not a handoff.
 7. Validate changed behavior with affected tests and builds; normal CI remains enabled.
+   For E2E campaigns, run the [small production baseline](build/test/e2e/mini-baseline/README.md) before an explicitly selected full corpus.
    Documentation changes need link/template validation. A local full race/verify suite,
    archive audit or recovery/scale rehearsal is not a prerequisite for a small experiment.
    Report blocked checks explicitly; preserve completed paid experiments as evidence.

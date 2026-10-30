@@ -36,6 +36,14 @@ meaning. No new governance/recovery framework or recursive preparation is reques
 
 ## Reuse and fair evaluation
 
+Each end-to-end integration campaign starts with the reusable
+[small production baseline](../../build/test/e2e/mini-baseline/README.md):
+`make e2e-mini OUT=/absolute/new/result`. A mini failure stops the full follow-up;
+full sources are always explicitly selected through the documented `--source-tree`
+option. Mini PASS proves its finite cases only and leaves the full baseline's
+independent criteria unchanged. This sequence applies to E2E campaigns, not each
+ordinary edit or unit-test run.
+
 Reuse mature benchmarks and existing production adapters. Declare selected source bytes,
 DEV roster, paired resources and metrics before outcomes. Originals go to the builder;
 qid/question to the solver; gold to the judge. HOLDOUT stays closed unless separately
