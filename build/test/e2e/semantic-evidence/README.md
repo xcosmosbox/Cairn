@@ -309,10 +309,10 @@ expectations or other judge material. Each phase uses a new output directory.
 
 ```sh
 go build -o /tmp/cairn-v016 ./build/test/e2e/corpus-capacity
-/tmp/cairn-v016 --mode v016 --phase full --source-tree /authorized/fixed-source-tree --out /private/full-01 --max-tokens 32768 --semantic-retries 1
-/tmp/cairn-v016 --mode v016 --phase repeat --source-tree /authorized/fixed-source-tree --previous /private/full-01 --out /private/repeat-01 --max-tokens 32768 --semantic-retries 1
-/tmp/cairn-v016 --mode v016 --phase unchanged --source-tree /authorized/fixed-source-tree --previous /private/repeat-01 --out /private/unchanged-01 --max-tokens 32768 --semantic-retries 1
-/tmp/cairn-v016 --mode v016 --phase changed --source-tree /authorized/fixed-source-tree --previous /private/unchanged-01 --change-path fixtures/operations/references/sibling.md --change-file /authorized/changed-addition.md --out /private/changed-01 --max-tokens 32768 --semantic-retries 1
+/tmp/cairn-v016 --mode v016 --phase full --source-tree /authorized/fixed-source-tree --out /private/full-01 --max-tokens 65536 --semantic-retries 3
+/tmp/cairn-v016 --mode v016 --phase repeat --source-tree /authorized/fixed-source-tree --previous /private/full-01 --out /private/repeat-01 --max-tokens 65536 --semantic-retries 3
+/tmp/cairn-v016 --mode v016 --phase unchanged --source-tree /authorized/fixed-source-tree --previous /private/repeat-01 --out /private/unchanged-01 --max-tokens 65536 --semantic-retries 3
+/tmp/cairn-v016 --mode v016 --phase changed --source-tree /authorized/fixed-source-tree --previous /private/unchanged-01 --change-path fixtures/operations/references/sibling.md --change-file /authorized/changed-addition.md --out /private/changed-01 --max-tokens 65536 --semantic-retries 3
 ```
 
 Full/repeat call ordinary `RunFullRebuild` on pristine frozen bytes. Unchanged/changed
@@ -326,7 +326,7 @@ Source/config hashes, actual attempts, reasons, raw transport outcomes, reports 
 SQLite graph/source readback stay in the private evidence directory. A first actual
 authentication denial stops repeating identical provider requests and keeps local
 unavailable errors for other sources; it never supplies a fake model verdict. A
-failed full construction prevents unchanged/changed phases from claiming a usable baseline.
+missing DB/tree/raw context prevents unchanged/changed phases from claiming a usable baseline.
 An independent raw full repeat can run even after partial prior construction.
 A partial but usable DB/tree/context may support in-place work; prior incompleteness
 remains explicit in the phase aggregate even when that new operation succeeds.
@@ -334,11 +334,48 @@ No runtime key or provider success is assumed. Source-first semantic comparison 
 independent review are required after an actual successful graph; runner/unit success
 does not establish the 360-unit/194-context or all-case semantic acceptance.
 
-The 2026-10-29 ordinary full attempt was interrupted by
-[automatic approval review](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6486588729).
-Only one request-start record exists; there is no observed response, completion
-report or usable DB. The earlier source-free endpoint 401 is a separate diagnostic.
-All actual-model 360-unit/194-context and 19-case semantic results remain unknown;
-repeat/unchanged/changed were not run. No campaign process remains, and no alternate
-source-payload route was attempted. The dated report preserves the exact rejection,
-artifact digests and the supported authorization step required before resumption.
+The [2026-10-30 authenticated campaign report](../../../../docs/coordination/reports/2026-10-30-v016-actual-model-acceptance.md)
+is the current actual-result record. The 2026-10-29 request-start-only automatic
+approval interruption and earlier source-free401 remain dated unknown outcomes.
+After explicit corpus/destination authorization and successful model listing, the
+initial 32768 full ended partial: mapping truncation plus JSON-mode400 left only
+three Skill shells. Three65536 corrected full runs also ended partial/exit1,
+persisting respectively172/170/175,179/180/172 and161/159/160 nodes/edges/source
+bindings. All bytes,360source units,194contexts and19cases remain in scope.
+
+The last two corrected full runs retained34 and53 HTTP402
+`insufficient_balance_error` responses. Independent source review still found
+accepted-annotation false passes and persisted losses; complete annotation/node
+helper status does not prove faithful final selection or provenance. Repair01's
+amended supplement review is 6 PASS / 4 FAIL / 9 live UNKNOWN: enum-unsupported feed/shutdown
+knowledge may remain in source-bound Detail, while supported dated dependency
+edges and faithful summary conditions still matter. Final repair03 and repair02 S01–S03/supplement audits confirm losses;
+repair03 drops28 same-UUID/different-text concept groups after completed descriptions.
+Repair02 S04–S06 final audit confirms 20 missing members before selection; all360/194
+expectations remain accounted for, including failed ones. Unforced failure controls, live human seed and stability unknowns remain
+separate from existing deterministic acceptance controls.
+
+Current published PR126 code3da0f4e5 includes opaque-node-alias, existing-human
+preservation, relation enum/detail wiring and final human-overlay status corrections. None changes earlier frozen binaries.
+The approved local 35-node check used exact original mapping/accepted04 material;
+all 35 hashes matched production caller material offline. Actual execution reached
+8 scopes, with27 unsent and no final semantic verdict; four `Forbidden` transport
+errors contain no HTTP status/body. A separate tool poll explicitly returned
+automatic approval rejection. No bypass or restart followed, and all model work
+is stopped. Balance exhaustion is also a paid-run blocker.
+
+Released same-domain exact duplicate calibration keeps the first existing traversal
+classification and full semantic key equality, preserves metadata and qualified
+endpoints, and rejects malformed-label merging and literal-frame hijacking. An
+offline production-Go208→176 check preserves194 members and69 relation assertions;
+there is no model generation, persisted graph repair or semantic acceptance credit.
+
+Repeat/unchanged/changed are unrun and unknown. The examples above describe the
+existing runner; they do not authorize a new call. No raw repeat on known-bad
+annotation, fourth correction full or blanket paid human-preservation rerun was
+added. PR126/#114/parent#108 remain unaccepted/unmerged.
+
+Budget routing: the campaign flag governs annotation, mapping and source relations.
+Full/changed node fusion uses maxRetries0 → fixed default3 in every recorded run,
+including flag1 experiments. Current flag default3 aligns other stages; HTTP
+retries remain disabled in these paid experiments.
