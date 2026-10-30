@@ -15,7 +15,7 @@ mini = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mini)
 
 
-def persisted_control(root):
+def persisted_control(root, version_layout=False):
     """Minimal local artifact control, not a provider response or production run."""
     phase = root / "phase"
     phase.mkdir()
@@ -32,6 +32,21 @@ def persisted_control(root):
     source = {"id": "s1", "path": original["path"], "skill": original["skill"], "sha256": original["sha256"]}
     evidence = [{"endpoint": role, "source_id": "s1", "member_id": f"member-{i}-0", "quote": quote, "start_byte": start, "end_byte": start + len(quote.encode()), "start_line": 6, "end_line": 6} for role, i in (("source", 0), ("target", 1))]
     graph["edges"].append({"id": 1, "source_id": "0", "target_id": "1", "kind": "depends_on", "bidirectional": 0, "properties": None, "source_refs": None, "cardinality": None, "description": json.dumps({"cairn_relation_assertions_v1": [{"classification": "explicit", "description": "有效票签是入厅前提", "sources": [source], "evidence": evidence}]}, ensure_ascii=False)})
+    if version_layout:
+        graph["nodes"][1]["description"] = "纸岚展馆夜场使用的票签。"
+        graph["nodes"].append({"id": "3", "name": "2026年1月版霜羽票签", "label": "Entity", "summary": "2026年1月版霜羽票签", "description": "2026年1月版有效期为9分钟。"})
+        graph["node_sources"].append({"node_uuid": "3", "member_id": "member-version", "skill": "paperhall-mini", "file_path": "mini/references/pass.md", "start_line": 0, "end_line": 0})
+        original = next(s for s in originals if s["path"] == "mini/references/pass.md")
+        raw = original["content"].encode()
+        sentences = original["content"].splitlines()[1].split("。")
+        evidence = []
+        for role, member, quote in (("source", "member-1-1", sentences[0] + "。"), ("target", "member-version", sentences[1] + "。")):
+            start = raw.index(quote.encode()); end = start + len(quote.encode())
+            evidence.append({"endpoint": role, "member_id": member, "source_id": "s3", "quote": quote, "start_byte": start, "end_byte": end, "start_line": raw[:start].count(b"\n") + 1, "end_line": raw[:end - 1].count(b"\n") + 1})
+        source = {"id": "s3", "path": original["path"], "skill": original["skill"], "sha256": original["sha256"]}
+        edge = dict(graph["edges"][0], id=2, source_id="1", target_id="3", kind="generalizes")
+        edge["description"] = json.dumps({"cairn_relation_assertions_v1": [{"classification": "explicit", "description": "该票签的2026年1月版本", "sources": [source], "evidence": evidence}]}, ensure_ascii=False)
+        graph["edges"].append(edge)
     with sqlite3.connect(phase / "knowledge.db") as conn:
         for table, rows in graph.items():
             conn.execute("CREATE TABLE " + table + " (" + ",".join(k + (" INTEGER" if isinstance(v, int) else " TEXT") for k, v in rows[0].items()) + ")")
@@ -188,6 +203,69 @@ class CheckerControls(unittest.TestCase):
         report["Describe"] = None
         (self.phase / "build-report.json").write_text(json.dumps(report))
         self.assertTrue(any(c["check"] == "production-stages" and c["status"] == "FAIL" for c in self.checks()))
+
+    def test_readonly_wal_auxiliary_files_do_not_hide_real_mutation(self):
+        # Real read-only SQLite consumers create SHM and an empty WAL. Neither is
+        # a KG write, while nonempty WAL, main DB and writeback changes still fail.
+        before = mini.file_hashes(self.phase, True)
+        (self.phase / "knowledge.db-shm").write_bytes(b"reader lock and index")
+        (self.phase / "knowledge.db-wal").write_bytes(b"")
+        self.assertEqual(before, mini.file_hashes(self.phase, True))
+        (self.phase / "knowledge.db-wal").write_bytes(b"nonempty transaction frame")
+        self.assertNotEqual(before, mini.file_hashes(self.phase, True))
+        (self.phase / "knowledge.db-wal").unlink()
+        source = next((self.phase / "source").rglob("*.md"))
+        original = source.read_bytes()
+        source.write_bytes(original + b"unexpected edit")
+        self.assertNotEqual(before, mini.file_hashes(self.phase, True))
+        source.write_bytes(original)
+        with (self.phase / "knowledge.db").open("ab") as stream:
+            stream.write(b"unexpected main database write")
+        self.assertNotEqual(before, mini.file_hashes(self.phase, True))
+
+    def version_control(self):
+        root = self.root / "version-layout"
+        root.mkdir()
+        return persisted_control(root, version_layout=True)
+
+    def test_bound_version_layout_and_five_negative_controls(self):
+        phase, oracle = self.version_control()
+        self.assertTrue(all(c["status"] == "PASS" for c in mini.audit_phase(phase, oracle)[0]))
+        import shutil
+        for control in ("missing-edge", "reversed-edge", "wrong-hash", "wrong-version", "wrong-value"):
+            copied = self.root / control
+            shutil.copytree(phase, copied)
+            with sqlite3.connect(copied / "knowledge.db") as conn:
+                if control == "missing-edge": conn.execute("DELETE FROM edges WHERE id=2")
+                elif control == "reversed-edge": conn.execute("UPDATE edges SET source_id='3',target_id='1' WHERE id=2")
+                elif control == "wrong-version": conn.execute("UPDATE nodes SET name='2026年2月版霜羽票签' WHERE id='3'")
+                elif control == "wrong-value": conn.execute("UPDATE nodes SET description='2026年1月版有效期19分钟。' WHERE id='3'")
+                else:
+                    envelope = json.loads(conn.execute("SELECT description FROM edges WHERE id=2").fetchone()[0])
+                    envelope["cairn_relation_assertions_v1"][0]["sources"][0]["sha256"] = "0" * 64
+                    conn.execute("UPDATE edges SET description=? WHERE id=2", (json.dumps(envelope),))
+            checks = mini.audit_phase(copied, oracle)[0]
+            self.assertTrue(any(c["check"] == "target-key-values" and c["status"] != "PASS" for c in checks), control)
+
+    def test_correct_child_cannot_rescue_wrong_parent(self):
+        phase, oracle = self.version_control()
+        for text in ("2026年1月版有效期19分钟。", "2025年1月版有效期9分钟。", "2026年1月版有效期不是9分钟。", "有效期十九分钟。"):
+            with sqlite3.connect(phase / "knowledge.db") as conn:
+                conn.execute("UPDATE nodes SET description=? WHERE id='1'", (text,))
+            checks = mini.audit_phase(phase, oracle)[0]
+            self.assertTrue(any(c["check"] == "target-key-values" and c["status"] != "PASS" for c in checks), text)
+
+    def test_ambiguous_bound_version_is_unknown(self):
+        phase, oracle = self.version_control()
+        with sqlite3.connect(phase / "knowledge.db") as conn:
+            conn.row_factory = sqlite3.Row
+            for table, old_id, new_id in (("nodes", "3", "4"), ("edges", 2, 3)):
+                row = dict(conn.execute("SELECT * FROM " + table + " WHERE id=?", (old_id,)).fetchone())
+                row["id"] = new_id
+                if table == "edges": row["target_id"] = "4"
+                conn.execute("INSERT INTO " + table + " VALUES (" + ",".join("?" for _ in row) + ")", list(row.values()))
+        checks = mini.audit_phase(phase, oracle)[0]
+        self.assertTrue(any(c["check"] == "target-key-values" and c["status"] == "UNKNOWN" for c in checks))
 
     def test_mcp_wrong_body_or_source_is_not_a_hit(self):
         graph = mini.graph_rows(self.phase)

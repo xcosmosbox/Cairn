@@ -90,8 +90,10 @@ def file_hashes(phase, include_db=False):
     result = {str(p.relative_to(phase)): digest(p.read_bytes())
               for p in sorted((phase / "source").rglob("*")) if p.is_file()}
     if include_db:
-        for p in sorted(phase.glob("knowledge.db*")):
-            if p.is_file():
+        # 只读 WAL 消费者也会创建/更新 SHM 读锁与索引；它们不是 KG 写入。
+        # Preserve main DB and nonempty WAL bytes; absent and empty WAL are equal.
+        for p in (phase / "knowledge.db", phase / "knowledge.db-wal"):
+            if p.is_file() and (p.name == "knowledge.db" or p.stat().st_size):
                 result[p.name] = digest(p.read_bytes())
     return result
 
@@ -200,29 +202,86 @@ def finite_numbers(text):
     return text
 
 
-def version_values(text, changed):
+def version_pairs(text, changed):
     pairs = set()
+    require(not re.search(r"[零〇一二三四五六七八九十百千万两]+\s*分钟", finite_numbers(text)), "oracle_expression_unresolved: unsupported duration numeral")
     years = re.findall(r"(?<!\d)(\d{4})\s*年", text)
     require(all(year == "2026" for year in years), "incorrect explicit version year")
-    require("2026" in years, "oracle_expression_unresolved: version year")
+    has_duration = False
     for clause in re.split(r"[。；;，,\n]", finite_numbers(text)):
         versions = list(re.finditer(r"(?<!\d)(?:2026\s*年\s*)?0?([12])\s*月", clause))
         if len(versions) > 1:
             raise ValueError("oracle_expression_unresolved: multiple versions in one clause")
         for duration in re.finditer(r"(?<!\d)(\d+)\s*分钟", clause):
-            if not versions:
-                continue
+            has_duration = True
             if re.search(r"(?:不是|并非|不为|非)\s*$", clause[max(0, duration.start() - 8):duration.start()]):
                 raise ValueError("target duration explicitly negated")
+            require(int(duration[1]) in ({9, 6} if changed else {9}), "incorrect target duration")
+            if not versions:
+                continue
             preceding = [v for v in versions if v.start() < duration.start()]
             version = preceding[-1] if preceding else versions[0]
             pairs.add((int(version[1]), int(duration[1])))
     expected = {(1, 9), (2, 6)} if changed else {(1, 9)}
     require(all((month, value) in expected for month, value in pairs), "incorrect month-duration scope")
+    if has_duration or pairs:
+        require("2026" in years and pairs, "oracle_expression_unresolved: version year/scope")
+    return pairs
+
+
+def version_values(text, changed):
+    pairs = version_pairs(text, changed)
+    expected = {(1, 9), (2, 6)} if changed else {(1, 9)}
     require(expected <= pairs, "oracle_expression_unresolved: month-duration scope")
 
 
-def validate_values(selected, oracle, changed):
+def validate_version_binding(phase, graph, parent, child, oracle, frozen, expected):
+    """只认可同一固定原文、真实端点及回写的一跳版本，不搜索无关节点。
+    Credit one explicit version edge only with endpoint-owned original evidence.
+    """
+    fixed_path = oracle["change"]["path"]
+    original = next(s for s in frozen if s["path"] == fixed_path)
+    identity = next(line for line in original["content"].splitlines() if line.strip() and not line.startswith("#")).split("。")[0] + "。"
+    selected_pair = {parent["name"]: parent, child["name"]: child}
+    binding_oracle = {"relation": {"source": parent["name"], "target": child["name"], "kind": "generalizes", "source_quote_fragments": [identity]}}
+    validate_relation(graph, selected_pair, binding_oracle, frozen)
+    edge = next(e for e in graph["edges"] if e["source_id"] == parent["id"] and e["target_id"] == child["id"] and e["kind"] == "generalizes")
+    supported = False
+    for assertion in json.loads(edge["description"])["cairn_relation_assertions_v1"]:
+        if assertion.get("classification") != "explicit":
+            continue
+        sources = {s["id"]: s for s in assertion.get("sources", [])}
+        roles = set()
+        for evidence in assertion.get("evidence", []):
+            if sources[evidence["source_id"]]["path"] != fixed_path:
+                continue
+            if evidence["endpoint"] == "source" and identity in evidence["quote"]:
+                roles.add("source")
+            if evidence["endpoint"] == "target" and expected in version_pairs(evidence["quote"], expected[0] == 2):
+                roles.add("target")
+        supported |= roles == {"source", "target"}
+    require(supported, "version binding lacks fixed-source identity/version evidence")
+    child_oracle = {"nodes": [{"name": child["name"], "sources": [fixed_path]}]}
+    validate_sources(graph, {child["name"]: child}, child_oracle, frozen)
+    validate_writeback(phase, graph, {child["name"]: child})
+
+
+def validate_ticket_values(parent, oracle, changed, graph, phase, frozen):
+    expected = {(1, 9), (2, 6)} if changed else {(1, 9)}
+    # 明确错年/错值/否定必须先失败，不能借一个正确 child 抵消。
+    # Wrong or negated parent values fail before considering any missing tuple.
+    present = version_pairs(parent["summary"] + "\n" + parent["description"], changed)
+    for wanted in expected - present:
+        require(graph is not None and phase is not None and frozen is not None, "oracle_expression_unresolved: month-duration scope")
+        target_ids = {e["target_id"] for e in graph["edges"] if e["source_id"] == parent["id"] and e["kind"] == "generalizes" and e["bidirectional"] == 0}
+        candidates = [n for n in graph["nodes"] if n["id"] in target_ids and n["label"] in ("Entity", "Concept") and parent["name"] in n["name"] and re.search(r"2026\s*年\s*0?" + str(wanted[0]) + r"\s*月", finite_numbers(n["name"]))]
+        require(len(candidates) == 1, "oracle_unrecognized: missing or ambiguous one-hop version")
+        child = candidates[0]
+        require(wanted in version_pairs(child["summary"] + "\n" + child["description"], changed), "oracle_expression_unresolved: version child value")
+        validate_version_binding(phase, graph, parent, child, oracle, frozen, wanted)
+
+
+def validate_values(selected, oracle, changed, graph=None, phase=None, frozen=None):
     for expected in oracle["values"]:
         node = selected[expected["name"]]
         text = node["summary"] + "\n" + node["description"]
@@ -230,7 +289,7 @@ def validate_values(selected, oracle, changed):
         if changed and expected["name"] == oracle["relation"]["target"]:
             patterns += oracle["changed_patterns"]
         if expected["name"] == oracle["relation"]["target"]:
-            version_values(text, changed)
+            validate_ticket_values(node, oracle, changed, graph, phase, frozen)
             continue
         if not values_ok(text, patterns):
             raise ValueError("oracle_expression_unresolved: target-scoped key value: " + expected["name"])
@@ -327,7 +386,7 @@ def audit_phase(phase, oracle, changed=False, previous=None, unchanged=False):
     check("production-stages", stages)
     check("fixed-frozen-inputs", lambda: validate_frozen(frozen, oracle, changed))
     check("source-incidences", lambda: validate_sources(graph, selected, oracle, frozen))
-    check("target-key-values", lambda: validate_values(selected, oracle, changed))
+    check("target-key-values", lambda: validate_values(selected, oracle, changed, graph, phase, frozen))
     check("explicit-directed-relation", lambda: validate_relation(graph, selected, oracle, frozen))
     check("sqlite-markdown-sidecar", lambda: validate_writeback(phase, graph, selected))
     if previous:
@@ -349,11 +408,12 @@ def require(condition, reason):
 
 
 def query_checks(phase, bins, selected):
+    graph = graph_rows(phase)
+    semantic_before = {table: canonical(rows) for table, rows in graph.items()}
     before = file_hashes(phase, True)
     env = {k: v for k, v in os.environ.items() if not ("API_KEY" in k or k.endswith("TOKEN"))}
     db = str(phase / "knowledge.db")
     outputs = []
-    graph = graph_rows(phase)
     for name, node in selected.items():
         for args in (["find", name], ["why", node["id"]]):
             result = subprocess.run([str(bins / "cairn"), "--db-path", db, *args], env=env, text=True, capture_output=True)
@@ -375,6 +435,7 @@ def query_checks(phase, bins, selected):
         validate_mcp(content, node, graph)
     write_json(phase / "query-results.json", {"mode": "real-cli-and-mcp-no-api-credential", "cli": outputs, "mcp": responses})
     require(before == file_hashes(phase, True), "query mutated database or source/writeback files")
+    require(semantic_before == {table: canonical(rows) for table, rows in graph_rows(phase).items()}, "query mutated persisted semantic rows")
     return {"check": "real-cli-mcp-readonly", "status": "PASS"}
 
 
