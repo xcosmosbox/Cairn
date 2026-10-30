@@ -31,6 +31,11 @@ jobs:
           python3 -m unittest discover -s e2e/quality -p 'test_*.py'
           python3 -m unittest discover -s e2e/benchmarks/multihop_public -p 'test_*.py'
           python3 e2e/quality/export_receipts.py --self-test
+      - name: Small baseline checker controls (no provider calls)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cairn-mini-python"
+          "$RUNNER_TEMP/cairn-mini-python/bin/python" -m pip install -r build/test/e2e/mini-baseline/requirements.txt
+          "$RUNNER_TEMP/cairn-mini-python/bin/python" -m unittest discover -s build/test/e2e/mini-baseline -p 'test_*.py'
   viewer:
     runs-on: ubuntu-latest
     timeout-minutes: 15

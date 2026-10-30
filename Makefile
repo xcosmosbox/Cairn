@@ -1,4 +1,4 @@
-.PHONY: all build build-build build-service test vet verify check-invariants fmt lint clean help
+.PHONY: all build build-build build-service test vet verify check-invariants fmt lint clean help e2e-mini test-mini-baseline
 
 # 二进制列表（构建端 / 查询端）
 BUILD_BINS   := cairnd cairnctl cairn-ingest cairn-incremental cairn-rebalance cairn-evolve
@@ -19,6 +19,8 @@ help:
 	@echo "  make fmt        goimports + gofmt -s"
 	@echo "  make vet        go vet"
 	@echo "  make test       跑单元与缺陷回归测试（见 CONTRIBUTING.md）"
+	@echo "  make e2e-mini OUT=/new/path  小样本生产端到端 baseline（真实模型）"
+	@echo "  make test-mini-baseline     免费 baseline 验收器负控"
 	@echo "  make lint       golangci-lint（需自行安装，仓库未提供 .golangci.yml）"
 	@echo "  make clean      删除 bin/ 与覆盖率产物"
 	@echo ""
@@ -71,6 +73,15 @@ build-service:
 test:
 	@echo "── go test ./...（单元与缺陷回归）──"
 	go test -parallel 8 -count=1 ./...
+
+# 先用固定短样本发现接线错误；全量输入必须由调用者另行指定。
+# Exercise a fixed short source set before an explicitly selected full corpus.
+e2e-mini:
+	@test -n "$(OUT)" || (echo "OUT must name a new absolute result directory"; exit 1)
+	python3 build/test/e2e/mini-baseline/run.py --out "$(OUT)"
+
+test-mini-baseline:
+	python3 -m unittest discover -s build/test/e2e/mini-baseline -p 'test_*.py'
 
 # ═══════════════════════════════════════════════════════════════════
 # 开发辅助

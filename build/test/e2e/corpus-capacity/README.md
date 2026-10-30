@@ -1,5 +1,10 @@
 # Source-only construction diagnostic
 
+For end-to-end integration, first run the reusable
+[small production baseline](../mini-baseline/README.md). Its explicit `--source-tree`
+option can follow a mini PASS with a separately selected full run; full semantic
+acceptance remains independent. There is no default historical/private corpus.
+
 The current driver uses the ordinary production orchestrator with a declared
 source-only JSON array. Every supplied row remains in the preparation outcome
 roster. Invalid source rows are recorded locally; valid independent rows continue.
