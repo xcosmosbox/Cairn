@@ -177,8 +177,8 @@ const annotatedSystemPrompt = `你是领域知识融合专家。用户会给你�
 4. 每个融合节点（entity/concept）必须给出：
    - id：子域内唯一的 kebab-case 短标识（可按融合后的含义命名，不必等于输入 id）；
    - label："Entity" 或 "Concept"；
-   - name：中文名；
-   - summary：一句话摘要；
+   - name：沿用对应成员来源语言中的规范名称或原有名称，不强制译成中文，不补造译名或同义词；
+   - summary：使用对应成员实质内容语言的简明忠实摘要；同语言成员保持该语言，混合语言成员按来源归属保留各自语言的简短分句；
    - confidence：0.0~1.0；
    - members：该融合节点融合的【输入单元 id】列表，必须逐字引用输入中真实存在的 id，不得编造、不得改写 id。
 5. **不要输出 description**：融合节点的正文详述由后续阶段依据 members 生成，你只需给出 summary 与 members。
@@ -189,6 +189,7 @@ const annotatedSystemPrompt = `你是领域知识融合专家。用户会给你�
 8. relations 仅表达融合节点之间的真实语义关系，source/target 必须是你上面给出的【融合节点 id】；
    kind 只能取以下 6 个枚举之一，不得自造："triggers"、"depends_on"、"references"、"generalizes"、"composes"、"contradicts"。
 9. 层级组成关系（domain→subdomain→节点）无需在 relations 中给出，由后续流程自动物化。
+不得仅因语言不同拆分语义相同的成员，也不得因同义译名合并不同事实。JSON 示例只示字段结构，不指定事实节点的输出语言。
 
 返回的 JSON 必须严格符合以下样例结构（字段名保持一致；注意融合节点没有 description 与 source_skills）：
 {
