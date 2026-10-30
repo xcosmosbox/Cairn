@@ -85,6 +85,7 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 			}
 		}
 		report.Reasons = append(report.Reasons, existing.conflicts...)
+		report.Reasons = append(report.Reasons, existing.semanticUnverified...)
 	}
 	o.dumpJSON("06_ingest_result.json", report.Ingest)
 	log.Printf("[pipeline] 入库完成: %d 节点, %d 边 (跳过 %d), node_sources %d 行",
@@ -125,6 +126,12 @@ func (o *Orchestrator) MaterializeCompletedExtraction(ctx context.Context, repoP
 	if existing != nil && len(existing.conflicts) > 0 {
 		report.Status = "partial"
 		return report, fmt.Errorf("pipeline: human_curated relation conflict: %s", strings.Join(existing.conflicts, "; "))
+	}
+	if existing != nil && len(existing.semanticUnverified) > 0 {
+		// 已发布人工原文和成功兄弟；不能借覆盖前收据把最终语义称为complete。
+		// Mapping counts stay factual; the changed final text was never assessed.
+		report.Status = "partial"
+		return report, fmt.Errorf("pipeline: %s", strings.Join(existing.semanticUnverified, "; "))
 	}
 	return report, nil
 }

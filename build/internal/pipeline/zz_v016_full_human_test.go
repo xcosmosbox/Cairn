@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/ingest"
@@ -17,6 +18,106 @@ import (
 )
 
 const fullHumanPump = "11111111-1111-4111-8111-111111111111"
+
+// 原故障：已核验候选承载的枚举外事实被人工正文替换后，早期收据仍使最终状态complete。
+// A complete candidate receipt cannot certify different text retained at materialization.
+func TestV016FullReportsPostMaterializationSemanticUnverified(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"description", "summary", "name", "synonyms", "same", "fresh", "untouched", "ordinary"} {
+		t.Run(field, func(t *testing.T) {
+			ctx := context.Background()
+			root, path, res, docs := fullHumanFixture(t)
+			candidate := &res.Domains[0].Subdomains[0].Entities[0]
+			candidate.Summary = "Human pump summary"
+			candidate.Description = "Human pump detail: maintenance forbids automatic restart."
+			const detail = "Valve V feeds the pump only while off; it does not feed the pump while on."
+			switch field {
+			case "description", "fresh", "ordinary":
+				candidate.Description = detail
+				docs[0].Items[0].Content, docs[0].Items[0].Detail = detail, detail
+			case "summary":
+				candidate.Summary = "Pump receives feed only while valve V is off."
+			case "name":
+				candidate.Name = "Feed pump"
+			case "synonyms":
+				candidate.Synonyms = []string{"Feed pump"}
+			case "untouched":
+				res.Domains[0].Subdomains[0].Entities = res.Domains[0].Subdomains[0].Entities[1:]
+				docs = docs[1:]
+			}
+			if field == "ordinary" {
+				db, openErr := storage.OpenExisting(path)
+				if openErr != nil {
+					t.Fatal(openErr)
+				}
+				_, updateErr := db.Conn().Exec("UPDATE nodes SET provenance='llm_inferred' WHERE id=?", fullHumanPump)
+				db.Close()
+				if updateErr != nil {
+					t.Fatal(updateErr)
+				}
+			}
+			query := `SELECT json_array(id,label,name,summary,synonyms,domain,subdomain,description,properties,tags,related_entities,confidence,provenance,source_refs,file_slug,created_at,updated_at) FROM nodes WHERE id='` + fullHumanPump + `'`
+			before := fullHumanRows(t, path, query)
+			if field == "fresh" {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			report, err := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil)
+			// These are historical candidate-stage receipts, not a model assessment of human text.
+			report.Describe = &extract.DescribeReport{Outcomes: []extract.NodeDescriptionOutcome{{ID: candidate.ID, Outcome: annotation.DocumentComplete, Summary: candidate.Summary, Description: candidate.Description}}}
+			report.Relations = &extract.RelationProcessReport{Scopes: []extract.RelationScopeOutcome{{Scope: "fixture/references/pump.md", Outcome: annotation.DocumentComplete}}}
+			report.finish(ctx, err)
+			changed := field != "same" && field != "fresh" && field != "untouched" && field != "ordinary"
+			if changed {
+				if err == nil || report.Status != "partial" || !strings.Contains(strings.Join(report.Reasons, ";"), "post-materialization semantic-unverified") || !strings.Contains(strings.Join(report.Reasons, ";"), fullHumanPump) || !strings.Contains(strings.Join(report.Reasons, ";"), field) {
+					t.Fatalf("different final human %s falsely certified by candidate receipts: status=%s reasons=%v err=%v", field, report.Status, report.Reasons, err)
+				}
+				for _, reason := range report.Reasons {
+					if strings.Contains(reason, "Human pump") || strings.Contains(reason, detail) {
+						t.Fatalf("semantic-unverified reason exposes node text: %s", reason)
+					}
+				}
+				if report.FinalCoverage == nil || report.FinalCoverage.Outcome != "complete" || report.FinalCoverage.CoveredIncidences != 3 {
+					t.Fatalf("semantic uncertainty corrupted factual mapping receipt: %+v", report.FinalCoverage)
+				}
+			} else if err != nil || report.Status != "complete" {
+				t.Fatalf("%s path incorrectly degraded: status=%s reasons=%v err=%v", field, report.Status, report.Reasons, err)
+			}
+			if report.Ingest == nil || report.Ingest.NodesInserted == 0 || report.Ingest.NodeSourcesInserted != len(docs) || report.Writeback == nil || report.Writeback.DocsWritten == 0 {
+				t.Fatalf("published graph/writeback falsely reported discarded: ingest=%+v writeback=%+v", report.Ingest, report.Writeback)
+			}
+			persisted, openErr := storage.OpenReadOnly(path)
+			if openErr != nil {
+				t.Fatal(openErr)
+			}
+			var nodes, edges int
+			countErr := persisted.Conn().QueryRow("SELECT (SELECT count(*) FROM nodes),(SELECT count(*) FROM edges)").Scan(&nodes, &edges)
+			persisted.Close()
+			if countErr != nil || report.Ingest.NodesInserted != nodes || report.Ingest.EdgesInserted != edges {
+				t.Fatalf("committed counts differ from published graph: nodes=%d edges=%d ingest=%+v err=%v", nodes, edges, report.Ingest, countErr)
+			}
+			if field != "fresh" && field != "ordinary" && fullHumanRows(t, path, query) != before {
+				t.Fatal("semantic receipt changed original human UUID/payload")
+			}
+			if field != "untouched" && field != "fresh" && field != "ordinary" {
+				md, readErr := os.ReadFile(filepath.Join(root, "references/pump.md"))
+				if readErr != nil || !strings.Contains(string(md), "Human pump detail: maintenance forbids automatic restart.") || strings.Contains(string(md), detail) {
+					t.Fatalf("partial receipt prevented authoritative human writeback: %s %v", md, readErr)
+				}
+			}
+			if field == "fresh" && fullHumanRows(t, path, `SELECT description FROM nodes WHERE id='`+candidate.ID+`'`) != detail {
+				t.Fatal("fresh build lost candidate detail")
+			}
+			if field == "ordinary" && fullHumanRows(t, path, `SELECT description FROM nodes WHERE id='`+fullHumanPump+`'`) != detail {
+				t.Fatal("ordinary existing machine node did not receive checked candidate detail")
+			}
+			if got := fullHumanRows(t, path, `SELECT description FROM nodes WHERE id='`+extract.NodeUUID([]string{"new-member"})+`'`); got != "Only after isolation." {
+				t.Fatalf("independent committed addition lost: %s", got)
+			}
+		})
+	}
+}
 
 func fullHumanFixture(t *testing.T) (string, string, *extract.Result, []*dktypes.AnnotatedDocument) {
 	t.Helper()
@@ -117,6 +218,13 @@ func fullHumanRows(t *testing.T, path, query string) string {
 	return strings.Join(out, "\n")
 }
 
+func requireFullHumanSemanticUnverified(t *testing.T, report *RunReport, err error) {
+	t.Helper()
+	if err == nil || report.Status != "partial" || !strings.Contains(strings.Join(report.Reasons, ";"), "post-materialization semantic-unverified") {
+		t.Fatalf("retained different human text must be explicitly unverified: report=%+v err=%v", report, err)
+	}
+}
+
 // 原故障：成功Full用全新DB覆盖人工UUID/完整边，再把机器正文写入MD和sidecar。
 // This runs the production no-LLM materialization boundary over a seeded closed DB.
 func TestV016FullPreservesExistingHumanAndUntouchedScope(t *testing.T) {
@@ -139,8 +247,8 @@ func TestV016FullPreservesExistingHumanAndUntouchedScope(t *testing.T) {
 				if materializeErr == nil || report.Status != "partial" || !strings.Contains(materializeErr.Error(), "generated payload not applied") {
 					t.Fatalf("protected generated collision falsely applied: report=%+v err=%v", report, materializeErr)
 				}
-			} else if materializeErr != nil {
-				t.Fatal(materializeErr)
+			} else {
+				requireFullHumanSemanticUnverified(t, report, materializeErr)
 			}
 			db, err := storage.OpenReadOnly(path)
 			if err != nil {
@@ -215,13 +323,13 @@ func TestV016FullPreservesExistingHumanAndUntouchedScope(t *testing.T) {
 			persisted.Conn().QueryRow("SELECT count(*) FROM nodes").Scan(&nodesBefore)
 			persisted.Conn().QueryRow("SELECT count(*) FROM edges").Scan(&edgesBefore)
 			persisted.Close()
-			_, repeatErr := o.MaterializeCompletedExtraction(context.Background(), root, path, res, docs, nil)
+			repeatReport, repeatErr := o.MaterializeCompletedExtraction(context.Background(), root, path, res, docs, nil)
 			if collision {
 				if repeatErr == nil {
 					t.Fatal("replayed human collision falsely complete")
 				}
-			} else if repeatErr != nil {
-				t.Fatal(repeatErr)
+			} else {
+				requireFullHumanSemanticUnverified(t, repeatReport, repeatErr)
 			}
 			repeated, err := storage.OpenReadOnly(path)
 			if err != nil {
@@ -314,9 +422,8 @@ func TestV016FullRemovesConfirmedAbsentMachineSource(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "old-skill/references/clean.md")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(context.Background(), root, path, res, docs, nil); err != nil {
-		t.Fatal(err)
-	}
+	report, materializeErr := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(context.Background(), root, path, res, docs, nil)
+	requireFullHumanSemanticUnverified(t, report, materializeErr)
 	db, err := storage.OpenReadOnly(path)
 	if err != nil {
 		t.Fatal(err)
@@ -364,9 +471,8 @@ func TestV016FullRefreshesUntouchedNeighborWithoutOverwritingPendingEdit(t *test
 	if err := os.WriteFile(filepath.Join(root, rel), []byte(edited), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil); err != nil {
-		t.Fatal(err)
-	}
+	report, materializeErr := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil)
+	requireFullHumanSemanticUnverified(t, report, materializeErr)
 	after, err := os.ReadFile(filepath.Join(root, rel))
 	if err != nil || string(after) != edited {
 		t.Fatal("neighbor metadata refresh overwrote pending human content")
@@ -453,9 +559,8 @@ func TestV016FullDistinguishesAcceptedEmptyFromUnrepresentedSource(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil); err != nil {
-				t.Fatal(err)
-			}
+			report, materializeErr := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil)
+			requireFullHumanSemanticUnverified(t, report, materializeErr)
 			persisted, err := storage.OpenReadOnly(path)
 			if err != nil {
 				t.Fatal(err)
@@ -521,9 +626,7 @@ func TestV016FullDistinguishesHierarchyFromSemanticComposes(t *testing.T) {
 	}
 	db.Close()
 	report, err := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireFullHumanSemanticUnverified(t, report, err)
 	if report.Ingest.SemanticEdges != 3 || report.Ingest.ComposesEdges != 6 || report.Ingest.ProvidesEdges != 2 {
 		t.Fatalf("semantic composes was counted as hierarchy: %+v", report.Ingest)
 	}
@@ -590,8 +693,13 @@ func TestV016FullAllowsFreshAndUnprotectedClassification(t *testing.T) {
 				res.Domains[0].Subdomains[0].Concepts = nil
 				res.Domains = append(res.Domains, extract.Domain{Slug: "changed-domain", Name: "Changed", SourceSkills: []string{"fixture"}, Subdomains: []extract.Subdomain{{Slug: "changed-subdomain", Name: "Changed subdomain", Concepts: []extract.Node{concept}}}})
 			}
-			if _, err := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil); err != nil {
-				t.Fatal(err)
+			report, materializeErr := (&Orchestrator{repositoryIdentity: "local:full-human"}).MaterializeCompletedExtraction(ctx, root, path, res, docs, nil)
+			if mode == "fresh" {
+				if materializeErr != nil {
+					t.Fatal(materializeErr)
+				}
+			} else {
+				requireFullHumanSemanticUnverified(t, report, materializeErr)
 			}
 			db, err := storage.OpenReadOnly(path)
 			if err != nil {

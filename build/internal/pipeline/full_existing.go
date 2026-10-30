@@ -19,12 +19,13 @@ import (
 // fullExistingOutcome只描述实际保留后的身份和受影响文件，不参与语义推断。
 // Exact source/member ownership is evidence of identity; names are never a fallback.
 type fullExistingOutcome struct {
-	remap     map[string]string
-	docs      map[string]bool
-	refresh   map[string]bool
-	empty     map[string]bool
-	updates   []writeback.NodeUpdate
-	conflicts []string
+	remap              map[string]string
+	docs               map[string]bool
+	refresh            map[string]bool
+	empty              map[string]bool
+	updates            []writeback.NodeUpdate
+	conflicts          []string
+	semanticUnverified []string
 }
 
 func fullClosedDatabase(path string) error {
@@ -290,6 +291,25 @@ func mergeFullExisting(ctx context.Context, db *storage.DB, path, repoPath, iden
 		}
 		if oldNode := oldByID[id]; oldNode != nil && keep[id] && (oldNode.Domain != n.Domain || oldNode.Subdomain != n.Subdomain) {
 			return nil, fmt.Errorf("pipeline: protected taxonomy conflict for existing UUID %s; prior state retained", id)
+		}
+		// 人工正文原样保留，但候选的核验收据不能证明覆盖后的不同正文。
+		// Compare only selected human nodes; untouched human data needs no new assessment.
+		if prior := oldByID[id]; prior != nil && protected[id] {
+			var fields []string
+			for _, field := range []struct{ name, candidate, final string }{
+				{"name", n.Name, prior.Name},
+				{"summary", n.Summary, prior.Summary},
+				{"description", n.Description, prior.Description},
+				{"synonyms", n.Synonyms, prior.Synonyms},
+			} {
+				if field.candidate != field.final {
+					fields = append(fields, field.name)
+				}
+			}
+			if len(fields) > 0 {
+				// Report identities/field names only, never protected text or a verdict on it.
+				outcome.semanticUnverified = append(outcome.semanticUnverified, fmt.Sprintf("post-materialization semantic-unverified: human_curated UUID %s retained different %s; candidate verification does not certify final text", id, strings.Join(fields, ",")))
+			}
 		}
 	}
 	old.Close()
