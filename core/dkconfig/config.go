@@ -38,15 +38,15 @@ type Config struct {
 
 // ServiceConfig 是控制器自身的服务层配置。
 type ServiceConfig struct {
-	Mode              Mode        `yaml:"mode"`
-	PollInterval      Duration    `yaml:"poll_interval"`
-	StateDB           string      `yaml:"state_db"`
-	WorkspacesDir     string      `yaml:"workspaces_dir"`
-	CacheDir          string      `yaml:"cache_dir"`
-	BundleDir         string      `yaml:"bundle_dir"`
-	ListenAddr        string      `yaml:"listen_addr"`
-	AdminTokenEnv     string      `yaml:"admin_token_env"`
-	MaxConcurrentRepos int         `yaml:"max_concurrent_repos"`
+	Mode               Mode     `yaml:"mode"`
+	PollInterval       Duration `yaml:"poll_interval"`
+	StateDB            string   `yaml:"state_db"`
+	WorkspacesDir      string   `yaml:"workspaces_dir"`
+	CacheDir           string   `yaml:"cache_dir"`
+	BundleDir          string   `yaml:"bundle_dir"`
+	ListenAddr         string   `yaml:"listen_addr"`
+	AdminTokenEnv      string   `yaml:"admin_token_env"`
+	MaxConcurrentRepos int      `yaml:"max_concurrent_repos"`
 }
 
 // GitHubConfig 是 GitHub App 凭证与端点配置（§4）。
@@ -81,21 +81,24 @@ type CatalogConfig struct {
 
 // RewriteConfig 控制 Source Repo 回写 PR 策略。
 type RewriteConfig struct {
-	Mode            string  `yaml:"mode"`              // pr | direct
-	MinConfidence   float64 `yaml:"min_confidence"`
-	AutoMergeOnGreen bool   `yaml:"auto_merge_on_green"`
-	PRSummaryLLM    bool    `yaml:"pr_summary_llm"`     // 启用 LLM 生成 PR 描述
+	// SourceContextDir 位于生成工作树之外，复用已有00原文/04成员私有产物。
+	// The caller supplies complete current raw snapshots here for changed relation verification.
+	SourceContextDir string  `yaml:"source_context_dir"`
+	Mode             string  `yaml:"mode"` // pr | direct
+	MinConfidence    float64 `yaml:"min_confidence"`
+	AutoMergeOnGreen bool    `yaml:"auto_merge_on_green"`
+	PRSummaryLLM     bool    `yaml:"pr_summary_llm"` // 启用 LLM 生成 PR 描述
 }
 
 // RepoConfig 是单个被观测 Source Repo 的配置。
 type RepoConfig struct {
-	ID       string        `yaml:"id"`
-	URL      string        `yaml:"url"`
-	Owner    string        `yaml:"owner"`
-	Name     string        `yaml:"name"`
-	Branch   string        `yaml:"branch"`
-	KGGroup  string        `yaml:"kg_group"`
-	Rewrite  RewriteConfig `yaml:"rewrite"`
+	ID      string        `yaml:"id"`
+	URL     string        `yaml:"url"`
+	Owner   string        `yaml:"owner"`
+	Name    string        `yaml:"name"`
+	Branch  string        `yaml:"branch"`
+	KGGroup string        `yaml:"kg_group"`
+	Rewrite RewriteConfig `yaml:"rewrite"`
 }
 
 // Duration 是可从 YAML 字符串解析的 time.Duration（如 "5m"、"600s"）。

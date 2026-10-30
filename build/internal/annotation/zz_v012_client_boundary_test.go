@@ -34,6 +34,10 @@ func v012BoundaryClient(t *testing.T, endpoint, timeout string) llm.Client {
 	return client
 }
 
+type v012BoundaryTransport func(*http.Request) (*http.Response, error)
+
+func (f v012BoundaryTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 // 配置错误修复不能把实际服务响应误判为永久错误，也不能重跑成功生成。
 // Actual provider status/rate-limit errors must retry the identical assessment candidate.
 func TestV012ProductionClientServiceResponseRetriesAssessment(t *testing.T) {
@@ -90,22 +94,36 @@ func TestV012ProductionClientServiceResponseRetriesAssessment(t *testing.T) {
 // A real client timeout under a live caller consumes only the finite failed-step allowance.
 func TestV012ProductionClientTimeoutRemainsUnavailable(t *testing.T) {
 	t.Parallel()
-	var calls atomic.Int32
-	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var calls, deadlines atomic.Int32
+	// 客户端可能在请求到达 loopback handler 前超时，handler 到达数不能充当尝试数。
+	// Count transport entry, then let the real Client.Timeout expire without server scheduling.
+	transport := v012BoundaryTransport(func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		<-release
-	}))
-	defer server.Close()
-	defer close(release)
+		if _, ok := r.Context().Deadline(); !ok {
+			t.Error("production client did not attach its timeout deadline")
+			return nil, context.Canceled
+		}
+		<-r.Context().Done()
+		if r.Context().Err() == context.DeadlineExceeded {
+			deadlines.Add(1)
+		}
+		return nil, r.Context().Err()
+	})
+	client, err := llm.NewOpenAICompatClientWithTransport(llm.Config{
+		Endpoint: "http://127.0.0.1/timeout", Timeout: "30ms", MaxRetries: -1,
+		APIKeyEnv: "CAIRN_V012_BOUNDARY_UNUSED_KEY",
+	}, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
-	result := NewDocumentProcessor(v012BoundaryClient(t, server.URL, "30ms"), 0, 1, 0).
+	result := NewDocumentProcessor(client, 0, 1, 0).
 		Process(ctx, "scope", "fact.md", "Orbit preserves one fact.")
-	if ctx.Err() != nil || result.Outcome != DocumentUnavailable || !result.Exhausted || len(result.Attempts) != 2 || calls.Load() != 2 {
-		t.Fatalf("client timeout became terminal configuration/cancellation: calls=%d result=%+v", calls.Load(), result)
+	if ctx.Err() != nil || result.Outcome != DocumentUnavailable || !result.Exhausted || len(result.Attempts) != 2 || calls.Load() != 2 || deadlines.Load() != 2 {
+		t.Fatalf("client timeout became terminal configuration/cancellation: calls=%d deadlines=%d result=%+v", calls.Load(), deadlines.Load(), result)
 	}
 	for _, attempt := range result.Attempts {
-		if attempt.Step != "annotate" || attempt.Outcome != "unavailable" || !strings.Contains(attempt.Reason, "timeout") {
+		if attempt.Step != "annotate" || attempt.Outcome != "unavailable" || !strings.Contains(attempt.Reason, "timeout (Client.Timeout=30ms)") {
 			t.Fatalf("timeout lost its failed step/reason: %+v", attempt)
 		}
 	}

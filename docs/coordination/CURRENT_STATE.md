@@ -1,12 +1,77 @@
 # Current evidence snapshot
 
-As of **2026-10-28 UTC**. Product source starting baseline:
+As of **2026-10-30 UTC**. Product source starting baseline:
 `d2fa342312809b1d632308433ec507b523d86655` (merged PR106).
 Live [#107](https://github.com/xcosmosbox/Cairn/issues/107), task comments/PR heads and raw
 outcomes take precedence over this dated snapshot. Cairn remains Alpha; no release or
 answer-utility result is implied by code acceptance/CI.
 
 ## Current work
+
+The [fresh .5 acceptance](https://github.com/xcosmosbox/Cairn/issues/113#issuecomment-6486028430)
+rechecked main `2ae4eef654e99e5d84de43b72e7dc65247c18bf1`, tree
+`0be7e07577fbe94ebc189e2c03e522423bc845c6`, after PR125. #109–#113
+dependencies were accepted at that checkpoint; later live repair comments govern
+newly found defects. #114 and parent#108 remain **unaccepted**, and
+[PR126](https://github.com/xcosmosbox/Cairn/pull/126) remains draft/unmerged.
+Current published code is `3da0f4e5f546614cd06dcbd7afde6f8ad69d28ac`, tree
+`fd97930bfc8f0e6c0a8c3d7351904dd140bfc97a`. Released relation/detail,
+final-human-status and timeout-test repairs were included in preceding65c2fb8;
+they do not change frozen paid-run outcomes.
+
+The [2026-10-30 actual-model report](reports/2026-10-30-v016-actual-model-acceptance.md)
+records the fixed six originals, eight supplement bodies and three empty markers,
+with all 360 substantive units / 194 contexts / 19 cases retained. The user explicitly
+authorized corpus/destination/paid use; authenticated source-free HTTP200 listed
+exact `deepseek-flash`. Earlier401 and
+[automatic-review interrupted attempt](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6486588729)
+remain separate unchanged history.
+
+| Actual full | Terminal outcome | SQLite nodes / edges / source bindings |
+| --- | --- | --- |
+| initial 32768 | partial/exit1; mapping truncation, relation JSON-mode400 | 3 / 0 / 0 |
+| repair-01, 65536 | partial/exit1; S05 annotation partial,17 node scopes noncomplete | 172 / 170 / 175 |
+| repair-02, 65536 | partial/exit1;18 node scopes unavailable,34 balance402 responses | 179 / 180 / 172 |
+| repair-03, 65536 | partial/exit1;3 node scopes unavailable,53 balance402 responses | 161 / 159 / 160 |
+
+Independent audits found accepted-annotation false passes, including residual
+source omissions and timing distortion in repair03; helper completeness is not
+source-semantic acceptance. Repair01 final readback has actual omissions and
+unsupported additions; its corrected supplement review is 6 PASS / 4 FAIL / 9 live UNKNOWN,
+with unsupported enum semantics allowed in faithful source-bound Detail. Final repair03 and repair02
+S01–S03/supplement graph audits confirm persisted losses; repair03 filtering
+removes 28 same-UUID/different-text concept groups despite complete descriptions.
+Repair02 S04–S06 final review confirms 20 missing members before selection,
+including 27 missing S05 source units. All 360/194 are accounted for by final reviews. Complete node candidates do not establish
+selection, source preservation or final SQLite/Markdown fidelity.
+
+Released node-alias and existing-human preservation code is published at 77f99d5;
+affected deterministic checks pass. Relation enum/detail wiring and final human
+overlay completion status corrections are now published at 65c2fb8, without another paid full.
+A bounded 35-node recheck proved all 35 caller material hashes offline, then was
+blocked: 8 scopes attempted, 27 unsent, no completed semantic verdict. Four transport
+errors say `Forbidden` without HTTP status/body; a separate tool poll explicitly
+returned automatic approval review rejection. No reroute, retry or bypass followed.
+All model processes are stopped. Provider `Insufficient Balance` HTTP402 and the
+separate explicit platform approval rejection both block resuming actual calls.
+Standing user authorization is recorded; no new model call is planned.
+
+The exact same-domain duplicate calibration is published at3da0f4e5,
+with both normal CI workflows/all four jobs passing and an
+[exact-head COMMENTED review](https://github.com/xcosmosbox/Cairn/pull/126#pullrequestreview-5708706442)
+confirming released-byte identity and bounded controls. It keeps the first existing classification, preserves metadata
+and qualified endpoint identity, and retains malformed-label/literal-frame negative
+controls. Production-Go offline208→176 preserves194 members/69 relation assertions;
+no descriptions, model calls or real graph reconstruction occurred. This does not
+repair or relabel the actual failed graphs or known annotation false passes.
+
+Independent repeat, unchanged and changed remain unrun/unknown; no expected case
+was removed or replaced by deterministic-control credit. The campaign semantic
+flag controls annotation/mapping/relations; node fusion has always used fixed 3
+extra recoveries, including flag1 runs. Current normal Coordination CI passes;
+77f99d5 Correctness failed an untouched 30ms loopback timeout test under stable/race,
+with two unavailable attempts but one observed handler call. The owner's deterministic test correction is published at 65c2fb8, whose normal CI now passes both workflows/all four jobs;
+no green result is claimed for 77f99d5.
 
 [#107](https://github.com/xcosmosbox/Cairn/issues/107) publishes the
 [finite v0.1 construction plan](reports/2026-10-26-v01-build-completeness-plan.md),

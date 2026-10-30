@@ -757,3 +757,10 @@ func (d Domain) ToDomainDef() dktypes.DomainDef {
 	}
 	return dd
 }
+
+// SourceContext 只是已有冻结原文与接受成员的调用方交接，不是新的持久化 schema。
+// The caller owns these complete raw snapshots outside generated Markdown.
+type SourceContext struct {
+	Sources   []FrozenSource               `json:"sources"`
+	Documents []*dktypes.AnnotatedDocument `json:"documents"`
+}

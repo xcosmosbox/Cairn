@@ -28,6 +28,14 @@ func (c *localContradictionPipelineClient) ProviderName() string {
 }
 func (c *localContradictionPipelineClient) Complete(ctx context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
 	switch {
+	case strings.Contains(req.System, "SOURCE-RELATION GENERATE"):
+		// A real bad candidate is verified first; only concrete rejection permits revision.
+		if c.compatible && c.verifications.Load() > 0 {
+			return &llm.CompleteResponse{Text: `{"relations":[]}`, FinishReason: "stop"}, nil
+		}
+		return pipelineFixtureSourceRelations(req, "contradicts", "Admission is enabled versus disabled in version 2 under condition X")
+	case strings.Contains(req.System, "SOURCE-RELATION COVERAGE"):
+		return &llm.CompleteResponse{Text: `{"complete":true,"supported":true,"reason":"fixed source relations covered; compatible advice is not contradiction"}`, FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "领域知识融合专家"):
 		response, err := c.base.Complete(ctx, req)
 		if err != nil {
@@ -40,6 +48,7 @@ func (c *localContradictionPipelineClient) Complete(ctx context.Context, req llm
 		d := &result.Domains[0]
 		d.Subdomains[0].Concepts = append(d.Subdomains[0].Concepts, d.Subdomains[1].Concepts...)
 		d.Subdomains[0].Relations[0].Kind = "contradicts"
+		d.Subdomains[0].Relations[0].Description = "Admission is enabled versus disabled in version 2 under condition X"
 		d.Subdomains = d.Subdomains[:1]
 		raw, err := json.Marshal(map[string]any{"domains": result.Domains})
 		if err != nil {
@@ -81,7 +90,7 @@ func (c *localContradictionPipelineClient) Complete(ctx context.Context, req llm
 			}
 			evidence = append(evidence, map[string]string{"endpoint": role, "member_id": member, "source_id": src.ID, "quote": strings.TrimSpace(original)})
 		}
-		verdict := map[string]any{"disposition": "supported", "reason": "Explicit source claims checked for the same subject, attribute, time and condition.", "relation_supported": true, "direction_supported": true, "contradiction": map[string]bool{"same_subject": true, "same_attribute": !c.compatible, "same_time": true, "same_conditions": true, "incompatible": !c.compatible}, "evidence": evidence}
+		verdict := map[string]any{"disposition": "supported", "reason": "Explicit source claims checked for the same subject, attribute, time and condition.", "relation_supported": true, "direction_supported": true, "explicit_source_assertion": !c.compatible, "contradiction": map[string]bool{"same_subject": true, "same_attribute": !c.compatible, "same_time": true, "same_conditions": true, "incompatible": !c.compatible}, "evidence": evidence}
 		raw, err := json.Marshal(verdict)
 		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, err
 	default:
@@ -95,8 +104,11 @@ func TestFullPipelinePersistsOnlyVerifiedLocalContradictions(t *testing.T) {
 	t.Parallel()
 	for _, compatible := range []bool{false, true} {
 		t.Run(fmt.Sprint(compatible), func(t *testing.T) {
-			root := t.TempDir()
-			if err := os.WriteFile(filepath.Join(root, "SKILL.md"), []byte("---\nname: system\ndescription: engineering\n---\n# Skill\n"), 0o644); err != nil {
+			root := filepath.Join(t.TempDir(), "system")
+			if err := os.MkdirAll(root, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "SKILL.md"), []byte{}, 0o644); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.MkdirAll(filepath.Join(root, "references"), 0o755); err != nil {
@@ -119,16 +131,44 @@ func TestFullPipelinePersistsOnlyVerifiedLocalContradictions(t *testing.T) {
 				t.Fatal(err)
 			}
 			report, err := o.RunFullRebuild(context.Background(), root, dbPath)
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || report.Status != "complete" {
+				t.Fatalf("finite source correction did not complete: %+v err=%v", report, err)
 			}
 			want := 1
 			if compatible {
 				want = 0
 			}
-			if report.CrossRelations.ValidationPolicy != extract.CrossRelationPolicyV2 || report.CrossRelations.Candidates != 1 || report.CrossRelations.Accepted != want || client.verifications.Load() != 1 || report.CrossRelations.Decisions[0].Scope != extract.CrossRelationScopeLocal || report.CrossRelations.Decisions[0].Kind != "contradicts" {
-				t.Fatalf("local validation not wired into full rebuild: %+v", report.CrossRelations)
+			if report.Relations == nil || len(report.Relations.Scopes) != 3 || client.verifications.Load() == 0 {
+				t.Fatalf("local source validation not wired: %+v", report.Relations)
 			}
+			selected, rejected := 0, 0
+			for _, decision := range report.Relations.Selected {
+				if decision.Scope != extract.CrossRelationScopeLocal || decision.Relation.Kind != "contradicts" || decision.Classification != "explicit" || decision.Outcome != "complete" {
+					t.Fatalf("invalid local selection: %+v", decision)
+				}
+				selected++
+			}
+			for _, decision := range report.Relations.Decisions {
+				if strings.HasPrefix(decision.Disposition, "rejected_") {
+					rejected++
+				}
+			}
+			if compatible {
+				revised := false
+				for _, scope := range report.Relations.Scopes {
+					for _, attempt := range scope.Attempts {
+						if attempt.Step == "revise" {
+							revised = true
+						}
+					}
+				}
+				if selected != 0 || rejected == 0 || !revised {
+					t.Fatalf("compatible candidate was not rejected then finitely revised: %+v", report.Relations)
+				}
+			} else if selected == 0 || report.Status != "complete" {
+				t.Fatalf("supported contradiction lost: %+v", report.Relations)
+			}
+			verificationsBeforeIncremental := client.verifications.Load()
 			db, err := storage.NewDB(storage.DBOptions{Path: dbPath})
 			if err != nil {
 				t.Fatal(err)
@@ -167,7 +207,7 @@ func TestFullPipelinePersistsOnlyVerifiedLocalContradictions(t *testing.T) {
 			}
 			defer check.Close()
 			after, err := storage.NewEdgeRepo(check).ListAll(context.Background())
-			if err != nil || !reflect.DeepEqual(before, after) || client.verifications.Load() != 1 {
+			if err != nil || !reflect.DeepEqual(before, after) || client.verifications.Load() != verificationsBeforeIncremental {
 				t.Fatalf("existing curated edge changed or reverified: %v, before=%+v after=%+v", err, before, after)
 			}
 		})

@@ -38,7 +38,7 @@ func v015DeleteAcceptanceSetup(t *testing.T) *v015DeleteAcceptanceFixture {
 	dir := t.TempDir()
 	f := &v015DeleteAcceptanceFixture{root: filepath.Join(dir, "repo"), dbPath: filepath.Join(dir, "kg.db"), nodes: map[string]*dktypes.Node{}, sources: map[string][]storage.NodeSource{}}
 	identityFixture(t, f.root, f.dbPath, v015DeleteIdentity, true)
-	if err := os.WriteFile(filepath.Join(f.root, "old-skill/SKILL.md"), []byte("---\nname: old-skill\n---\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(f.root, "old-skill/SKILL.md"), []byte{}, 0644); err != nil {
 		t.Fatal(err)
 	}
 	db, err := storage.NewDB(storage.DBOptions{Path: f.dbPath})

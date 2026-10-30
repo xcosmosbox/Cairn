@@ -129,7 +129,19 @@ func CleanFusionMapping(domains []Domain, unitIDs map[string]bool) []string {
 func DedupFusionNodes(domains []Domain) int {
 	merged := 0
 	before := indexEndpoints(domains)
-	canonicalByScope := map[endpointScope]map[string]string{}
+	type canonicalTarget struct {
+		scope endpointScope
+		id    string
+	}
+	canonicalByScope := map[endpointScope]map[string]canonicalTarget{}
+	mergeMetadata := func(target *Node, n Node) {
+		target.Members = unionStrings(target.Members, n.Members)
+		target.Synonyms = unionStrings(target.Synonyms, n.Synonyms)
+		target.SourceSkills = unionStrings(target.SourceSkills, n.SourceSkills)
+		if n.Confidence > target.Confidence {
+			target.Confidence = n.Confidence
+		}
+	}
 	var currentScope endpointScope
 	dedup := func(nodes []Node) ([]Node, int) {
 
@@ -156,13 +168,8 @@ func DedupFusionNodes(domains []Domain) int {
 			wire, _ := json.Marshal([]any{n.Label, n.Name, n.Summary, n.Description, members})
 			signature := string(wire)
 			if j, ok := idxBySignature[signature]; ok {
-				out[j].Members = unionStrings(out[j].Members, n.Members)
-				out[j].Synonyms = unionStrings(out[j].Synonyms, n.Synonyms)
-				out[j].SourceSkills = unionStrings(out[j].SourceSkills, n.SourceSkills)
-				if n.Confidence > out[j].Confidence {
-					out[j].Confidence = n.Confidence
-				}
-				canonicalByScope[currentScope][signature] = out[j].ID
+				mergeMetadata(&out[j], n)
+				canonicalByScope[currentScope][signature] = canonicalTarget{currentScope, out[j].ID}
 				m++
 				continue
 			}
@@ -173,7 +180,7 @@ func DedupFusionNodes(domains []Domain) int {
 				n.ID = fmt.Sprintf("%s-distinct-%x", n.ID, sha256.Sum256(wire))
 			}
 			idxBySignature[signature] = len(out)
-			canonicalByScope[currentScope][signature] = n.ID
+			canonicalByScope[currentScope][signature] = canonicalTarget{currentScope, n.ID}
 			out = append(out, n)
 		}
 		return out, m
@@ -183,11 +190,43 @@ func DedupFusionNodes(domains []Domain) int {
 		for si := range d.Subdomains {
 			sd := &d.Subdomains[si]
 			currentScope = endpointScope{d.Slug, sd.Slug}
-			canonicalByScope[currentScope] = map[string]string{}
+			canonicalByScope[currentScope] = map[string]canonicalTarget{}
 			var me, mc int
 			sd.Entities, me = dedup(sd.Entities)
 			sd.Concepts, mc = dedup(sd.Concepts)
 			merged += me + mc
+		}
+	}
+	// 同域完全相同的候选必须在融合前只保留一次，否则独立改写会变成同 UUID 的正文冲突。
+	// Keep the first existing traversal classification, not a newly inferred or sorted taxonomy.
+	for di := range domains {
+		seen := map[string]endpointRef{}
+		dedupAcrossSubdomains := func(nodes []Node, expectedLabel string) []Node {
+			out := make([]Node, 0, len(nodes))
+			for _, n := range nodes {
+				// 只扩展 parser 已认证的分类；导出 helper 的手工坏标签沿用旧局部行为。
+				// Preserve malformed manual inputs without inferring their container identity.
+				if n.Label != expectedLabel {
+					out = append(out, n)
+					continue
+				}
+				key := nodeSemanticKey(n)
+				if canonical, ok := seen[key]; ok {
+					mergeMetadata(canonical.node, n)
+					canonicalByScope[currentScope][key] = canonicalTarget{canonical.scope, canonical.node.ID}
+					merged++
+					continue
+				}
+				out = append(out, n)
+				seen[key] = endpointRef{currentScope, &out[len(out)-1]}
+			}
+			return out
+		}
+		for si := range domains[di].Subdomains {
+			sd := &domains[di].Subdomains[si]
+			currentScope = endpointScope{domains[di].Slug, sd.Slug}
+			sd.Entities = dedupAcrossSubdomains(sd.Entities, "Entity")
+			sd.Concepts = dedupAcrossSubdomains(sd.Concepts, "Concept")
 		}
 	}
 	// 先前无歧义的旧引用必须跟随去重后的对象；真正歧义不能猜目标。
@@ -203,19 +242,37 @@ func DedupFusionNodes(domains []Domain) int {
 	}
 	redirect := func(scope endpointScope, alias string) string {
 		refs := before.local[scope][alias]
+		if len(refs) == 0 && len(before.global[alias]) == 0 {
+			var framed []string
+			if json.Unmarshal([]byte(alias), &framed) == nil && len(framed) == 3 {
+				refs = before.local[endpointScope{framed[0], framed[1]}][framed[2]]
+			}
+		}
 		if len(refs) == 0 {
 			refs = before.global[alias]
 		}
-		target := ""
+		var target canonicalTarget
 		for _, ref := range refs {
-			id := canonicalByScope[ref.scope][nodeSemanticKey(*ref.node)]
-			if id == "" || (target != "" && target != id) {
+			canonical := canonicalByScope[ref.scope][nodeSemanticKey(*ref.node)]
+			if canonical.id == "" || (target.id != "" && target != canonical) {
 				return unresolved(scope, alias)
 			}
-			target = id
+			target = canonical
 		}
-		if target != "" {
-			return target
+		if target.id != "" {
+			candidate := target.id
+			// 新的 ID 仍须绑定新归属，不能被旧子域中恰好同名的另一个对象截走。
+			// Frame the surviving scope together with its ID, including formerly framed references.
+			if target.scope != scope {
+				candidate = qualifiedRelationAlias(endpointRef{target.scope, &Node{ID: target.id}})
+			}
+			// frame 自身也可能是另一个节点的原始 ID；必须按既有解析优先级复核归属。
+			// A literal identity can shadow the new frame; never redirect to that different object.
+			resolved, status := after.resolve(scope, candidate)
+			if status != "resolved" || resolved.scope != target.scope || resolved.node.ID != target.id {
+				return unresolved(scope, alias)
+			}
+			return candidate
 		}
 		return alias
 	}

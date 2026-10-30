@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -28,11 +27,11 @@ func v013SemanticCandidate(t *testing.T, req llm.CompleteRequest) dktypes.Annota
 
 func v013Generation(t *testing.T, req llm.CompleteRequest, summary, detail string) *llm.CompleteResponse {
 	t.Helper()
-	match := regexp.MustCompile(`Node alias=([^\s]+)`).FindStringSubmatch(req.User)
-	if len(match) != 2 {
+	metadata, err := readNodeWireMetadata(req.User)
+	if err != nil {
 		t.Fatal("generation did not use a call-scoped node alias")
 	}
-	return &llm.CompleteResponse{Text: v013Wire(t, map[string]any{"descriptions": []map[string]string{{"node_id": match[1], "summary": summary, "description": detail}}}), FinishReason: "stop"}
+	return &llm.CompleteResponse{Text: v013Wire(t, map[string]any{"descriptions": []map[string]string{{"node_id": metadata.NodeID, "summary": summary, "description": detail}}}), FinishReason: "stop"}
 }
 
 // This is a deterministic semantic control, not a model-quality measurement.
@@ -212,7 +211,7 @@ func TestV013AcceptancePostFilterRepairRequiresRedescription(t *testing.T) {
 			}
 			return &llm.CompleteResponse{Text: `{"supported":true,"reason":"both source fields preserved","unsupported_items":[],"omissions":[]}`, FinishReason: "stop"}, nil
 		}
-		if strings.Contains(req.User, "Node alias=") {
+		if _, err := readNodeWireMetadata(req.User); err == nil {
 			if !strings.Contains(req.User, "30 degrees Celsius") || !strings.Contains(req.User, "prohibited during maintenance") {
 				t.Fatal("recovered node lost joint Content+Detail material")
 			}
