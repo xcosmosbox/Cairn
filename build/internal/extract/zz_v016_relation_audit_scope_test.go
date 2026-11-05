@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
 
 // Full 的废 seed 拒绝曾污染已完成来源；增量持久旧边仍必须保守失败。
@@ -348,6 +351,166 @@ func TestV016FocusContractPreservesStrictTwoSourceContradiction(t *testing.T) {
 			}
 			if (mode == "F03-F04" && selected != 1) || (mode != "F03-F04" && selected != 0) {
 				t.Fatalf("contradiction exception bypassed strict predicates: selected=%d report=%+v", selected, rpt)
+			}
+		})
+	}
+}
+
+// Reuse the public mini originals/delta and the actual failed parent/January
+// prose shape. This is a request/join and finite-failure control, not a semantic
+// judge: scripted positive coverage does not prove provider interpretation.
+func TestV016NodeContextRequestJoinsAndBodyFailure(t *testing.T) {
+	for _, wrongBody := range []bool{false, true} {
+		t.Run(fmt.Sprint(wrongBody), func(t *testing.T) {
+			const skill = "paperhall-mini"
+			const parent = "霜羽票签是一种票签，是纸岚展馆夜场使用的票签。夜场入厅依赖霜羽票签；只有霜羽票签有效时，夜场入厅才可执行。另有来源说明：本页的“票签”指霜羽票签，夜场入厅依赖它。有效期方面：2026年2月版将霜羽票签的有效期改为6分钟；9分钟仅适用于2026年1月版。过期票签仍不被夜场入厅接受。"
+			jan := "2026年1月版霜羽票签是霜羽票签的2026年1月版本；其有效期为9分钟。"
+			if wrongBody {
+				jan = "2026年1月版霜羽票签的有效期为6分钟。"
+			}
+			paths := []string{"mini/SKILL.md", "mini/references/log.md", "mini/references/pass.md"}
+			var originals []FrozenSource
+			var docs []*dktypes.AnnotatedDocument
+			rawByPath := map[string]FrozenSource{}
+			for i, path := range paths {
+				raw, err := os.ReadFile(filepath.Join("..", "..", "test", "e2e", "mini-baseline", "fixtures", "sources", filepath.FromSlash(path)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if i == 2 {
+					delta, e := os.ReadFile(filepath.Join("..", "..", "test", "e2e", "mini-baseline", "fixtures", "change.md"))
+					if e != nil {
+						t.Fatal(e)
+					}
+					raw = append(raw, append([]byte("\n\n"), delta...)...)
+				}
+				src := FreezeSource(skill, path, string(raw))
+				originals = append(originals, src)
+				rawByPath[path] = src
+				otherID, otherName := fmt.Sprint("entry-", i+1), "夜场入厅"
+				if i == 2 {
+					otherID, otherName = "jan-3", "2026年1月版霜羽票签"
+				}
+				docs = append(docs, &dktypes.AnnotatedDocument{Skill: skill, FilePath: path, Items: []dktypes.AnnotatedItem{{ID: fmt.Sprint("ticket-", i+1), Name: "霜羽票签", Content: string(raw), Detail: string(raw)}, {ID: otherID, Name: otherName, Content: string(raw), Detail: string(raw)}}})
+			}
+			res := &Result{Domains: []Domain{{Slug: "hall", Subdomains: []Subdomain{{Slug: "entry", Entities: []Node{
+				{ID: "ticket", Name: "霜羽票签", Summary: "票签及其分别限定的版本有效期", Description: parent, Members: []string{"ticket-1", "ticket-2", "ticket-3"}},
+				{ID: "jan", Name: "2026年1月版霜羽票签", Summary: jan, Description: jan, Members: []string{"jan-3"}},
+				{ID: "entry", Name: "夜场入厅", Summary: "依赖有效票签", Description: "夜场入厅依赖霜羽票签；只有霜羽票签有效时才可执行。", Members: []string{"entry-1", "entry-2"}},
+			}}}}}}
+			generated, covered := map[string]int{}, map[string]int{}
+			verified := 0
+			c := &v014RelationClient{}
+			c.reply = func(_ context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				if strings.Contains(req.System, "SOURCE-RELATION") {
+					// This assertion establishes only the shared request contract. Semantic
+					// interpretation remains the independent provider's responsibility.
+					for _, clause := range []string{"同一原文内只有一个兼容指代对象", "每句机械打印", "仅材料有事实而实际正文缺失"} {
+						if !strings.Contains(req.System, clause) {
+							t.Fatalf("missing node-context request constraint %q", clause)
+						}
+					}
+					var in relationProcessInput
+					if err := json.Unmarshal([]byte(req.User), &in); err != nil {
+						t.Fatal(err)
+					}
+					if len(in.Sources) != 3 || len(in.Material) != 3 || len(in.Nodes) != 3 {
+						t.Fatalf("actual context omitted: %+v", in)
+					}
+					sourceByID := map[string]crossOriginal{}
+					for _, src := range in.Sources {
+						want := rawByPath[src.Path]
+						if src.Skill != skill || src.SHA256 != want.SHA256 || src.Content != want.Content {
+							t.Fatalf("original context changed: %+v", src)
+						}
+						sourceByID[src.ID] = src
+					}
+					material := map[string]map[string]bool{}
+					for _, m := range in.Material {
+						material[m.SourceID] = map[string]bool{}
+						for _, item := range m.Items {
+							material[m.SourceID][item.ID] = true
+						}
+					}
+					for _, n := range in.Nodes {
+						for _, binding := range n.MemberSources {
+							src := sourceByID[binding.SourceID]
+							if !containsMember(n.Members, binding.MemberID) || !containsMember(src.Members, binding.MemberID) || !material[binding.SourceID][binding.MemberID] {
+								t.Fatalf("node/source/material join broken: %+v / %+v", n, binding)
+							}
+						}
+						if n.Name == "霜羽票签" && (n.Description != parent || len(n.MemberSources) != 3) {
+							t.Fatalf("fused contributions lost: %+v", n)
+						}
+						if n.Name == "2026年1月版霜羽票签" && n.Description != jan {
+							t.Fatalf("existing January prose silently repaired: %+v", n)
+						}
+					}
+					if strings.Contains(req.System, "SOURCE-RELATION GENERATE") {
+						generated[in.FocusSourceID]++
+						if in.FocusSourceID == "s3" {
+							return v014JSON(map[string]any{"relations": []Relation{}}), nil
+						}
+						a, b := "", ""
+						for _, n := range in.Nodes {
+							if n.Name == "夜场入厅" {
+								a = n.Alias
+							}
+							if n.Name == "霜羽票签" {
+								b = n.Alias
+							}
+						}
+						description := "夜场入厅依赖霜羽票签；只有霜羽票签有效时才可执行。"
+						if in.FocusSourceID == "s2" {
+							description = "夜场入厅依赖本页所指的霜羽票签。"
+						}
+						return v014JSON(map[string]any{"relations": []Relation{{Source: a, Target: b, Kind: "depends_on", Description: description, Confidence: .9}}}), nil
+					}
+					covered[in.FocusSourceID]++
+					if wrongBody && in.FocusSourceID == "s3" {
+						return v014JSON(map[string]any{"complete": true, "supported": false, "reason": "January node wrongly says six minutes despite retained raw and member material", "critique": "restore January nine minutes and retain February six minutes in actual node prose"}), nil
+					}
+					return v014JSON(map[string]any{"complete": true, "supported": true, "reason": "scripted request-wiring control only"}), nil
+				}
+				verified++
+				if !strings.Contains(req.System, relationFocusAssertionContract) {
+					t.Fatal("candidate focus verifier contract lost")
+				}
+				var in crossNeighborhood
+				if err := json.Unmarshal([]byte(req.User), &in); err != nil {
+					t.Fatal(err)
+				}
+				yes := true
+				v := crossVerdict{Disposition: "supported", Reason: "scripted explicit dependency control", RelationSupported: &yes, DirectionSupported: &yes, ExplicitSourceAssertion: &yes}
+				for _, pair := range []struct {
+					role     string
+					endpoint CrossEndpoint
+				}{{"source", in.Source}, {"target", in.Target}} {
+					for _, src := range in.Sources {
+						if src.ID != in.FocusSourceID {
+							continue
+						}
+						for _, member := range pair.endpoint.Members {
+							if containsMember(src.Members, member) {
+								v.Evidence = append(v.Evidence, crossQuote{pair.role, member, src.ID, src.Content})
+								break
+							}
+						}
+					}
+				}
+				return v014JSON(v), nil
+			}
+			rpt := NewExtractor(c, 65536).ProcessRelations(context.Background(), res, docs, originals, RelationProcessOptions{MaxRetries: 1})
+			if verified != 2 || len(rpt.Selected) != 2 || rpt.Scopes[0].Outcome != annotation.DocumentComplete || rpt.Scopes[1].Outcome != annotation.DocumentComplete {
+				t.Fatalf("healthy focus dependencies changed: %+v verifiercalls=%d", rpt, verified)
+			}
+			last := rpt.Scopes[2]
+			if wrongBody {
+				if generated["s3"] != 2 || covered["s3"] != 2 || last.Outcome != annotation.DocumentPartial || !last.Exhausted {
+					t.Fatalf("wrong node prose laundered or budget changed: %+v / %v / %v", last, generated, covered)
+				}
+			} else if generated["s3"] != 1 || covered["s3"] != 1 || last.Outcome != annotation.DocumentComplete {
+				t.Fatalf("request wiring control failed: %+v", last)
 			}
 		})
 	}
