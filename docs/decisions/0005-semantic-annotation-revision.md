@@ -33,7 +33,7 @@ nonempty original contains no knowledge. HTTP retries do not replace semantic re
 This documents the new intended behavior, not its completion. #63/#64/#105 results and
 the removal of peripheral archive/cost/time/full609/repeated-GO gates remain unchanged.
 
-## Source subjects and their attributes
+## Source subjects and their direct predicates
 
 The fixed public mini repeat exposed a subject-binding gap: annotation retained a dated
 duration in a separate attribute Concept, and a dated quantity in separate version/date
@@ -44,9 +44,15 @@ subjects lost their required facts or source-bound reachable paths. This is not 
 completion, and later relation-audit uncertainty does not explain away the earlier gap.
 
 Generation and the existing semantic assessment now share an explicit boundary: when the
-original names the same subject and directly states its attributes under date/version
-conditions, retain those facts and their complete qualifications in that subject item's
-content/detail. Additional attribute/date units cannot replace that subject's material.
+original directly states attributes, states, relations or rules about an explicitly named
+subject, retain those facts and their complete arguments and qualifications in that
+subject item's content/detail, whether dated or undated. Additional attribute/date or
+statement/rule units may coexist but cannot replace that subject's material or leave its
+assertion only in another relation participant. Preserve roles, direction, speakers,
+quoted stance and negation rather than reversing the predicate or promoting a disputed
+claim to an author-confirmed fact.
+This does not require copying a sentence's predicate indiscriminately to every mentioned
+object or generating an inverse relation that the source did not assert.
 A temporal qualifier alone does not establish a new subject identity. Preserve genuinely
 distinct objects and explicitly distinct version objects, different subjects, dated values,
 negation, conditions and exceptions. Source uncertainty is distinct from assessment unknown:
@@ -72,3 +78,14 @@ They already pass on the unchanged processor and do not prove prompt effectivene
 actual failed repeat remains failed; validation after the change must use the same fixed
 sources and unchanged subject/source/reachable-value acceptance. Prior successful Full
 and changed results, earlier failures and all planned cases remain historical evidence.
+
+A subsequent fixed repeat completed production with all three relation scopes complete;
+the ticket/count values and source bindings were retained, while acceptance still failed:
+an undated dependency existed only in a standalone statement unit and the target ticket's
+material. The named entry subject had only its SKILL member, without the log source. This
+showed that date/version qualifiers must not be a prerequisite for direct-subject material.
+The same generation/assessment boundary now covers undated predicates; no proposition is
+mechanically merged into an action and no edge is forced. Both failed repeats and their
+different outcomes remain unchanged. New scripts exercise this exact omission shape and
+wrong-subject/quoted-claim feedback through the existing finite processor, not model
+effectiveness or a guarantee of later mapping membership.

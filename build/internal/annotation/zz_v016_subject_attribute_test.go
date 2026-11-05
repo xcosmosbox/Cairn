@@ -126,3 +126,73 @@ func TestV016UnknownSubjectAssessmentRechecksSameCandidate(t *testing.T) {
 		})
 	}
 }
+
+// 真实无日期反例中，依赖句在票签和独立命题中，却没有夜场入厅主体自己的单元。
+// Scripted feedback adds subject-bearing material without merging away a separate proposition.
+func TestV016UndatedSubjectPredicateOmissionRevisesWholeDocument(t *testing.T) {
+	t.Parallel()
+	original := "# 夜场记录\n本页的“票签”指霜羽票签。夜场入厅依赖霜羽票签。\n檐铃清点在2026年1月版每次清点4只纸鹤。"
+	statement := v016SubjectItem("夜场入厅依赖霜羽票签", "夜场入厅依赖霜羽票签。")
+	statement.Tag = dktypes.TagConcept
+	items := []dktypes.AnnotatedItem{
+		v016SubjectItem("霜羽票签", "本页的“票签”指霜羽票签。夜场入厅依赖霜羽票签。"),
+		statement,
+		v016SubjectItem("檐铃清点", "檐铃清点在2026年1月版每次清点4只纸鹤。"),
+	}
+	entry := v016SubjectItem("夜场入厅", "夜场入厅依赖霜羽票签。")
+	entry.Tag = dktypes.TagConcept
+	correct := append(append([]dktypes.AnnotatedItem{}, items...), entry)
+	feedback := "无日期的直接依赖句缺少被陈述主体夜场入厅自己的单元；补回其依赖霜羽票签的完整断言，保留独立命题、票签指代和清点的日期数量，不交换关系方向。"
+	verdict, err := json.Marshal(map[string]any{"supported": true, "reason": feedback, "unsupported_items": []int{}, "omissions": []string{feedback}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, exhausted := range []bool{false, true} {
+		name := "repaired"
+		if exhausted {
+			name = "exhausted"
+		}
+		t.Run(name, func(t *testing.T) {
+			revised, final := v016SubjectRows(correct...), v012AcceptanceSupported
+			if exhausted {
+				revised, final = v016SubjectRows(items...), string(verdict)
+			}
+			client := &v012AcceptanceClient{t: t, replies: []string{v016SubjectRows(items...), string(verdict), revised, final}}
+			result := NewDocumentProcessor(client, 0, 1, 0).Process(context.Background(), "paperhall-mini", "mini/references/log.md", original)
+			if len(client.calls) != 4 || len(result.Attempts) != 4 || result.Attempts[2].Step != "revise" || result.Attempts[3].Step != "assess" {
+				t.Fatalf("wrong finite recovery: %+v", result)
+			}
+			if !strings.Contains(client.calls[2].User, original) || !strings.Contains(client.calls[2].User, feedback) || !strings.Contains(client.calls[3].User, original) {
+				t.Fatal("subject repair lost original/whole-candidate feedback")
+			}
+			if exhausted {
+				if result.Outcome != DocumentPartial || !result.Exhausted {
+					t.Fatalf("subject omission promoted: %+v", result)
+				}
+				return
+			}
+			if result.Outcome != DocumentComplete || result.Exhausted || result.Document == nil || !reflect.DeepEqual(result.Document.Items, correct) {
+				t.Fatalf("subject or successful statement material changed: %+v", result)
+			}
+		})
+	}
+}
+
+// 主体承载不能变成方向翻转或把受争议的引述关系升级为作者确认。
+// Repair the exact attribution/direction defect while preserving the quoted stance and negation.
+func TestV016DirectPredicateRepairPreservesRolesAndQuotedStance(t *testing.T) {
+	t.Parallel()
+	original := "An auditor alleges Entry requires ticket A, not ticket B. The operator disputes this allegation; the dependency is not confirmed."
+	bad := v016SubjectRows(v016SubjectItem("Ticket A", "Ticket A requires Entry; the dependency is confirmed."))
+	good := v016SubjectRows(v016SubjectItem("Entry", "An auditor alleges Entry requires ticket A, not ticket B. The operator disputes this allegation; the dependency is not confirmed."))
+	feedback := "The candidate reverses Entry and ticket A, loses the auditor's attribution, and contradicts the operator's disputed/unconfirmed stance; preserve ticket B negation."
+	verdict, err := json.Marshal(map[string]any{"supported": false, "reason": feedback, "unsupported_items": []int{0}, "omissions": []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &v012AcceptanceClient{t: t, replies: []string{bad, string(verdict), good, v012AcceptanceSupported}}
+	result := NewDocumentProcessor(client, 0, 1, 0).Process(context.Background(), "subjects", "quoted-rule.md", original)
+	if result.Outcome != DocumentComplete || result.Document == nil || len(result.Document.Items) != 1 || result.Document.Items[0].Name != "Entry" || result.Document.Items[0].Detail != original || len(client.calls) != 4 || !strings.Contains(client.calls[2].User, feedback) || !strings.Contains(client.calls[3].User, original) {
+		t.Fatalf("quoted directed predicate was changed: %+v", result)
+	}
+}
