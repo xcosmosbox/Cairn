@@ -511,7 +511,10 @@ func (r *reflower) recomputeRelationsWithSources(ctx context.Context, dirty *Dir
 		if !readOK {
 			continue
 		}
+		// 零旧边也是完整读取的保留集合；缺键仍专用于读取失败，不能由旧边循环决定。
+		// An empty retained view is authoritative only after every required read succeeds.
 		final[key] = nil
+		kept[key] = nil
 		edgeGroups[key] = allEdges
 		// A human identity is protected authoritatively by I-8, including old duplicate rows.
 		protected := map[string]bool{}
