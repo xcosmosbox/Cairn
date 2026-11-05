@@ -298,14 +298,13 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 	var ao *alignOutcome
 	if len(pp.C4ByDoc) > 0 {
 		log.Printf("══════════ I-3 标注 / annotate（%d 篇）══════════", len(pp.C4ByDoc))
-		ant := newAnnotator(o.client, o.maxTokens, o.maxRetries, o.maxNameRunes)
 		c4TextByDoc := make(map[string]string, len(pp.C4ByDoc))
 		for _, cs := range changed {
 			if len(cs.C4) > 0 {
 				c4TextByDoc[cs.Path] = cs.C4Text
 			}
 		}
-		annotated := ant.annotateC4Docs(ctx, pp, c4TextByDoc)
+		annotated := o.annotateCanonicalC4(ctx, st, pp, c4TextByDoc)
 		report.Documents = append(report.Documents, annotated.Results...)
 		// A stale original cannot certify new C4 semantics merely because its path matches.
 		for _, doc := range annotated.Docs {
@@ -556,6 +555,72 @@ func (o *IncrementalOrchestrator) Run(ctx context.Context, repoPath, dbPath stri
 		writebackErr = fmt.Errorf("incremental: %d failed/dependent documents retained their baselines", len(rs.failedDocsSnapshot()))
 	}
 	return report, writebackErr
+}
+
+// Managed writeback omits discovery frontmatter. Resolve exact-path provenance
+// before annotation mints member IDs; directory fallback cannot rename a source.
+// Failures remain document-local and leave the original C4 plan/baseline pending.
+func (o *IncrementalOrchestrator) annotateCanonicalC4(ctx context.Context, st *stores, pp *PipelinePlan, text map[string]string) *annotateOutput {
+	plan := &PipelinePlan{C4ByDoc: map[string][]TextSegment{}, SkillByDoc: map[string]string{}}
+	failed := &annotateOutput{}
+	var paths []string
+	for path := range pp.C4ByDoc {
+		paths = append(paths, path)
+	}
+	sortStrings(paths)
+	for _, path := range paths {
+		skill, err := o.c4SourceNamespace(ctx, st, path, pp.SkillByDoc[path])
+		if err != nil {
+			reason := "C4 source namespace unavailable: " + err.Error()
+			failed.Results = append(failed.Results, annotation.DocumentResult{Skill: pp.SkillByDoc[path], FilePath: path, Outcome: annotation.DocumentUnavailable, Reason: reason})
+			failed.Skipped = append(failed.Skipped, annotateSkip{Path: path, Reason: reason})
+			continue
+		}
+		pp.SkillByDoc[path] = skill
+		plan.C4ByDoc[path], plan.SkillByDoc[path] = pp.C4ByDoc[path], skill
+	}
+	out := newAnnotator(o.client, o.maxTokens, o.maxRetries, o.maxNameRunes).annotateC4Docs(ctx, plan, text)
+	out.Results = append(out.Results, failed.Results...)
+	out.Skipped = append(out.Skipped, failed.Skipped...)
+	sort.Slice(out.Results, func(i, j int) bool { return out.Results[i].FilePath < out.Results[j].FilePath })
+	return out
+}
+
+func (o *IncrementalOrchestrator) c4SourceNamespace(ctx context.Context, st *stores, path, discovered string) (string, error) {
+	rows, err := st.sources.ListByFile(ctx, path)
+	if err != nil {
+		return "", fmt.Errorf("read persisted source identity %s: %w", path, err)
+	}
+	identities := map[string]bool{}
+	for _, row := range rows {
+		if strings.TrimSpace(row.Skill) == "" {
+			return "", fmt.Errorf("missing persisted source namespace %s", path)
+		}
+		identities[row.Skill] = true
+	}
+	var sources []extract.FrozenSource
+	// Caller snapshots were validated together by NewIncrementalOrchestrator.
+	for _, source := range o.sources {
+		if source.Path == path {
+			sources = append(sources, source)
+		}
+	}
+	if len(sources) > 0 {
+		for _, source := range sources {
+			if strings.TrimSpace(source.Skill) == "" {
+				return "", fmt.Errorf("missing caller source namespace %s", path)
+			}
+			identities[source.Skill] = true
+		}
+	}
+	if len(identities) > 1 {
+		return "", fmt.Errorf("conflicting source namespaces %s", path)
+	}
+	for skill := range identities {
+		return skill, nil
+	}
+	// No registered provenance: preserve ordinary discovery for genuinely new input.
+	return discovered, nil
 }
 
 // requirePendingRelationResults makes I-7 terminal for a C4 commit. A missing
