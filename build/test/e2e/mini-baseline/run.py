@@ -105,12 +105,114 @@ def trace_rows(phase):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def resolve_nodes(graph, oracle):
+def source_defined_term(graph, oracle, canonical_node, term, frozen):
+    """Recognize only the fixed mini's wholly source-owned language definition.
+
+    This finite recognizer does not infer synonymy from names, labels or a
+    references edge alone. Unrecognized side branches keep selection UNKNOWN.
+    """
+    try:
+        fixed_path = "mini/references/log.md"
+        definition = f'本页的“{term["name"]}”指{canonical_node["name"]}。'
+        known_fields = {"id", "label", "name", "summary", "synonyms", "domain", "subdomain",
+                        "description", "properties", "tags", "related_entities", "confidence",
+                        "provenance", "source_refs", "created_at", "updated_at", "file_slug"}
+        if (term["label"] != "Concept" or set(term) - known_fields or
+                any(term.get(k) not in (None, "") for k in ("properties", "tags", "synonyms", "related_entities")) or
+                any(term[k].strip() != definition for k in ("summary", "description"))):
+            return False
+        originals = [s for s in frozen if s["path"] == fixed_path]
+        expected = [s for s in oracle["sources"] if s["path"] == fixed_path]
+        if len(originals) != 1 or len(expected) != 1:
+            return False
+        original = originals[0]
+        if (original["sha256"] != expected[0]["sha256"] or
+                digest(original["content"].encode()) != original["sha256"] or
+                len(original["content"].encode()) != expected[0]["bytes"] or
+                definition not in original["content"] or
+                term.get("source_refs") not in (None, "", original["skill"])):
+            return False
+        term_rows = [s for s in graph["node_sources"] if s["node_uuid"] == term["id"]]
+        if (not term_rows or any(s["file_path"] != fixed_path for s in term_rows) or
+                len({s["member_id"] for s in term_rows}) != len(term_rows)):
+            return False
+        validate_sources(graph, {term["name"]: term},
+                         {"nodes": [{"name": term["name"], "sources": [fixed_path]}]}, frozen)
+        by_id = {n["id"]: n for n in graph["nodes"]}
+        incident = []
+        for edge in graph["edges"]:
+            if term["id"] not in (edge["source_id"], edge["target_id"]):
+                continue
+            if set(edge) - {"id", "source_id", "target_id", "kind", "description", "properties",
+                            "provenance", "confidence", "source_refs", "bidirectional", "cardinality", "created_at"}:
+                return False
+            if (edge["kind"] == "composes" and edge["target_id"] == term["id"] and
+                    by_id.get(edge["source_id"], {}).get("label") in ("Domain", "Subdomain") and
+                    edge["bidirectional"] == 0 and edge["description"] == "子域包含概念" and
+                    all(edge.get(k) in (None, "") for k in ("properties", "source_refs", "cardinality"))):
+                continue
+            incident.append(edge)
+        if len(incident) != 1:
+            return False
+        edge = incident[0]
+        if (edge["source_id"] != term["id"] or edge["target_id"] != canonical_node["id"] or
+                edge["kind"] != "references" or edge["bidirectional"] != 0 or
+                any(edge.get(k) not in (None, "") for k in ("properties", "source_refs", "cardinality"))):
+            return False
+        envelope = json.loads(edge["description"])
+        if set(envelope) != {"cairn_relation_assertions_v1"}:
+            return False
+        assertions = envelope["cairn_relation_assertions_v1"]
+        if not assertions:
+            return False
+        proved_term_members = set()
+        for assertion in assertions:
+            if (set(assertion) != {"classification", "description", "sources", "evidence"} or
+                    assertion["classification"] != "explicit" or assertion["description"] != definition):
+                return False
+            sources = assertion["sources"]
+            if (not sources or not all(s["id"] for s in sources) or
+                    len({s["id"] for s in sources}) != len(sources)):
+                return False
+            # The envelope retains neighborhood context, including unchanged
+            # historical assertions. Only evidence-referenced sources prove
+            # this definition; validate_relation checks every such reference.
+            # An unrelated C4 source change cannot invalidate the owned log.
+            refs = {s["id"]: s for s in sources}
+            evidence = assertion["evidence"]
+            if len(evidence) != 2 or {e["endpoint"] for e in evidence} != {"source", "target"}:
+                return False
+            for item in evidence:
+                owner = term if item["endpoint"] == "source" else canonical_node
+                if (item["quote"] != definition or refs[item["source_id"]]["path"] != fixed_path or
+                        not any(row["node_uuid"] == owner["id"] and row["member_id"] == item["member_id"] and
+                                row["file_path"] == fixed_path and row["skill"] == original["skill"]
+                                for row in graph["node_sources"])):
+                    return False
+                if item["endpoint"] == "source":
+                    proved_term_members.add(item["member_id"])
+        if proved_term_members != {s["member_id"] for s in term_rows}:
+            return False
+        binding = {"relation": {"source": term["name"], "target": canonical_node["name"],
+                                "kind": "references", "source_quote_fragments": [definition]}}
+        validate_relation(graph, {term["name"]: term, canonical_node["name"]: canonical_node}, binding, frozen)
+        return True
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def resolve_nodes(graph, oracle, frozen=None):
     selected = {}
     for expected in oracle["nodes"]:
         names = {expected["name"], *expected["aliases"]}
         matches = [n for n in graph["nodes"] if n["name"] in names and
                    n["label"] in ("Entity", "Concept")]
+        if len(matches) == 2 and frozen is not None:
+            exact = [n for n in matches if n["name"] == expected["name"]]
+            aliases = [n for n in matches if n["name"] in expected["aliases"]]
+            if (len(exact) == len(aliases) == 1 and
+                    source_defined_term(graph, oracle, exact[0], aliases[0], frozen)):
+                matches = exact
         if len(matches) != 1:
             raise ValueError("oracle_unrecognized: missing or ambiguous semantic node: " + expected["name"])
         selected[expected["name"]] = matches[0]
@@ -376,7 +478,7 @@ def audit_phase(phase, oracle, changed=False, previous=None, unchanged=False):
             checks.append({"check": name, "status": "UNKNOWN" if str(exc).startswith("oracle_") else "FAIL", "reason": str(exc)})
     graph = graph_rows(phase)
     frozen = read_json(phase / "caller-frozen-sources.json")
-    selected = resolve_nodes(graph, oracle)
+    selected = resolve_nodes(graph, oracle, frozen)
     def completion():
         finish = read_json(phase / "phase-finish.json")
         if finish.get("status") != "complete" or finish.get("aggregate_status") != "complete" or finish.get("error") or finish.get("snapshot_error"):
@@ -406,7 +508,7 @@ def audit_phase(phase, oracle, changed=False, previous=None, unchanged=False):
     check("explicit-directed-relation", lambda: validate_relation(graph, selected, oracle, frozen))
     check("sqlite-markdown-sidecar", lambda: validate_writeback(phase, graph, selected))
     if previous:
-        prior = resolve_nodes(graph_rows(previous), oracle)
+        prior = resolve_nodes(graph_rows(previous), oracle, read_json(previous / "caller-frozen-sources.json"))
         check("stable-target-uuid", lambda: require({k: n["id"] for k, n in prior.items()} == {k: n["id"] for k, n in selected.items()}, "target UUID changed"))
         if changed and not unchanged:
             check("unrelated-node-preserved", lambda: require(prior["檐铃清点"] == selected["檐铃清点"], "C4 modified unrelated semantic node"))
@@ -494,7 +596,8 @@ def negative_controls(phase, oracle):
             copied = Path(directory) / "phase"
             shutil.copytree(phase, copied)
             graph = graph_rows(copied)
-            selected = resolve_nodes(graph, oracle)
+            frozen = read_json(copied / "caller-frozen-sources.json")
+            selected = resolve_nodes(graph, oracle, frozen)
             a, b = (selected[oracle["relation"][k]]["id"] for k in ("source", "target"))
             with sqlite3.connect(copied / "knowledge.db") as conn:
                 if control == "delete-edge":
@@ -523,6 +626,20 @@ def negative_controls(phase, oracle):
                     doc = copied / "source" / oracle["change"]["path"]
                     doc.unlink()
                     Path(str(doc) + ".kg.yaml").unlink()
+            if control == "bad-source-path":
+                # This known source-only mutation preserves the already-proven
+                # positive UUIDs. Re-resolving after corrupting owned proof may
+                # correctly stop earlier, so exercise the existing source gate
+                # directly; no unrelated selector error is counted as credit.
+                try:
+                    validate_sources(graph_rows(copied), selected, oracle, frozen)
+                except ValueError as exc:
+                    require(str(exc) == "missing source incidence: " + oracle["relation"]["target"],
+                            "unexpected source negative failure: " + str(exc))
+                else:
+                    raise ValueError("negative control escaped: " + control)
+                results.append({"control": control, "status": "PASS", "detected_by": check_name, "provider_calls": 0})
+                continue
             checks, _ = audit_phase(copied, oracle)
             require(any(c["check"] == check_name and c["status"] != "PASS" for c in checks), "negative control escaped: " + control)
             results.append({"control": control, "status": "PASS", "detected_by": check_name, "provider_calls": 0})
@@ -547,7 +664,8 @@ def code_identity(bins):
 
 def repeat_observation(current, first, oracle):
     left, right = graph_rows(first), graph_rows(current)
-    nodes_left, nodes_right = resolve_nodes(left, oracle), resolve_nodes(right, oracle)
+    nodes_left = resolve_nodes(left, oracle, read_json(first / "caller-frozen-sources.json"))
+    nodes_right = resolve_nodes(right, oracle, read_json(current / "caller-frozen-sources.json"))
     result = []
     for name in nodes_left:
         a, b = nodes_left[name], nodes_right[name]

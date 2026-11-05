@@ -311,3 +311,47 @@ contract's existing explicit-negative/omission form without mapping. Mere invali
 blocking does not demonstrate detection. A complete whole-document positive must include
 its valid mapping, and the single-node check must remain correct before deciding
 the affected fixed-input mini. No actual after result or broader acceptance is claimed here.
+
+## Contextual owners of version-qualified attributes
+
+The next actual repeat completed production, while its original wrapper result was UNKNOWN
+because target resolution was ambiguous. A separate read-only graph/source review established
+an additional real defect: the ticket owner's January validity of9minutes existed only in
+an isolated version node, absent from the owner and its business one-hop neighborhood. This
+is an ownership/reachability gap, not global deletion of9. The counting subject's4paper-crane
+quantity is a different fact and owner. The official UNKNOWN and independent finding remain
+distinct evidence; neither is relabeled by this change.
+
+The earliest annotation separated the named owner's purpose from a following bare version's
+validity. Both whole-document coverage assessments treated that version as the sole subject
+of the duration. Finite revision did successfully add two other missing subjects, but retained
+the original owner/version split. Mapping and node fusion preserved the members they actually
+received. Inventing the absent owner attribute or a graph edge in those later stages would
+not fix the earlier attribution failure.
+
+The shared generation/assessment core now resolves ownership using the assertion's source
+context. If that context uniquely identifies X and a subsequent time/version/configuration
+phrase or elision qualifies X's property, X's own carrier retains the fully scoped property.
+An additional version/attribute item can coexist, but cannot substitute for that carrying.
+The corresponding existing coverage instructions require necessary prior context in the
+quote, a contextually resolved owner referent, and checks of the owner's carrier rather than
+only a self-contained version row. Multiple dates/versions remain separately qualified;
+a new period's value cannot erase an older period or become an unconditional value.
+
+This is source-supported contextual attribution, not name/date matching or a merge rule.
+Explicitly independent identities/deployments retain their own attributes rather than
+transferring them to a common platform/name. Multi-owner contexts whose attribution remains
+unclear preserve that uncertainty without choosing an owner. Provided-member node scope
+still takes precedence: a node cannot import an attribute from a whole source it was not
+given, even when that source's owner would be clear. No mapper, relation, schema/parser,
+response field, UUID, model stage/call, retry allowance, input or oracle changes.
+
+Generic scripted controls exercise four bounded repair/exhaustion paths, retaining all five
+candidate items while changing only the owner's qualified content. A two-period case retains
+January9minutes and February6minutes separately, including feedback against an unconditional
+new value. Independent deployed versions and an explicitly unattributed multi-owner fact
+remain separate/uncertain. The real single-node caller assesses only its three supplied
+members without importing a missing duration. These are finite-flow/material controls, not
+proof that a model will infer owner attribution correctly; parent prompt passes are disclosed
+as such. Actual after validation remains necessary. The checker repair has a separate owner;
+its scope and all original actual artifacts/history remain unchanged here.
