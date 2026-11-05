@@ -176,6 +176,40 @@ class CheckerControls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "oracle_expression_unresolved"):
                 mini.validate_values(selected, self.oracle, changed)
 
+    def test_actual_repeated_version_and_adjacent_validity(self):
+        # Complete actual out02 child text; scripted parser control, not a new
+        # provider response. Its source/edge/writeback are checked independently.
+        summary = "霜羽票签的2026年1月版本，有效期为9分钟。"
+        detail = "2026年1月版霜羽票签是霜羽票签的2026年1月版本；其有效期为9分钟。"
+        for text in (summary, detail, summary + "\n" + detail,
+                     "2026年1月版霜羽票签，有效期为9分钟。",
+                     "2026年一月版本；其有效期为九分钟。"):
+            with self.subTest(text=text):
+                mini.version_values(text, False)
+        mini.version_values(summary + "2026年2月版霜羽票签；其有效期为6分钟。", True)
+
+    def test_adjacent_validity_does_not_guess_subject_or_scope(self):
+        cases = (
+            ("2026年1月版霜羽票签。其有效期为9分钟。", False),
+            ("2026年1月版霜羽票签。2026年有效期为9分钟。", False),
+            ("2026年1月版霜羽票签\n其有效期为9分钟。", False),
+            ("2026年1月版霜羽票签；纸鹤有效期为9分钟。", False),
+            ("2026年1月版霜羽票签与纸鹤；其有效期为9分钟。", False),
+            ("2026年1月版霜羽票签；另有纸鹤；其有效期为9分钟。", False),
+            ("2026年1月版霜羽票签；其有效期为9分钟及纸鹤的期限。", False),
+            ("2026年1月版和2026年2月版霜羽票签；其有效期为9分钟。", True),
+            ("2026年1月版霜羽票签与2026年1月版纸鹤的有效期为9分钟。", False),
+            ("2026年1月版霜羽票签是霜羽票签的2026年1月版本有效期为9分钟。", False),
+            ("2025年1月版霜羽票签；其有效期为9分钟。", False),
+            ("2026年1月版霜羽票签；其有效期为19分钟。", False),
+            ("2026年1月版霜羽票签；其有效期不是9分钟。", False),
+            ("2026年1月版霜羽票签；其有效期为6分钟。2026年2月版霜羽票签；其有效期为9分钟。", True),
+            ("2026年1月版霜羽票签；其有效期为9分钟。2026年1月版霜羽票签；其有效期为6分钟。", True),
+        )
+        for text, changed in cases:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                mini.version_values(text, changed)
+
     def test_exact_name_only_quote_cannot_support_dependency(self):
         graph = mini.graph_rows(self.phase)
         frozen = mini.read_json(self.phase / "caller-frozen-sources.json")
@@ -246,6 +280,11 @@ class CheckerControls(unittest.TestCase):
                     conn.execute("UPDATE edges SET description=? WHERE id=2", (json.dumps(envelope),))
             checks = mini.audit_phase(copied, oracle)[0]
             self.assertTrue(any(c["check"] == "target-key-values" and c["status"] != "PASS" for c in checks), control)
+
+    def test_all_negative_controls_include_legitimate_version_carrier(self):
+        phase, oracle = self.version_control()
+        self.assertTrue(all(c["status"] == "PASS" for c in mini.audit_phase(phase, oracle)[0]))
+        self.assertEqual(len(mini.negative_controls(phase, oracle)), 6)
 
     def test_correct_child_cannot_rescue_wrong_parent(self):
         phase, oracle = self.version_control()

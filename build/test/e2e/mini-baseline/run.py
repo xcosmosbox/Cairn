@@ -208,16 +208,32 @@ def version_pairs(text, changed):
     years = re.findall(r"(?<!\d)(\d{4})\s*年", text)
     require(all(year == "2026" for year in years), "incorrect explicit version year")
     has_duration = False
-    for clause in re.split(r"[。；;，,\n]", finite_numbers(text)):
+    version_pattern = r"(?:2026\s*年\s*)?0?[12]\s*月版本?"
+    identity = r"(?:霜羽票签的)?" + version_pattern + r"(?:霜羽票签(?:是霜羽票签的" + version_pattern + r")?)?"
+    pending = None
+    for clause in re.split(r"([。；;，,\n])", finite_numbers(text)):
+        if clause in ("。", "\n"):
+            pending = None
+            continue
+        if clause in ("；", ";", "，", ","):
+            continue
         versions = list(re.finditer(r"(?<!\d)(?:2026\s*年\s*)?0?([12])\s*月", clause))
-        if len(versions) > 1:
+        durations = list(re.finditer(r"(?<!\d)(\d+)\s*分钟", clause))
+        version_identity = versions and not durations and re.fullmatch(identity, clause.strip())
+        if len(versions) > 1 and (len({int(v[1]) for v in versions}) > 1 or not version_identity):
             raise ValueError("oracle_expression_unresolved: multiple versions in one clause")
-        for duration in re.finditer(r"(?<!\d)(\d+)\s*分钟", clause):
+        # Only this fixed ticket's unambiguous version identity may scope the
+        # immediately adjacent, whole-clause validity phrase. No general carry.
+        adjacent = pending if re.fullmatch(r"\s*(?:其)?有效期(?:为|是|[:：])?\s*\d+\s*分钟\s*", clause) else None
+        pending = int(versions[0][1]) if version_identity else None
+        for duration in durations:
             has_duration = True
             if re.search(r"(?:不是|并非|不为|非)\s*$", clause[max(0, duration.start() - 8):duration.start()]):
                 raise ValueError("target duration explicitly negated")
             require(int(duration[1]) in ({9, 6} if changed else {9}), "incorrect target duration")
             if not versions:
+                if adjacent is not None:
+                    pairs.add((adjacent, int(duration[1])))
                 continue
             preceding = [v for v in versions if v.start() < duration.start()]
             version = preceding[-1] if preceding else versions[0]
@@ -487,6 +503,12 @@ def negative_controls(phase, oracle):
                     conn.execute("UPDATE edges SET source_id=?,target_id=? WHERE source_id=? AND target_id=? AND kind='depends_on'", (b, a, a, b))
                 elif control == "misplaced-value":
                     conn.execute("UPDATE nodes SET summary='票签',description='票签' WHERE id=?", (b,))
+                    # A valid bound version may legitimately carry the value.
+                    # Remove that carrier too, so only the unrelated node has it.
+                    targets = {e["target_id"] for e in graph["edges"] if e["source_id"] == b and e["kind"] == "generalizes" and e["bidirectional"] == 0}
+                    for child in graph["nodes"]:
+                        if child["id"] in targets and child["label"] in ("Entity", "Concept") and selected[oracle["relation"]["target"]]["name"] in child["name"] and re.search(r"2026\s*年\s*0?1\s*月", finite_numbers(child["name"])):
+                            conn.execute("UPDATE nodes SET summary='票签',description='票签' WHERE id=?", (child["id"],))
                     conn.execute("UPDATE nodes SET description=description || ' 2026年1月版9分钟' WHERE id=?", (selected["檐铃清点"]["id"],))
                 elif control == "bad-source-path":
                     conn.execute("UPDATE node_sources SET file_path='nonexistent.md' WHERE node_uuid=?", (b,))
