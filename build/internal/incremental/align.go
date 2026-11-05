@@ -293,16 +293,35 @@ func (a *aligner) recall(ctx context.Context, units []*alignUnit, rs *runState) 
 
 // buildRecallQuery 构造一个单元的 FTS5 召回查询：name 为主信号，content 前 40 字符
 // 为辅信号，OR 连接（FTS5 空白 = 隐式 AND，OR 才能「命中任一即召回」）。
-// buildRecallQuery builds the FTS5 recall query: name OR content snippet.
+// buildRecallQuery retains exact-name/content signals and adds name prefixes.
+// unicode61 treats a contiguous Han/digit name as one token: a shorter owner
+// name otherwise misses its longer edition names. Prefixes broaden candidates,
+// not identity; existing semantic alignment and top-K still decide the result.
 func buildRecallQuery(u *alignUnit) string {
 	var parts []string
 	if q := sanitizeFTSQuery(u.Name); q != "" {
+		parts = append(parts, q)
+	}
+	if q := namePrefixFTSQuery(u.Name); q != "" {
 		parts = append(parts, q)
 	}
 	if q := sanitizeFTSQuery(truncateRunes(u.Content, 40)); q != "" {
 		parts = append(parts, q)
 	}
 	return strings.Join(parts, " OR ")
+}
+
+// Prefix each independently quoted name atom, never raw source syntax or the
+// tail of an already OR-joined query. Content retains its exact old behavior.
+func namePrefixFTSQuery(name string) string {
+	var terms []string
+	for _, atom := range strings.Fields(name) {
+		literal, err := storage.CompileFTSPlainText(atom, storage.FTSTextLiteral)
+		if err == nil {
+			terms = append(terms, literal+"*")
+		}
+	}
+	return strings.Join(terms, " OR ")
 }
 
 // sanitizeFTSQuery 用既有编译器逐词转义，来源标点与大写操作符只能当文字。
