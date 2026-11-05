@@ -48,6 +48,14 @@ func subjectCoreRows(items []dktypes.AnnotatedItem) string {
 	return subjectCoreJSON(map[string]any{"items": items})
 }
 
+// Explicit authored semantic results; this only serializes fixture inputs.
+func subjectCoreRow(quote, subject string, index int, item string, same, preserves bool) map[string]any {
+	return map[string]any{"source_quote": quote, "subject_referent": subject, "checks": []any{map[string]any{"item_index": index, "item_referent": item, "same_referent": same, "preserves_assertion": preserves, "reason": "authored fixture result"}}}
+}
+func subjectCoreEvidence(rows ...map[string]any) string {
+	return subjectCoreJSON(map[string]any{"supported": true, "reason": "authored source ownership result", "unsupported_items": []int{}, "omissions": []string{}, "subject_coverage": rows})
+}
+
 const subjectCoreSupported = `{"supported":true,"reason":"source ownership, coverage and fields are faithful","unsupported_items":[],"omissions":[]}`
 
 // The observed shape has four accepted items, including the whole proposition
@@ -73,7 +81,7 @@ func TestV016SubjectCoreMissingCarrierFiniteRevision(t *testing.T) {
 				good := append(append([]dktypes.AnnotatedItem(nil), items...), subjectCoreItem(dktypes.TagConcept, subject, predicate))
 				feedback := "缺少以" + subject + "本身为所指的单元；补回“" + predicate + "”，保留获批、仅在及依赖方向。独立完整命题和维护窗口不能替代主体。"
 				reject := subjectCoreJSON(map[string]any{"supported": false, "reason": feedback, "unsupported_items": []int{}, "omissions": []string{feedback}})
-				revision, verdict := subjectCoreRows(good), subjectCoreSupported
+				revision, verdict := subjectCoreRows(good), subjectCoreEvidence(subjectCoreRow(predicate, subject, 4, subject, true, true), subjectCoreRow("本页的窗口指维护窗口。", "维护窗口", 0, "维护窗口", true, true), subjectCoreRow("日志轮换在一月版每轮处理4份日志，不负责重建。", "日志轮换", 2, "日志轮换", true, true))
 				if exhaust {
 					revision, verdict = subjectCoreRows(items), reject
 				}
@@ -130,7 +138,22 @@ func TestV016SubjectCoreFaithfulOwnershipBoundaries(t *testing.T) {
 		{"explicit_unknown_value", "索引重建的持续时间明确未知。", []dktypes.AnnotatedItem{subjectCoreItem(dktypes.TagConcept, "索引重建", "索引重建的持续时间明确未知。")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			client := &subjectCoreScript{t: t, replies: []string{subjectCoreRows(tc.items), subjectCoreSupported}}
+			var proof []map[string]any
+			switch tc.name {
+			case "ordinary_action", "explicit_unknown_value":
+				proof = []map[string]any{subjectCoreRow(tc.original, "索引重建", 0, "索引重建", true, true)}
+			case "named_subject":
+				proof = []map[string]any{subjectCoreRow(tc.original, "Atlas重建器", 0, "Atlas重建器", true, true)}
+			case "proposition_only_discussed":
+				proof = []map[string]any{subjectCoreRow(tc.original, "待证命题", 0, "待证命题", true, true)}
+			case "unattributed_subject":
+				proof = []map[string]any{subjectCoreRow("Atlas与Birch是不同任务。", "Atlas", 0, "Atlas", true, true), subjectCoreRow("Atlas与Birch是不同任务。", "Birch", 1, "Birch", true, true), subjectCoreRow("便签称某任务依赖窗口，但未说明是哪项。", "未归属便签", 2, "未归属便签", true, true)}
+			case "quoted_denial":
+				proof = []map[string]any{subjectCoreRow("审计员否认索引重建依赖维护窗口", "索引重建", 0, "索引重建", true, true), subjectCoreRow("审计员否认索引重建依赖维护窗口", "审计员", 1, "审计员", true, true), subjectCoreRow("作者只记录这项否认，未确认实际依赖。", "作者", 2, "作者", true, true)}
+			case "generic_subject":
+				proof = []map[string]any{subjectCoreRow(tc.original, "部分维护任务", 0, "部分维护任务", true, true)}
+			}
+			client := &subjectCoreScript{t: t, replies: []string{subjectCoreRows(tc.items), subjectCoreEvidence(proof...)}}
 			out := annotation.NewDocumentProcessor(client, 4096, -1, 0).Process(context.Background(), "operations", "references/boundary.md", tc.original)
 			if out.Outcome != annotation.DocumentComplete || out.Document == nil || !reflect.DeepEqual(out.Document.Items, tc.items) || len(client.calls) != 2 {
 				t.Fatalf("faithful source boundary changed: %+v", out)

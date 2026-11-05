@@ -42,7 +42,10 @@ func v012AcceptanceItems(contents ...string) string {
 	return string(b)
 }
 
-const v012AcceptanceSupported = `{"supported":true,"reason":"source faithful and complete","unsupported_items":[],"omissions":[]}`
+// Explicit authored rows below describe each fixture's source, not a name matcher.
+func v012AcceptanceProof(quote, subject string, index int) string {
+	return fixtureSubjectPositive(fixtureSubjectRow(quote, subject, index, subject, true, true))
+}
 
 // 历史 S02 把 29 个条目的下标 29 当成事实拒绝；无效核验只可重核同一候选。
 // Historical S02 had 29 items but index 29; malformed feedback must reassess the identical candidate.
@@ -52,10 +55,14 @@ func TestV012AcceptanceHistorical29ItemAssessment(t *testing.T) {
 	for i := range facts {
 		facts[i] = fmt.Sprintf("Source rule %02d applies only before maintenance.", i)
 	}
+	proof := make([]map[string]any, len(facts))
+	for i, fact := range facts {
+		proof[i] = fixtureSubjectRow(fact, fmt.Sprintf("Source rule %02d", i), i, fmt.Sprintf("Source rule %02d", i), true, true)
+	}
 	client := &v012AcceptanceClient{t: t, replies: []string{
 		v012AcceptanceItems(facts...),
 		`{"supported":false,"reason":"bad index","unsupported_items":[29],"omissions":[]}`,
-		v012AcceptanceSupported,
+		fixtureSubjectPositive(proof...),
 	}}
 	result := NewDocumentProcessor(client, 0, 1, 0).Process(context.Background(), "history", "references/S02.md", strings.Join(facts, "\n"))
 	if result.Outcome != DocumentComplete || result.Document == nil || len(result.Document.Items) != 29 {
@@ -87,7 +94,7 @@ func TestV012AcceptanceRevisionRechecksPreviouslyCoveredFact(t *testing.T) {
 		v012AcceptanceItems(prohibition),
 		`{"supported":true,"reason":"revision erased threshold","unsupported_items":[],"omissions":["Cooling starts only above 30 degrees Celsius."]}`,
 		v012AcceptanceItems(threshold, prohibition),
-		v012AcceptanceSupported,
+		fixtureSubjectPositive(fixtureSubjectRow(threshold, "Cooling", 0, "Cooling", true, true), fixtureSubjectRow(prohibition, "Cooling", 1, "Cooling", true, true)),
 	}}
 	result := NewDocumentProcessor(client, 0, 2, 0).Process(context.Background(), "operations", "references/cooling.md", original)
 	if result.Outcome != DocumentComplete || result.Document == nil || len(result.Document.Items) != 2 || len(client.calls) != 6 {
@@ -117,9 +124,30 @@ func TestV012AcceptanceMixedTruthRowsAreRevisedNotDeleted(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			verdict, _ := json.Marshal(map[string]any{"supported": false, "reason": tc.feedback, "unsupported_items": []int{0}, "omissions": []string{}})
-			client := &v012AcceptanceClient{t: t, replies: []string{v012AcceptanceItems(tc.bad), string(verdict), v012AcceptanceItems(tc.original), v012AcceptanceSupported}}
+			// The old one-row paragraph was a transport control, not subject-complete gold.
+			// Keep that repaired source account and add the actually predicated carriers.
+			names, texts := []string{"Platform C", "current pilot"}, []string{tc.original, "Platform C says the current pilot is in one English-speaking market outside Country D."}
+			quotes := []string{tc.original, "It says the current pilot is in one English-speaking market outside Country D."}
+			if tc.name == "former_officer_not_founder" {
+				names = []string{"Company A", "Person B", "author's privacy tradeoff", "alternative"}
+				texts = []string{tc.original, "Person B is its former vice-president. Person B admits possible misinterpretation but maintains an allegation that the alternative denies.", "The author's privacy tradeoff favors Company A for some users despite its worse test performance and readability.", "Person B maintains an allegation that the alternative denies; this is a disputed allegation."}
+				quotes = []string{"Company A focuses on privacy and was founded to counter larger competitors.", "Person B is its former vice-president.", "The author's privacy tradeoff favors Company A for some users despite its worse test performance and readability.", "Person B admits possible misinterpretation but maintains an allegation that the alternative denies."}
+			}
+			rows := make([]dktypes.AnnotatedItem, len(names))
+			proof := make([]map[string]any, len(names))
+			for i, name := range names {
+				rows[i] = dktypes.AnnotatedItem{Tag: dktypes.TagConcept, Name: name, Content: texts[i], Detail: texts[i], Confidence: .9}
+				proof[i] = fixtureSubjectRow(quotes[i], name, i, name, true, true)
+			}
+			if tc.name == "former_officer_not_founder" {
+				proof = append(proof,
+					fixtureSubjectRow("In the author's test it ignored the green query qualifier.", "Company A", 0, "Company A", true, true),
+					fixtureSubjectRow("Person B admits possible misinterpretation but maintains an allegation that the alternative denies.", "Person B", 1, "Person B", true, true))
+			}
+			wire, _ := json.Marshal(map[string]any{"items": rows})
+			client := &v012AcceptanceClient{t: t, replies: []string{v012AcceptanceItems(tc.bad), string(verdict), string(wire), fixtureSubjectPositive(proof...)}}
 			result := NewDocumentProcessor(client, 0, 1, 0).Process(context.Background(), "history", "references/"+tc.name+".md", tc.original)
-			if result.Outcome != DocumentComplete || result.Document == nil || len(result.Document.Items) != 1 || result.Document.Items[0].Content != tc.original {
+			if result.Outcome != DocumentComplete || result.Document == nil || len(result.Document.Items) != len(rows) || result.Document.Items[0].Content != tc.original {
 				t.Fatalf("supported meaning lost instead of revised: %+v", result)
 			}
 			if len(client.calls) != 4 || !strings.Contains(client.calls[2].User, tc.feedback) || !strings.Contains(client.calls[2].User, tc.original) || !strings.Contains(client.calls[2].User, tc.bad) || !strings.Contains(client.calls[3].User, tc.original) {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,39 +27,100 @@ type localContradictionPipelineClient struct {
 func (c *localContradictionPipelineClient) ProviderName() string {
 	return "offline-local-contradiction-pipeline"
 }
+
+// The statements and their directly predicated activity are distinct carriers.
+func (c *localContradictionPipelineClient) fixtureNames() (string, string, string) {
+	if c.compatible {
+		return "Refurbished Mac savings advice", "Older Intel exclusion advice", "Refurbished Mac choice"
+	}
+	return "Admission enabled claim", "Admission disabled claim", "Admission"
+}
 func (c *localContradictionPipelineClient) Complete(ctx context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
 	switch {
+	case strings.Contains(req.System, "知识结构化标注专家"):
+		a, b, subject := c.fixtureNames()
+		path, name := "references/admission.md", a
+		if strings.Contains(req.User, "path: references/quota.md") {
+			path, name = "references/quota.md", b
+		}
+		body := strings.TrimSpace(c.base.originals[path])
+		raw, _ := json.Marshal(map[string]any{"items": []any{map[string]any{"tag": "concept", "name": name, "content": body, "detail": body, "confidence": .95}, map[string]any{"tag": "concept", "name": subject, "content": body, "detail": body, "confidence": .95}}})
+		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, nil
+	case strings.Contains(req.System, "语义核验专家"):
+		if strings.Contains(req.User, "## Existing machine description / 现有机器详述") {
+			return &llm.CompleteResponse{Text: `{"supported":true,"reason":"source-bound node facts retained","unsupported_items":[],"omissions":[]}`, FinishReason: "stop"}, nil
+		}
+		_, _, subject := c.fixtureNames()
+		path := "references/admission.md"
+		if strings.Contains(req.User, c.base.originals["references/quota.md"]) {
+			path = "references/quota.md"
+		}
+		raw, _ := json.Marshal(entrySubjectVerdict(entrySubjectRow(strings.TrimSpace(c.base.originals[path]), subject, 1, subject, true, true)))
+		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "SOURCE-RELATION GENERATE"):
 		// A real bad candidate is verified first; only concrete rejection permits revision.
 		if c.compatible && c.verifications.Load() > 0 {
 			return &llm.CompleteResponse{Text: `{"relations":[]}`, FinishReason: "stop"}, nil
 		}
-		return pipelineFixtureSourceRelations(req, "contradicts", "Admission is enabled versus disabled in version 2 under condition X")
+		var in struct {
+			Focus   string `json:"focus_source_id"`
+			Nodes   []struct{ Alias, Name string }
+			Sources []struct{ ID, Content string } `json:"original_sources"`
+		}
+		if err := json.Unmarshal([]byte(req.User), &in); err != nil {
+			return nil, err
+		}
+		an, bn, _ := c.fixtureNames()
+		a, b := "", ""
+		for _, n := range in.Nodes {
+			if n.Name == an {
+				a = n.Alias
+			}
+			if n.Name == bn {
+				b = n.Alias
+			}
+		}
+		if a == "" || b == "" {
+			return nil, fmt.Errorf("source-specific statement aliases missing")
+		}
+		rows := []map[string]any{}
+		for _, src := range in.Sources {
+			if src.ID == in.Focus && strings.TrimSpace(src.Content) != "" {
+				rows = append(rows, map[string]any{"source": a, "target": b, "kind": "contradicts", "description": "source statement compatibility check", "confidence": .9})
+			}
+		}
+		raw, _ := json.Marshal(map[string]any{"relations": rows})
+		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "SOURCE-RELATION COVERAGE"):
 		return &llm.CompleteResponse{Text: `{"complete":true,"supported":true,"reason":"fixed source relations covered; compatible advice is not contradiction"}`, FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "领域知识融合专家"):
-		response, err := c.base.Complete(ctx, req)
-		if err != nil {
-			return nil, err
+		an, bn, subject := c.fixtureNames()
+		groups := map[string][]string{an: {}, bn: {}, subject: {}}
+		for _, m := range regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindAllStringSubmatch(req.User, -1) {
+			for _, name := range []string{an, bn, subject} {
+				if strings.HasPrefix(m[1], "system-concept-"+extract.Slugify(name)+"-") {
+					groups[name] = append(groups[name], m[1])
+					break
+				}
+			}
 		}
-		var result extract.Result
-		if err := json.Unmarshal([]byte(response.Text), &result); err != nil {
-			return nil, err
+		if len(groups[an]) != 1 || len(groups[bn]) != 1 || len(groups[subject]) != 2 {
+			return nil, fmt.Errorf("statement/activity member coverage mismatch: %v", groups)
 		}
-		d := &result.Domains[0]
-		d.Subdomains[0].Concepts = append(d.Subdomains[0].Concepts, d.Subdomains[1].Concepts...)
-		d.Subdomains[0].Relations[0].Kind = "contradicts"
-		d.Subdomains[0].Relations[0].Description = "Admission is enabled versus disabled in version 2 under condition X"
-		d.Subdomains = d.Subdomains[:1]
-		raw, err := json.Marshal(map[string]any{"domains": result.Domains})
-		if err != nil {
-			return nil, err
+		concepts := []map[string]any{}
+		for i, name := range []string{an, bn, subject} {
+			concepts = append(concepts, map[string]any{"id": fmt.Sprintf("claim-%d", i), "label": "Concept", "name": name, "summary": name, "confidence": .95, "members": groups[name]})
 		}
+		raw, _ := json.Marshal(map[string]any{"domains": []any{map[string]any{"name": "工程", "summary": "工程知识", "reusability_rationale": "可复用", "subdomains": []any{map[string]any{"name": "接纳", "summary": "来源断言及主体", "concepts": concepts, "relations": []any{map[string]any{"source": "claim-0", "target": "claim-1", "kind": "contradicts", "description": "source statement compatibility check", "confidence": .9}}}}}}})
 		return &llm.CompleteResponse{Text: string(raw), FinishReason: "stop"}, nil
 	case strings.Contains(req.System, "知识融合重写专家"):
-		detail := "Admission source detail."
-		if strings.Contains(req.User, `"name":"Quota"`) {
-			detail = "Quota source detail."
+		an, bn, _ := c.fixtureNames()
+		detail := strings.TrimSpace(c.base.originals["references/admission.md"]) + "\n" + strings.TrimSpace(c.base.originals["references/quota.md"])
+		if strings.Contains(req.User, `"name":"`+an+`"`) {
+			detail = strings.TrimSpace(c.base.originals["references/admission.md"])
+		}
+		if strings.Contains(req.User, `"name":"`+bn+`"`) {
+			detail = strings.TrimSpace(c.base.originals["references/quota.md"])
 		}
 		return pipelineNodeDescriptionResponse(req, detail)
 	case strings.Contains(req.System, "领域知识关系识别专家"):

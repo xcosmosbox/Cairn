@@ -102,7 +102,7 @@ func fuseNodeDescription(ctx context.Context, client llm.Client, maxTokens, maxR
 	} else if remaining < 0 {
 		remaining = 0
 	}
-	gate := annotation.NewSemanticGate(nodeAssessmentClient{client}, maxTokens, -1)
+	gate := annotation.NewNodeSemanticGate(nodeAssessmentClient{client}, maxTokens, -1)
 	step, feedback, knownDefect := "generate", "", false
 	if strings.TrimSpace(out.Description) != "" && strings.TrimSpace(out.Summary) != "" {
 		step = "assess"

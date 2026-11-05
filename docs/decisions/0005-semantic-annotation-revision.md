@@ -238,3 +238,76 @@ separately assess the recorded bad candidate, a controlled complete candidate an
 single-node candidate, then decide the affected fixed-input mini from actual evidence.
 No provider action occurs in this source change; no whole-mini or broader acceptance is
 claimed by offline checks or by preparing those probes.
+
+## Same-call subject-coverage result contract
+
+The three actual leaf checks on the published subject-core change still accepted the
+recorded missing-subject four-item candidate with a generic positive verdict; the complete
+candidate and the correct single-node candidate passed too. This confirms another actual
+whole-document false positive. Moving instructions earlier did not establish reliable
+ownership checking. Those outcomes and the earlier 6 PASS / 1 FAIL mini remain unchanged.
+
+Whole-document assessment now requires structured subject_coverage in the same existing
+assessment response before an otherwise complete positive verdict can pass. Each row has
+an exact source_quote, its subject_referent and only relevant candidate checks, each with
+item_index, item_referent, explicit same_referent/preserves_assertion booleans and a short
+result reason. A row has a carrier only when both booleans are true in a check. A complete
+proposition may preserve the sentence but refer to a different object than its subject;
+that is a lawful candidate, not automatically an unsupported item. A missing carrier adds
+concrete existing omissions naming the subject, source assertion/qualifiers and candidate
+comparisons. Other concrete rejection reasons and unsupported indices survive jointly;
+revision retains valid statements and endpoints and rechecks the entire candidate within
+the original shared finite allowance. No extra model stage, judge or retry loop is added.
+
+The validator checks required typed fields, nonempty referents/reasons, literal quote
+occurrence, in-range indices, duplicate JSON keys and duplicate indices within a row.
+Different rows may share a quote or an item: one sentence can contain several subjects or
+direct assertions. Quote context can include anaphora/conditions; preservation concerns
+that row's subject assertion, not unrelated context. There is no name/date/keyword identity
+matcher and no all-subject-by-all-item matrix. Empty rows require a concrete
+no_direct_subjects_reason (for example, a title without a predicate); nonempty rows cannot
+also claim that absence. These checks anchor declared results; they do not prove that
+every real direct assertion was listed, that two referents are truly identical, or that
+the booleans/no-subject explanation are semantically correct.
+
+Malformed supplied mappings are invalid assessments even with a negative top-level verdict,
+and consume only the existing same-candidate reassessment allowance. When no mapping was
+supplied, an explicit rejection or existing nonempty omissions retain their known semantic
+feedback rather than being washed into unknown. A generic legacy positive with empty
+omissions cannot bypass the new evidence requirement. Unknown remains exactly status and
+a concrete reason, without mixed verdict/evidence fields.
+
+Scope is selected by trusted program construction: NewSemanticGate remains whole-document,
+including one-item inputs; the sole node-fusion caller uses explicit NewNodeSemanticGate.
+Neither model output, item count nor prompt-text inspection can choose the exemption.
+The node gate retains its previous verdict contract and supplied-member/per-field fidelity
+obligations. Shared fidelity instructions and the two scope-specific result formats are
+composed separately so the whole prompt does not also offer the old four-field positive
+as a complete response. Generation instructions are unchanged. This intentionally changes
+the model-response contract, while persisted graph/database schema, original inputs, UUIDs,
+human-edit protection, provenance, call topology, allowances and oracle remain unchanged.
+
+Existing whole-positive scripts are migrated with source-specific authored quotes,
+referents and carrier results, never a name-equality proof generator or legacy-pass adapter.
+Several old transport controls packaged multi-subject prose into one shared-name row;
+their corrected candidates add the actual carriers while preserving original retention,
+source/UUID and finite-flow checks. The eight supplement originals and nineteen cases are
+unchanged; their scripts now name their real library/channel/bracket, report, pump, valve,
+controller/logger/sensor, cooling and battery referents. Duplicate-name fact retention and
+literal UUID checks remain. A local-contradiction control had inherited unrelated prerequisite
+annotation for enabled/disabled or refurbished-Mac sources. Its stub now carries the actual
+activity and distinct statements; its original verifier evidence, condition checks,
+compatible-advice rejection/revision, SQLite relation count and human-edge no-op preservation
+remain exercised. Node-only/relationship verdicts and historical cached checkpoints are not
+given fabricated whole-document evidence. Initial migration failures are retained as logs.
+
+New deterministic controls exercise real default-whole rejection, trusted node acceptance,
+no-carrier semantic revision/exhaustion, lawful candidate retention, malformed evidence
+reassessment, jointly retained negative critique, empty-source cases and shared quote/index
+rows. They establish response-contract and finite-flow behavior, not model detection or
+efficacy. The later fixed bad leaf must accurately identify the missing real subject and
+return concrete semantic feedback, either through valid coverage results or through the
+contract's existing explicit-negative/omission form without mapping. Mere invalid-response
+blocking does not demonstrate detection. A complete whole-document positive must include
+its valid mapping, and the single-node check must remain correct before deciding
+the affected fixed-input mini. No actual after result or broader acceptance is claimed here.
