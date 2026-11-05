@@ -68,9 +68,9 @@ no new schema, model call, retry loop, allowance or invented graph relation. Thi
 is shared by Full and C4. Its assessment is also reused for single-node fusion; that
 caller checks only the node's supplied member material and attribution, without inventing
 an absent parent, changing members or importing unsupplied facts. Whole-document items
-assessment remains responsible for the annotation subject boundary. Mapping and alignment
-are unchanged; the clarification cannot guarantee that a model will choose a connected
-final representation.
+assessment remains responsible for the annotation subject boundary. At that annotation-only
+repair boundary, mapping and alignment were unchanged; the clarification could not guarantee
+that a model would choose a connected final representation.
 
 Scripted controls establish omission-feedback flow, finite repair/exhaustion, preservation
 of independent identities and dated/negative facts, and same-candidate unknown handling.
@@ -89,3 +89,33 @@ mechanically merged into an action and no edge is forced. Both failed repeats an
 different outcomes remain unchanged. New scripts exercise this exact omission shape and
 wrong-subject/quoted-claim feedback through the existing finite processor, not model
 effectiveness or a guarantee of later mapping membership.
+
+## Mapping source subject identity
+
+The following fixed repeat retained the entry's log source, but acceptance was still
+5 PASS / 1 FAIL / 1 UNKNOWN. Mapping received all14 accepted items and grouped the generic
+counting subject's duties separately from its dated counting fact. The latter's qualified
+name and different tag were presentation choices, not proof of an independently identified
+object. All member IDs being structurally covered did not establish correct subject identity.
+
+The existing mapping invocation now defines equivalence consistently in its system and
+assembled user instructions as identity of the referenced subject/concept, established
+from complete name/content/detail and source context. Complementary observations and
+different dated/conditional facts about the same subject may share members without being
+whole-sentence synonyms. Preserve each member/source, value, date, condition, negation,
+speaker and disagreement for complete later description; do not average or erase differences.
+Name normalization, dates, version wording, tags, common predicates or identical detail
+alone do not authorize merging. Truly independent objects/version objects, distinct contexts,
+unresolved identities, standalone propositions/rules and their mentioned participants remain
+separate references when their meanings differ. In particular a sentence can describe both
+a counting actor and a counted object without making those objects identical.
+
+Only prompt instructions change. There is no mapper semantic assessor or new global judge;
+the current coverage helper checks missing member/source incidence structurally. ID/UUID,
+exact deduplication, coverage algorithms, retry allowances, call topology and schema remain
+unchanged, and no business edge is manufactured. The existing annotation controls remain.
+Focused scripted replies establish complete input context, parsing of grouped/separate
+members, structural coverage and lossless source/member material flow. They cannot establish
+that a model will choose the intended grouping. Actual after validation remains necessary
+on the same fixed inputs and acceptance criteria; the failed repeat and earlier outcomes
+are retained without promotion.

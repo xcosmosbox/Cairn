@@ -72,7 +72,7 @@ func assembleAnnotatedMessage(docs []*dktypes.AnnotatedDocument) string {
 	sb.WriteString("以下是来自多个 skill 的、已经标注并带有【唯一 id】的 entity / concept 知识单元" +
 		"（每条形如 “- id=<唯一id> [tag] 名称: 内容”）。请从全局视野出发：\n" +
 		"1）归纳「可跨 skill 复用的领域」（domain）及其子域（subdomain）；\n" +
-		"2）把语义等价 / 同义的输入单元融合为一个「融合节点」，用 members 列出它由哪些输入单元 id 组成（可跨 skill 融合）；\n" +
+		"2）根据完整 name/content/detail 和来源语境判断所指主体/概念身份，把同一主体的互补事实归入同一融合节点的 members（可跨 skill）；不要求完整命题逐句同义，不按名称、tag、日期或共同谓词强并不同所指；\n" +
 		"3）把每个融合节点归入最合适的子域；\n" +
 		"4）识别融合节点之间的 entity↔entity 语义关系。\n" +
 		"你只需输出「组织与融合的映射操作」，不要重写正文，严格按要求返回 JSON。\n\n")
@@ -166,7 +166,7 @@ func skillsOfMembers(members []string, skillByUnit map[string]string) []string {
 const annotatedSystemPrompt = `你是领域知识融合专家。用户会给你来自多个 skill 的、已经分类并带有【唯一 id】的 ` +
 	`entity（实体）与 concept（概念）知识单元。你的任务是从全局视野输出「组织与融合的映射操作」，而不是重写正文：
 (1) 归纳出「可跨 skill 复用的领域」（domain）及其子域（subdomain）；
-(2) 把语义等价 / 同义的输入单元融合为一个「融合节点」，用 members 列出该融合节点由哪些输入单元 id 组成（可跨 skill 融合）；
+(2) 根据完整 name/content/detail 和来源语境判断所指主体/概念身份，把同一主体的互补事实归入同一融合节点的 members（可跨 skill）；完整命题逐句同义不是必要条件，不能按名称、tag、日期或共同谓词强并不同所指；
 (3) 把每个融合节点归入最合适的子域；
 (4) 识别融合节点之间的 entity↔entity 语义关系。
 
@@ -184,12 +184,12 @@ const annotatedSystemPrompt = `你是领域知识融合专家。用户会给你�
 5. **不要输出 description**：融合节点的正文详述由后续阶段依据 members 生成，你只需给出 summary 与 members。
 6. **不要输出 source_skills**：来源 skill 由 members 自动倒推，你无需给出。
 7. **必须覆盖全部输入**：每一个输入单元 id 都必须被某个融合节点的 members 收纳，绝不允许遗漏。
-   融合是「把全部输入单元归类到融合节点」，不是「挑几个代表建骨架」——若某单元与已有节点语义等价就并入其 members，
-   若自成一类就为它新建融合节点。语义等价的多个输入单元应合并进同一节点的 members。
+   融合判定针对所指主体/概念身份，而非每条完整命题是否同义。完整名称、content/detail 与来源语境能确定为同一主体时，互补属性、状态、关系或规则，以及不同日期、版本条件、来源观点下的事实，可以归入同一节点的 members；不得因其正文不同、名称带日期/版本限定或 entity/concept 分类风格不同就把同一主体拆开。所有成员及其来源、数值、时间、前提、否定、例外、说话者与分歧都须保留，供后续详述完整表达，不得平均、折中或抹平为无条件单值。
+   真正独立的对象或独立版本对象、同名但语境所指不同的对象、无法确定为同一身份的单元须分别保留；不按名称归一化、去日期/括号或 tag 强行合并。独立命题、属性概念或规则与它提及的主体/其他参与者不是同一指称，不能只因共享名字、谓词或整句 detail 而并入被提及对象；同一句事实分别用于描述主体和客体时，也须按各自所指区分。需要分别建节点时仍保留各自真实输入 members，不猜测身份或发明关系边。
 8. relations 仅表达融合节点之间的真实语义关系，source/target 必须是你上面给出的【融合节点 id】；
    kind 只能取以下 6 个枚举之一，不得自造："triggers"、"depends_on"、"references"、"generalizes"、"composes"、"contradicts"。
 9. 层级组成关系（domain→subdomain→节点）无需在 relations 中给出，由后续流程自动物化。
-不得仅因语言不同拆分语义相同的成员，也不得因同义译名合并不同事实。JSON 示例只示字段结构，不指定事实节点的输出语言。
+不得仅因语言不同拆分同一指称主体的成员，也不得因同义译名合并所指不同的对象/概念。JSON 示例只示字段结构，不指定事实节点的输出语言。
 
 返回的 JSON 必须严格符合以下样例结构（字段名保持一致；注意融合节点没有 description 与 source_skills）：
 {
