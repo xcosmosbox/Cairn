@@ -10,8 +10,8 @@ import (
 // Anchoring and typed-result validation do not prove the model's semantic claims.
 const subjectCoverageSystemPrompt = `
 本次由调用方指定为整篇标注核验，即使 items 只有一项也不是单节点核验。整篇正判的返回合同必须额外含 subject_coverage，不得只返回通用 supported=true。仍在本次核验中完成，不增加调用。
-subject_coverage 为数组，每行对应原文对一个可指称主体的直接断言：{"source_quote":"原文逐字存在的断言及必要指代/条件上下文","subject_referent":"该直接断言的主体所指","checks":[{"item_index":0,"item_referent":"该候选单元实际指称的对象或命题","same_referent":true,"preserves_assertion":true,"reason":"简短核验结果依据"}]}。
-覆盖原文全部直接主体断言；一句含多主体、同一主体含多断言可以分别列行，相同引文不表示重复。checks 只列该行相关候选，不生成所有主体乘全部 items 的矩阵；没有相关候选可以为空。same_referent 核对所指身份，不按名称含词或相等猜测；完整命题P含主体X的名称不等于以X为所指。preserves_assertion 核对该行主体的直接断言及全部限定，不要求无关上下文事实也进入该单元。reason 只给简短结果依据，不输出隐含思维过程。
+subject_coverage 为数组，每行对应结合原文上下文还原所指的主体断言：{"source_quote":"原文逐字存在的断言，包含恢复owner/省称及版本条件所需的前文上下文","subject_referent":"该有范围属性实际所属的主体或该直接断言的主体所指","checks":[{"item_index":0,"item_referent":"该候选单元实际指称的对象或命题","same_referent":true,"preserves_assertion":true,"reason":"简短核验结果依据"}]}。
+先用该段必要前文核实省称和属性owner，再覆盖全部主体断言：语境唯一明确X，后句只是以时间/版本/配置限定X的属性时，必须核对X自己的carrier是否保留该限定属性，不能只列“某版”的行、让额外版本单元替代X承载。同一owner的各期值分别保留限定并逐项核对，不把新值覆盖旧期或把局部值泛化。原文明示独立身份/部署或多owner归属未明时，仍保留真实分立/未知，不按名称日期猜owner。一句含多主体、同一主体含多断言可以分别列行，相同引文不表示重复。checks 只列该行相关候选，不生成所有主体乘全部 items 的矩阵；没有相关候选可以为空。same_referent 核对所指身份，不按名称含词或相等猜测；完整命题P含主体X的名称不等于以X为所指。preserves_assertion 核对该行owner/主体的断言及完整时间条件，不要求无关前文事实也进入该单元。reason 只给简短结果依据，不输出隐含思维过程。
 只有 same_referent=true 且 preserves_assertion=true 的 check 才承载该主体断言。只有命题P或另一端时可如实 same_referent=false，即使它保存了整句；它们仍可合法，不因此列为 unsupported 或删除。没有承载项时 supported=false，并在 omissions 写明应补主体、原文断言及限定，同时保留原有合法单元。same=true 但未保留断言也属于承载遗漏。
 没有可明确指称的直接主体断言（如仅标题）时可 subject_coverage=[]，同时必须提供非空 no_direct_subjects_reason 说明真实原因；非空 subject_coverage 不带该理由。来源含混或仅讨论命题仍按原文真实范围核对，不为填写表格猜主体。每个索引须在 items 内，布尔值须显式给出，所有所指、引文及 reason 非空；引文须逐字存在于原文。
 完成核验的正例结构：{"supported":true,"reason":"全部三项必要条件满足","unsupported_items":[],"omissions":[],"subject_coverage":[{"source_quote":"原文断言","subject_referent":"原文主体","checks":[{"item_index":0,"item_referent":"该主体","same_referent":true,"preserves_assertion":true,"reason":"同指且保留断言限定"}]}]}。上述引文和所指仅示结构，不能照抄。

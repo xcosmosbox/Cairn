@@ -1,5 +1,6 @@
 """免费验收器控制；手造数据不冒充真实模型端到端证据。 / Offline checker controls."""
 import importlib.util
+import copy
 import json
 from pathlib import Path
 import sqlite3
@@ -15,7 +16,7 @@ mini = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mini)
 
 
-def persisted_control(root, version_layout=False):
+def persisted_control(root, version_layout=False, term_alias=False):
     """Minimal local artifact control, not a provider response or production run."""
     phase = root / "phase"
     phase.mkdir()
@@ -46,6 +47,21 @@ def persisted_control(root, version_layout=False):
         source = {"id": "s3", "path": original["path"], "skill": original["skill"], "sha256": original["sha256"]}
         edge = dict(graph["edges"][0], id=2, source_id="1", target_id="3", kind="generalizes")
         edge["description"] = json.dumps({"cairn_relation_assertions_v1": [{"classification": "explicit", "description": "该票签的2026年1月版本", "sources": [source], "evidence": evidence}]}, ensure_ascii=False)
+        graph["edges"].append(edge)
+    if term_alias:
+        quote = '本页的“票签”指霜羽票签。'
+        original = next(s for s in originals if s["path"] == "mini/references/log.md")
+        raw = original["content"].encode()
+        start, end = raw.index(quote.encode()), raw.index(quote.encode()) + len(quote.encode())
+        graph["nodes"].append({"id": "term", "name": "票签", "label": "Concept", "summary": quote, "description": quote})
+        graph["node_sources"].append({"node_uuid": "term", "member_id": "member-term", "skill": "paperhall-mini", "file_path": original["path"], "start_line": 0, "end_line": 0})
+        source = {"id": "s2", "path": original["path"], "skill": original["skill"], "sha256": original["sha256"]}
+        evidence = [{"endpoint": role, "source_id": "s2", "member_id": member, "quote": quote,
+                     "start_byte": start, "end_byte": end, "start_line": raw[:start].count(b"\n") + 1,
+                     "end_line": raw[:end - 1].count(b"\n") + 1}
+                    for role, member in (("source", "member-term"), ("target", "member-1-2"))]
+        edge = dict(graph["edges"][0], id=len(graph["edges"]) + 1, source_id="term", target_id="1", kind="references")
+        edge["description"] = json.dumps({"cairn_relation_assertions_v1": [{"classification": "explicit", "description": quote, "sources": [source], "evidence": evidence}]}, ensure_ascii=False)
         graph["edges"].append(edge)
     with sqlite3.connect(phase / "knowledge.db") as conn:
         for table, rows in graph.items():
@@ -116,6 +132,134 @@ class CheckerControls(unittest.TestCase):
             conn.execute("UPDATE nodes SET name='unrelated' WHERE id='1'")
         with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
             self.checks()
+
+    def term_control(self, version_layout=False):
+        root = self.root / "term-layout"
+        root.mkdir()
+        return persisted_control(root, version_layout=version_layout, term_alias=True)
+
+    def test_source_owned_term_side_branch_and_six_controls(self):
+        phase, oracle = self.term_control()
+        graph = mini.graph_rows(phase)
+        frozen = mini.read_json(phase / "caller-frozen-sources.json")
+        with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+            mini.resolve_nodes(graph, oracle)  # No evidence context is no exception.
+        selected = mini.resolve_nodes(graph, oracle, frozen)
+        self.assertEqual(selected["霜羽票签"]["id"], "1")
+        self.assertTrue(all(c["status"] == "PASS" for c in mini.audit_phase(phase, oracle)[0]))
+        controls = mini.negative_controls(phase, oracle)
+        self.assertEqual(len(controls), 6)
+        self.assertEqual(next(c for c in controls if c["control"] == "bad-source-path")["detected_by"], "source-incidences")
+
+    def test_term_proof_does_not_rescue_isolated_version_value(self):
+        phase, oracle = self.term_control(version_layout=True)
+        with sqlite3.connect(phase / "knowledge.db") as conn:
+            conn.execute("UPDATE edges SET kind='composes' WHERE id=2")
+        checks, selected = mini.audit_phase(phase, oracle)
+        self.assertEqual(selected["霜羽票签"]["id"], "1")
+        self.assertTrue(any(c["check"] == "target-key-values" and c["status"] == "UNKNOWN" for c in checks))
+
+    def test_unused_context_change_is_not_definition_evidence(self):
+        phase, oracle = self.term_control()
+        graph = mini.graph_rows(phase)
+        frozen = mini.read_json(phase / "caller-frozen-sources.json")
+        edge = next(e for e in graph["edges"] if e["source_id"] == "term")
+        envelope = json.loads(edge["description"])
+        assertion = envelope["cairn_relation_assertions_v1"][0]
+        source = next(s for s in frozen if s["path"] == oracle["change"]["path"])
+        assertion["sources"].append({"id": "unused-pass", "path": source["path"], "skill": source["skill"], "sha256": source["sha256"]})
+        source["content"] += "\n\n" + (mini.HERE / oracle["change"]["file"]).read_text()
+        source["sha256"] = mini.digest(source["content"].encode())
+        mini.validate_frozen(frozen, oracle, True)
+        edge["description"] = json.dumps(envelope)
+        self.assertEqual(mini.resolve_nodes(graph, oracle, frozen)["霜羽票签"]["id"], "1")
+        # Context is never evidence by mere catalog membership. Both wrong used
+        # hashes and attempts to redirect a quote to that unused source fail.
+        for fault in ("used-hash", "redirect-context", "unknown-reference"):
+            changed = copy.deepcopy(envelope)
+            a = changed["cairn_relation_assertions_v1"][0]
+            if fault == "used-hash": a["sources"][0]["sha256"] = "0" * 64
+            else: a["evidence"][0]["source_id"] = "unused-pass" if fault == "redirect-context" else "unknown"
+            edge["description"] = json.dumps(changed)
+            with self.subTest(fault=fault), self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+                mini.resolve_nodes(graph, oracle, frozen)
+
+    def test_definition_term_alone_is_not_a_passing_business_alias(self):
+        phase, oracle = self.term_control()
+        with sqlite3.connect(phase / "knowledge.db") as conn:
+            conn.execute("DELETE FROM nodes WHERE id='1'")
+        checks, _ = mini.audit_phase(phase, oracle)
+        self.assertTrue(any(c["check"] == "source-incidences" and c["status"] == "FAIL" for c in checks))
+        self.assertFalse(all(c["status"] == "PASS" for c in checks))
+
+    def test_term_negative_harness_keeps_positive_gate_and_unrelated_errors(self):
+        phase, oracle = self.term_control()
+        positive, selected = mini.audit_phase(phase, oracle)
+        with patch.object(mini, "audit_phase", side_effect=[(positive, selected), ValueError("oracle_unrecognized: unrelated duplicate")]):
+            with self.assertRaisesRegex(ValueError, "unrelated duplicate"):
+                mini.negative_controls(phase, oracle)
+        with sqlite3.connect(phase / "knowledge.db") as conn:
+            conn.execute("UPDATE nodes SET description='2026年1月版有效期19分钟。' WHERE id='1'")
+        with self.assertRaisesRegex(ValueError, "passing persisted positive"):
+            mini.negative_controls(phase, oracle)
+
+    def test_term_only_ignores_recognized_incoming_hierarchy(self):
+        phase, oracle = self.term_control()
+        graph = mini.graph_rows(phase)
+        frozen = mini.read_json(phase / "caller-frozen-sources.json")
+        graph["nodes"].append({"id": "sub", "name": "sub", "label": "Subdomain"})
+        hierarchy = dict(graph["edges"][0], id=99, source_id="sub", target_id="term", kind="composes", description="子域包含概念")
+        graph["edges"].append(hierarchy)
+        self.assertEqual(mini.resolve_nodes(graph, oracle, frozen)["霜羽票签"]["id"], "1")
+        for field, value in (("description", "票签有效期19分钟"), ("properties", '{"business":"claim"}'), ("source_id", "1")):
+            changed = copy.deepcopy(graph)
+            changed["edges"][-1][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+                mini.resolve_nodes(changed, oracle, frozen)
+
+    def test_unproven_conflicting_or_polluted_term_remains_unknown(self):
+        phase, oracle = self.term_control()
+        original = mini.graph_rows(phase)
+        original_frozen = mini.read_json(phase / "caller-frozen-sources.json")
+        cases = ("duplicate-canonical", "term-entity", "extra-body", "different-wording", "payload",
+                 "extra-business-edge", "reverse-definition", "bidirectional-definition", "wrong-hash",
+                 "wrong-byte", "wrong-line", "wrong-source-member", "wrong-target-member", "wrong-source-skill",
+                 "wrong-target-skill", "alias-source-extra", "duplicate-source-id", "non-explicit",
+                 "extra-assertion", "extra-definition-fact", "wrong-frozen-bytes")
+        for case in cases:
+            graph, frozen = copy.deepcopy(original), copy.deepcopy(original_frozen)
+            term = next(n for n in graph["nodes"] if n["id"] == "term")
+            edge = next(e for e in graph["edges"] if e["source_id"] == "term")
+            envelope = json.loads(edge["description"])
+            assertion = envelope["cairn_relation_assertions_v1"][0]
+            if case == "duplicate-canonical": graph["nodes"].append(dict(next(n for n in graph["nodes"] if n["id"] == "1"), id="duplicate"))
+            elif case == "term-entity": term["label"] = "Entity"
+            elif case == "extra-body": term["description"] += "2026年1月版有效期9分钟。"
+            elif case == "different-wording": term["summary"] = "（本页称谓）" + term["summary"]
+            elif case == "payload": term["properties"] = '{"validity":"19 minutes"}'
+            elif case == "extra-business-edge": graph["edges"].append(dict(edge, id=99, kind="composes"))
+            elif case == "reverse-definition": edge["source_id"], edge["target_id"] = edge["target_id"], edge["source_id"]
+            elif case == "bidirectional-definition": edge["bidirectional"] = 1
+            elif case == "wrong-hash": assertion["sources"][0]["sha256"] = "0" * 64
+            elif case == "wrong-byte": assertion["evidence"][0]["start_byte"] += 1
+            elif case == "wrong-line": assertion["evidence"][0]["start_line"] += 1
+            elif case == "wrong-source-member": assertion["evidence"][0]["member_id"] = "unowned"
+            elif case == "wrong-target-member": assertion["evidence"][1]["member_id"] = "unowned"
+            elif case in ("wrong-source-skill", "wrong-target-skill"):
+                owner = "term" if case == "wrong-source-skill" else "1"
+                next(s for s in graph["node_sources"] if s["node_uuid"] == owner and s["file_path"].endswith("log.md"))["skill"] = "wrong"
+            elif case == "alias-source-extra": graph["node_sources"].append(dict(graph["node_sources"][0], node_uuid="term", member_id="extra"))
+            elif case == "duplicate-source-id": assertion["sources"].append(dict(assertion["sources"][0]))
+            elif case == "non-explicit": assertion["classification"] = "inferred"
+            elif case == "extra-assertion": envelope["cairn_relation_assertions_v1"].append(dict(assertion, classification="inferred"))
+            elif case == "extra-definition-fact": assertion["description"] += "票签可永久使用。"
+            elif case == "wrong-frozen-bytes":
+                log = next(s for s in frozen if s["path"].endswith("log.md"))
+                log["content"] += "额外内容。"
+                log["sha256"] = mini.digest(log["content"].encode())
+            edge["description"] = json.dumps(envelope, ensure_ascii=False)
+            with self.subTest(case=case), self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+                mini.resolve_nodes(graph, oracle, frozen)
 
     def test_source_quote_offsets_are_byte_based(self):
         graph = mini.graph_rows(self.phase)
