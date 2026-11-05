@@ -32,3 +32,43 @@ Meaningful omissions or distortions remain unaccepted; empty output is not proof
 nonempty original contains no knowledge. HTTP retries do not replace semantic revision.
 This documents the new intended behavior, not its completion. #63/#64/#105 results and
 the removal of peripheral archive/cost/time/full609/repeated-GO gates remain unchanged.
+
+## Source subjects and their attributes
+
+The fixed public mini repeat exposed a subject-binding gap: annotation retained a dated
+duration in a separate attribute Concept, and a dated quantity in separate version/date
+Entities, while the original named subjects retained only definitions or duties. Full
+mapping preserved those member divisions; description fusion received only each node's
+declared members. All source incidences and numeric strings survived globally, but the
+subjects lost their required facts or source-bound reachable paths. This is not semantic
+completion, and later relation-audit uncertainty does not explain away the earlier gap.
+
+Generation and the existing semantic assessment now share an explicit boundary: when the
+original names the same subject and directly states its attributes under date/version
+conditions, retain those facts and their complete qualifications in that subject item's
+content/detail. Additional attribute/date units cannot replace that subject's material.
+A temporal qualifier alone does not establish a new subject identity. Preserve genuinely
+distinct objects and explicitly distinct version objects, different subjects, dated values,
+negation, conditions and exceptions. Source uncertainty is distinct from assessment unknown:
+an explicitly unknown value or unspecified subject may be faithfully retained and verified
+as supported. Only an assessor unable to determine whether the candidate's attribution or
+uncertainty is faithful returns unknown. Never guess an owner to create a connection the
+source did not specify. Neither similar names, dates, values nor entity/concept style
+authorizes a programmatic merge.
+
+The existing document processor supplies the original, whole candidate and concrete
+ownership omission to finite revision, then reassesses the whole replacement. There is
+no new schema, model call, retry loop, allowance or invented graph relation. This helper
+is shared by Full and C4. Its assessment is also reused for single-node fusion; that
+caller checks only the node's supplied member material and attribution, without inventing
+an absent parent, changing members or importing unsupplied facts. Whole-document items
+assessment remains responsible for the annotation subject boundary. Mapping and alignment
+are unchanged; the clarification cannot guarantee that a model will choose a connected
+final representation.
+
+Scripted controls establish omission-feedback flow, finite repair/exhaustion, preservation
+of independent identities and dated/negative facts, and same-candidate unknown handling.
+They already pass on the unchanged processor and do not prove prompt effectiveness. The
+actual failed repeat remains failed; validation after the change must use the same fixed
+sources and unchanged subject/source/reachable-value acceptance. Prior successful Full
+and changed results, earlier failures and all planned cases remain historical evidence.
