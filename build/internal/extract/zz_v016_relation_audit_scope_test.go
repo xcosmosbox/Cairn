@@ -225,3 +225,130 @@ func TestV016VerifierFocusKeepsCrossSourceIdentityAndAssertionCheck(t *testing.T
 		})
 	}
 }
+
+// Fresh mini verifier37 rejected a borrowed condition, but revise38 lost both
+// its concrete reason and a locatable alias-wire candidate. Exercise that same
+// supported/explicit=false shape through the existing finite recovery loop.
+func TestV016FocusRejectionFeedbackRepairsWithinExistingBudget(t *testing.T) {
+	for _, repair := range []bool{true, false} {
+		t.Run(fmt.Sprint(repair), func(t *testing.T) {
+			res, docs, originals := v014Fixture(2)
+			const compound = "dependency plus validity condition borrowed from 1.md"
+			const reason = "2.md states the dependency but does not state the validity condition from 1.md"
+			generations, verifications := map[string]int{}, 0
+			var failed Relation
+			c := &v014RelationClient{}
+			c.reply = func(ctx context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				var in relationProcessInput
+				_ = json.Unmarshal([]byte(req.User), &in)
+				if strings.Contains(req.System, "SOURCE-RELATION GENERATE") {
+					generations[in.FocusSourceID]++
+					if in.FocusSourceID == "s2" {
+						rows := v014Rows(req)
+						rows[0].Description = compound
+						failed = rows[0]
+						if generations["s2"] > 1 {
+							wire, _ := json.Marshal(failed)
+							for _, detail := range []string{"fixture/2.md", reason, string(wire)} {
+								if !strings.Contains(in.Feedback, detail) {
+									t.Errorf("revision lost actionable focus rejection %q: %s", detail, in.Feedback)
+								}
+							}
+							if repair {
+								rows = v014Rows(req)
+							}
+						}
+						return v014JSON(map[string]any{"relations": rows}), nil
+					}
+				}
+				var candidate crossNeighborhood
+				_ = json.Unmarshal([]byte(req.User), &candidate)
+				if candidate.Relation.Description == compound {
+					verifications++
+					var verdict crossVerdict
+					_ = json.Unmarshal([]byte(v014Supported(req).Text), &verdict)
+					no := false
+					verdict.ExplicitSourceAssertion = &no
+					verdict.Reason = reason
+					return v014JSON(verdict), nil
+				}
+				return v014DefaultReply(ctx, req)
+			}
+			rpt := NewExtractor(c, 4096).ProcessRelations(context.Background(), res, docs, originals, RelationProcessOptions{MaxRetries: 1, SuppliedCandidatesAreNew: true})
+			if generations["s1"] != 1 || generations["s2"] != 2 || rpt.Scopes[0].Outcome != annotation.DocumentComplete {
+				t.Fatalf("recovery reran sibling or changed budget: %+v generations=%v", rpt, generations)
+			}
+			want, selected, checks := annotation.DocumentPartial, 1, 2
+			if repair {
+				want, selected, checks = annotation.DocumentComplete, 2, 1
+			}
+			if rpt.Scopes[1].Outcome != want || rpt.Scopes[1].Exhausted == repair || len(rpt.Selected) != selected || verifications != checks {
+				t.Fatalf("incorrect finite repair result: %+v verifies=%d", rpt, verifications)
+			}
+			for _, d := range rpt.Selected {
+				if d.Relation.Description == compound {
+					t.Fatal("other-source qualifier was selected")
+				}
+			}
+		})
+	}
+}
+
+// F03/F04 each state one side of the same-day attributed disagreement. The
+// shared focus contract must preserve that existing two-assertion exception;
+// scripted predicate negatives still exercise the existing hard verifier gates.
+func TestV016FocusContractPreservesStrictTwoSourceContradiction(t *testing.T) {
+	for _, mode := range []string{"F03-F04", "absence", "different-time", "different-condition", "incomplete", "focus-contribution-false"} {
+		t.Run(mode, func(t *testing.T) {
+			res, docs, originals := v014AcceptanceFixture(t)
+			client := v014AcceptanceGoodClient(t)
+			reply := client.reply
+			checks := 0
+			client.reply = func(ctx context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				if !strings.Contains(req.System, relationFocusAssertionContract) {
+					t.Fatal("generation/coverage/verifier focus contracts drifted")
+				}
+				var in crossNeighborhood
+				_ = json.Unmarshal([]byte(req.User), &in)
+				if in.Relation.Kind != "contradicts" {
+					return reply(ctx, req)
+				}
+				checks++
+				v := v014AcceptanceVerdict(t, req)
+				predicates := v["contradiction"].(map[string]bool)
+				switch mode {
+				case "absence":
+					predicates["incompatible"] = false
+				case "different-time":
+					predicates["same_time"] = false
+				case "different-condition":
+					predicates["same_conditions"] = false
+				case "incomplete":
+					delete(predicates, "same_attribute")
+				case "focus-contribution-false":
+					// Five true contradiction gates cannot replace a false
+					// explicit focus-contribution predicate.
+					v["explicit_source_assertion"] = false
+					v["reason"] = "focus provides endpoint identity but no conflicting assertion"
+				}
+				return v014AcceptanceReply(t, v), nil
+			}
+			rpt := NewExtractor(client, 65536).ProcessRelations(context.Background(), res, docs, originals, RelationProcessOptions{MaxRetries: -1})
+			if checks == 0 {
+				t.Fatal("F03/F04 contradiction was not verified")
+			}
+			selected := 0
+			for _, d := range rpt.Selected {
+				if d.Relation.Kind == "contradicts" {
+					selected++
+					if len(d.Evidence) < 2 || d.Classification != "explicit" {
+						t.Fatalf("lost two-sided explicit evidence: %+v", d)
+					}
+				}
+			}
+			if (mode == "F03-F04" && selected != 1) || (mode != "F03-F04" && selected != 0) {
+				t.Fatalf("contradiction exception bypassed strict predicates: selected=%d report=%+v", selected, rpt)
+			}
+		})
+	}
+}
