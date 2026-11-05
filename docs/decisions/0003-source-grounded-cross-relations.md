@@ -100,6 +100,27 @@ application-level endpoint checks.
 
 ## Compatibility and limits
 
+The ordinary source-relation helper supplies the exact focus original's current
+neighborhood-local ID, path and SHA-256 to each new-candidate verifier. Source IDs
+are rebuilt per neighborhood; a global `sN` is not reused by position. The complete
+relationship assertion, including direction and qualifiers, must be explicit in
+that focus original. Other originals may establish endpoint identities; their
+assertions or a focus quote naming an endpoint alone do not establish focus support.
+Exact member/source/quote checks and the runtime focus binding still apply.
+
+Full construction explicitly sets `SuppliedCandidatesAreNew`; the default remains
+false for persistent incremental candidates. Only a definite `rejected_semantic`
+audit of a new seed absent from current `Selected`, after its budget-owning source
+has completed whole-set coverage and explicit-candidate verification, remains a
+candidate-local rejection. Its partial decision, reason and attempts remain visible;
+the rejected seed is not inserted and positive seed audits gain no explicit-source
+credit. This does not repair or promote previously partial source work. Unknown,
+malformed, evidence, transport, permanent and cancellation outcomes retain their
+existing finite failure behavior, as do rejected persistent candidates by default.
+The existing shared audit-budget owner is bookkeeping, not proof that the relation
+is asserted in that source; a multi-source neighborhood's first source must not be
+reported as semantic provenance. No independent audit scope or new budget is added.
+
 No DB schema, Bundle format, UUID namespace, dependency, query API or query-side behavior
 changes. Same-subdomain relation generation and valid local alias behavior are unchanged;
 this ADR does not claim those relations now receive the additional source verifier.

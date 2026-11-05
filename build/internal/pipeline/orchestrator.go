@@ -268,7 +268,7 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 	if err = extract.ValidateFusionCompleteness(res, withIDs, 0, true); err != nil {
 		return report, err
 	}
-	report.Relations = o.extractor.ProcessRelations(ctx, res, withIDs, originals, extract.RelationProcessOptions{MaxRetries: o.maxRetries})
+	report.Relations = o.extractor.ProcessRelations(ctx, res, withIDs, originals, extract.RelationProcessOptions{MaxRetries: o.maxRetries, SuppliedCandidatesAreNew: true})
 	// Preserve current selected classification, Sources and Evidence in the established envelope.
 	extract.ApplySelectedRelationAssertions(res, report.Relations)
 	o.dumpJSON("05e_relation_report.json", report.Relations)

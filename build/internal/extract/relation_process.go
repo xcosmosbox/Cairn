@@ -20,6 +20,9 @@ import (
 // Positive MaxRetries means EXTRA recoveries; zero defaults to three, negative to none.
 type RelationProcessOptions struct {
 	MaxRetries int `json:"max_retries"`
+	// Full 的映射候选尚未持久化；默认仍按增量既有边的保守失败语义处理。
+	// Only Full opts in for new seeds; existing persisted candidates keep the default.
+	SuppliedCandidatesAreNew bool `json:"supplied_candidates_are_new,omitempty"`
 }
 
 // RelationScopeOutcome 是来源的事实结果，不代替 .6 的产品完成度汇总。
@@ -372,7 +375,14 @@ func (e *Extractor) ProcessRelations(ctx context.Context, res *Result, docs []*d
 			rpt.Decisions[old.position] = d
 			continue
 		}
-		rpt.Decisions[old.position] = e.auditRelation(ctx, old.task, members, frozen, conflicts, b)
+		newUnselected := options.SuppliedCandidatesAreNew
+		for _, selected := range rpt.Selected {
+			if selected.CandidateID == id {
+				newUnselected = false
+				break
+			}
+		}
+		rpt.Decisions[old.position] = e.auditRelation(ctx, old.task, members, frozen, conflicts, b, newUnselected)
 	}
 	for key, b := range budgets {
 		rpt.Scopes[scopePositions[key]] = *b.out
@@ -380,9 +390,10 @@ func (e *Extractor) ProcessRelations(ctx context.Context, res *Result, docs []*d
 	return rpt
 }
 
-func (e *Extractor) auditRelation(ctx context.Context, task crossTask, members map[string]map[sourceKey]bool, frozen map[sourceKey]FrozenSource, conflicts map[sourceKey]bool, b *relationBudget) RelationProcessDecision {
+func (e *Extractor) auditRelation(ctx context.Context, task crossTask, members map[string]map[sourceKey]bool, frozen map[sourceKey]FrozenSource, conflicts map[sourceKey]bool, b *relationBudget, newUnselected bool) RelationProcessDecision {
 	w := prepareCrossCandidate(task, members, frozen, conflicts, e.maxTokens)
 	out := b.out
+	wasComplete := out.Outcome == annotation.DocumentComplete
 	d := RelationProcessDecision{CrossRelationDecision: cloneCrossDecision(w.preflight), CandidateID: relationIdentity(task.scope, task.relation), Classification: "unknown", Outcome: annotation.DocumentUnavailable}
 	d.MaterialID = nodeTextIdentity(w.request.User)
 	if ctx.Err() != nil {
@@ -421,6 +432,13 @@ func (e *Extractor) auditRelation(ctx context.Context, task crossTask, members m
 		b.attempt("audit", d.CandidateID, string(annotation.DocumentUnavailable), err.Error())
 		// 真正否定是旧候选的事实结果；来源生成阶段负责补回可修复新关系。
 		if defect {
+			// Full 已完成的当前集合不包含这个新 seed；正确拒绝废候选不是当前图缺口。
+			// Preserve the rejected decision, not an edge or explicit-source credit.
+			if newUnselected && wasComplete && v.Disposition == "rejected_semantic" && ctx.Err() == nil {
+				d.Outcome, d.Reason = annotation.DocumentPartial, err.Error()
+				out.Outcome, out.Reason = annotation.DocumentComplete, ""
+				break
+			}
 			out.Outcome = annotation.DocumentPartial
 			out.Reason = err.Error()
 			break
@@ -429,7 +447,7 @@ func (e *Extractor) auditRelation(ctx context.Context, task crossTask, members m
 			break
 		}
 	}
-	if d.Outcome != annotation.DocumentComplete {
+	if d.Outcome == annotation.DocumentUnavailable {
 		d.Outcome = out.Outcome
 		d.Reason = out.Reason
 	}
@@ -533,7 +551,7 @@ func (e *Extractor) processRelationSource(ctx context.Context, res *Result, inpu
 				continue
 			}
 			task := crossTask{scope: c.source.scope, relation: c.relation, source: c.source, target: c.target, ss: "resolved", ts: "resolved"}
-			w := prepareCrossCandidate(task, members, frozen, conflicts, e.maxTokens)
+			w := prepareCrossCandidate(task, members, frozen, conflicts, e.maxTokens, focusKey)
 			d := RelationProcessDecision{CrossRelationDecision: cloneCrossDecision(w.preflight), CandidateID: id, MaterialID: out.MaterialID, Classification: "unknown", Outcome: annotation.DocumentUnavailable}
 			if !w.requestable {
 				d.Reason = w.preflight.Reason
@@ -542,7 +560,7 @@ func (e *Extractor) processRelationSource(ctx context.Context, res *Result, inpu
 				out.Reason = w.preflight.Reason
 				return
 			}
-			w.request.System += "\n本轮还要求 explicit_source_assertion 布尔字段：只有原文明示这条完整关系（包括描述中的全部条件/时间/否定/分歧）才为 true；推断、常识或共现为 false。支持端点不等于支持关系。"
+			w.request.System += "\n本轮还要求 explicit_source_assertion 布尔字段：只有 focus_source_id 对应的 focus_source（本次 original_sources 中的精确 id/path/sha256）原文明示这条完整关系（包括谓词、方向和描述中的全部条件/时间/否定/分歧）才为 true。其他原文可支持端点身份，但仅其他原文支持完整关系、focus 只提及端点、推断、常识或共现均为 false。支持端点不等于支持关系。证据仍可使用邻域全部原文，至少一条有效证据须绑定 focus 原文。"
 			response, callErr := e.relationComplete(ctx, w.request)
 			err = callErr
 			if err == nil && response != nil {
