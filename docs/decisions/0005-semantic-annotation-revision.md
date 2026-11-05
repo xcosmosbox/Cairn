@@ -355,3 +355,47 @@ members without importing a missing duration. These are finite-flow/material con
 proof that a model will infer owner attribution correctly; parent prompt passes are disclosed
 as such. Actual after validation remains necessary. The checker repair has a separate owner;
 its scope and all original actual artifacts/history remain unchanged here.
+
+## Explicit old machine material remains in node scope
+
+The subsequent four-phase mini automatically passed, but independent changed-phase review
+found a real incremental loss. The supplied Existing machine description explicitly stated
+that expired tickets were invalid and rejected for entry; the new member repeated only
+rejection. Generation retained both. Assessment then called invalidity unsupported because
+the member did not repeat it, revision removed it, and reassessment accepted the narrower
+description. The old UUID was persisted without the still-supported invalidity fact.
+Those mechanical PASS receipts and this independent semantic FAIL remain separate history.
+
+Both material sections were already present in generation, assessment and revision inputs.
+The prompt contract was inconsistent: generation admitted existing machine description plus
+members, while the shared node assessment opening/result wording and later coverage wording
+repeatedly restricted the basis to members. The old-material statement at the wrapper's end
+did not prevent this observed exclusion. This is a provided-material scope error, not a
+need to fetch a missing original, modify recall, or invent a relation.
+
+The trusted single-node scope, result wording, generation/assessment wrapper and shared
+node instructions now consistently use the explicitly provided Existing machine description
+(if present) plus all supplied source-member contributions. A new member's failure to
+repeat an old fact is not a retraction. A missing still-supported old fact is a concrete
+omission. Candidate fields and critique are not sources: revision checks feedback against
+the entire provided material, rather than treating an erroneous critique as authority to
+discard old knowledge or shrink that material denominator.
+
+Old machine text is not automatically superior or infallible. Explicit correction,
+withdrawal or a changed time/applicability condition permits revision within the supported
+scope, preserving unaffected periods and attribution. A genuine unresolved old/new conflict
+retains the respective source/range rather than being silently resolved by recency or by
+Content/Detail priority. No unprovided whole document, missing old fact or candidate assertion
+is promoted into evidence. Whole-document annotation and the trusted node boundary stay
+unchanged, as do response fields, parser, calls/stages, finite allowances, members/UUIDs,
+storage schema, human edits, oracle and the separately owned alignment/recall work.
+
+Five generic scripted functions/nine scenarios exercise the real node caller: combined
+old+new support; concrete old-fact omission repair/exhaustion; removal of old material making
+the same added candidate assertion unsupported; wrong critique delivered with the full
+material without becoming evidence; explicit corrections/scoped updates/unresolved conflict;
+and preservation of a completed sibling. They establish source/candidate separation and
+finite material/feedback flow, not model detection or prompt efficacy; parent passes remain
+explicit. Later actual paired checks must compare the recorded keep/omit candidates against
+the identical old+new input and a controlled absent-old negative. No such provider action
+or actual after result occurs in this source change, and no previous result is relabeled.
