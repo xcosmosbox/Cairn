@@ -168,7 +168,12 @@ func TestV016RelationDetailContract(t *testing.T) {
 					reply = v014Supported(req)
 				}
 				mu.Lock()
-				calls[in.Focus] = append(calls[in.Focus], stage)
+				// Verification now carries an explicit focus; count by actual stage, not missing focus metadata.
+				callScope := in.Focus
+				if stage == "verify" {
+					callScope = "verify"
+				}
+				calls[callScope] = append(calls[callScope], stage)
 				if stage != "verify" {
 					prompts = append(prompts, req.System)
 				}
@@ -203,7 +208,7 @@ func TestV016RelationDetailContract(t *testing.T) {
 			if len(report.Selected) != selected {
 				t.Fatalf("false or missing selected edges: %+v", report.Selected)
 			}
-			if len(calls[""]) != selected {
+			if len(calls["verify"]) != selected {
 				t.Fatalf("wrong per-edge verification calls: %v", calls)
 			}
 			// The relation helper must not silently repair missing nodes or corrupt their details.

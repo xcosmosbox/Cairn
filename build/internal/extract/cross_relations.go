@@ -130,10 +130,12 @@ type crossOriginal struct {
 }
 
 type crossNeighborhood struct {
-	Source   CrossEndpoint   `json:"source"`
-	Target   CrossEndpoint   `json:"target"`
-	Relation Relation        `json:"relation_candidate"`
-	Sources  []crossOriginal `json:"original_sources"`
+	FocusSourceID string          `json:"focus_source_id,omitempty"`
+	FocusSource   *CrossSource    `json:"focus_source,omitempty"`
+	Source        CrossEndpoint   `json:"source"`
+	Target        CrossEndpoint   `json:"target"`
+	Relation      Relation        `json:"relation_candidate"`
+	Sources       []crossOriginal `json:"original_sources"`
 }
 
 type crossQuote struct {
@@ -340,7 +342,7 @@ func (e *Extractor) ValidateCrossRelations(ctx context.Context, res *Result, doc
 	return rpt
 }
 
-func prepareCrossCandidate(task crossTask, members map[string]map[sourceKey]bool, frozen map[sourceKey]FrozenSource, conflicts map[sourceKey]bool, maxTokens int) *crossRelationWork {
+func prepareCrossCandidate(task crossTask, members map[string]map[sourceKey]bool, frozen map[sourceKey]FrozenSource, conflicts map[sourceKey]bool, maxTokens int, focus ...sourceKey) *crossRelationWork {
 	w := &crossRelationWork{task: task, members: members}
 	d := CrossRelationDecision{OwnerDomain: task.scope.domain, OwnerSubdomain: task.scope.subdomain, Relation: task.relation, Source: crossEndpoint(task.source), Target: crossEndpoint(task.target)}
 	d.Kind, d.Scope = task.relation.Kind, CrossRelationScopeCross
@@ -375,6 +377,13 @@ func prepareCrossCandidate(task crossTask, members map[string]map[sourceKey]bool
 			}
 		}
 	}
+	// focus 的全局 sN 不能复用为邻域的局部 sN；按原文身份重新绑定并保留完整邻域。
+	// Include the exact focus even when a proposed candidate has no focus-owned member.
+	if len(focus) > 0 {
+		if _, ok := frozen[focus[0]]; ok && !conflicts[focus[0]] {
+			keys[focus[0]] = true
+		}
+	}
 	ordered := make([]sourceKey, 0, len(keys))
 	for key := range keys {
 		ordered = append(ordered, key)
@@ -390,6 +399,11 @@ func prepareCrossCandidate(task crossTask, members map[string]map[sourceKey]bool
 	for i, key := range ordered {
 		src := frozen[key]
 		ref := CrossSource{ID: fmt.Sprintf("s%d", i+1), Skill: src.Skill, Path: src.Path, SHA256: src.SHA256}
+		if len(focus) > 0 && key == focus[0] {
+			input.FocusSourceID = ref.ID
+			focusRef := ref
+			input.FocusSource = &focusRef
+		}
 		original := crossOriginal{CrossSource: ref, Content: src.Content}
 		for _, member := range append(append([]string(nil), d.Source.Members...), d.Target.Members...) {
 			if members[member][key] && !containsMember(original.Members, member) {

@@ -100,6 +100,47 @@ application-level endpoint checks.
 
 ## Compatibility and limits
 
+The ordinary source-relation helper supplies the exact focus original's current
+neighborhood-local ID, path and SHA-256 to each new-candidate verifier. Source IDs
+are rebuilt per neighborhood; a global `sN` is not reused by position. The complete
+relationship assertion, including direction and qualifiers, must be explicit in
+that focus original, subject to the existing strict contradiction rule below.
+Other originals may establish endpoint identities; their
+assertions or a focus quote naming an endpoint alone do not establish focus support.
+Exact member/source/quote checks and the runtime focus binding still apply.
+
+Generation and whole-set coverage use that same complete-focus-assertion contract.
+Each source's round preserves its own explicit qualifiers and contributions; other
+originals establish endpoint identity and reference context, not extra predicates,
+qualifiers or attribution comparisons. Another source's independent assertion is
+checked in its own round, rather than counted as missing from this one. Required
+edges and source-bound node detail still need complete preservation. If verification
+rejects focus support, the existing revision feedback retains the verifier's concrete
+reason, focus identity and failed alias-wire candidate. This makes the same finite
+repair loop actionable without adding requests, stages or recovery allowance.
+
+The existing `contradicts` contract permits two originals to state the two opposing
+assertions. The focus must explicitly contribute an actual conflicting assertion,
+not just an endpoint name. Both sides need exact member/source/quote evidence and
+all five existing predicates (same subject, attribute, time, conditions, and
+incompatibility) must be true, preserving attribution and uncertainty. Absence,
+unknowns and changes in time, conditions or versions remain insufficient. The
+shared generation/coverage/verifier contract preserves this narrow rule; it does
+not permit other relation kinds to borrow qualifiers from another source.
+
+Full construction explicitly sets `SuppliedCandidatesAreNew`; the default remains
+false for persistent incremental candidates. Only a definite `rejected_semantic`
+audit of a new seed absent from current `Selected`, after its budget-owning source
+has completed whole-set coverage and explicit-candidate verification, remains a
+candidate-local rejection. Its partial decision, reason and attempts remain visible;
+the rejected seed is not inserted and positive seed audits gain no explicit-source
+credit. This does not repair or promote previously partial source work. Unknown,
+malformed, evidence, transport, permanent and cancellation outcomes retain their
+existing finite failure behavior, as do rejected persistent candidates by default.
+The existing shared audit-budget owner is bookkeeping, not proof that the relation
+is asserted in that source; a multi-source neighborhood's first source must not be
+reported as semantic provenance. No independent audit scope or new budget is added.
+
 No DB schema, Bundle format, UUID namespace, dependency, query API or query-side behavior
 changes. Same-subdomain relation generation and valid local alias behavior are unchanged;
 this ADR does not claim those relations now receive the additional source verifier.
