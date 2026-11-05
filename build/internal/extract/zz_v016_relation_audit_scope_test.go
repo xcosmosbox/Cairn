@@ -515,3 +515,67 @@ func TestV016NodeContextRequestJoinsAndBodyFailure(t *testing.T) {
 		})
 	}
 }
+
+// Actual repeat seed shape: complete owned originals with only title/body
+// cooccurrence. Scripted dispositions check wiring/gates, not model semantics.
+func TestV016VerifierSupportEligibilityKeepsActualSeedUnknownDistinct(t *testing.T) {
+	for _, tc := range []struct {
+		name, disposition string
+		newSeed           bool
+		outcome           annotation.DocumentOutcome
+		calls             int
+	}{
+		{"new-rejected", "rejected", true, annotation.DocumentComplete, 1},
+		{"persisted-rejected", "rejected", false, annotation.DocumentPartial, 1},
+		{"new-still-unknown", "insufficient_evidence", true, annotation.DocumentUnavailable, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res, docs, originals := v014Fixture(1)
+			const skill, path = "paperhall-mini", "mini/SKILL.md"
+			raw, err := os.ReadFile(filepath.Join("..", "..", "test", "e2e", "mini-baseline", "fixtures", "sources", filepath.FromSlash(path)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			originals[0] = FreezeSource(skill, path, string(raw))
+			docs[0].Skill, docs[0].FilePath = skill, path
+			docs[0].Items[0].Name, docs[0].Items[1].Name = "夜场入厅", "霜羽票签"
+			docs[0].Items = append(docs[0].Items, dktypes.AnnotatedItem{ID: "mc1", Name: "纸岚展馆", Content: "纸岚展馆", Detail: "文档标题"})
+			sd := &res.Domains[0].Subdomains[0]
+			sd.Entities[0].Name, sd.Entities[1].Name = "夜场入厅", "霜羽票签"
+			sd.Entities = append(sd.Entities, Node{ID: "c1", Name: "纸岚展馆", Members: []string{"mc1"}})
+			seed := Relation{Source: "a1", Target: "c1", Kind: "references", Description: "夜场入厅指进入纸岚展馆夜场的动作，语义上指向该展馆。", Confidence: .8}
+			sd.Relations = []Relation{seed}
+			const reason = "标题与正文共现不足以直接支撑 references 关系，因此证据不足，也不能据此判定关系不成立。"
+			calls := 0
+			c := &v014RelationClient{}
+			c.reply = func(ctx context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				var in crossNeighborhood
+				_ = json.Unmarshal([]byte(req.User), &in)
+				if in.Relation.Description != seed.Description {
+					return v014DefaultReply(ctx, req)
+				}
+				calls++
+				if !strings.Contains(req.System, "判定对象是这条候选是否符合原文明示支持的资格，不是关系在现实世界中是否存在") {
+					t.Error("verifier still judges reality instead of original-source support eligibility")
+				}
+				if in.FocusSource != nil || len(in.Sources) != 1 || in.Sources[0].Content != string(raw) || in.Sources[0].SHA256 != originals[0].SHA256 || !containsMember(in.Sources[0].Members, "ma1") || !containsMember(in.Sources[0].Members, "mc1") {
+					t.Fatalf("late seed lost complete owned source neighborhood: %+v", in)
+				}
+				no := false
+				return v014JSON(crossVerdict{Disposition: tc.disposition, Reason: reason, RelationSupported: &no, DirectionSupported: &no,
+					Evidence: []crossQuote{{"source", "ma1", "s1", "夜场入厅依赖霜羽票签。"}, {"target", "mc1", "s1", "# 纸岚展馆"}}}), nil
+			}
+			rpt := NewExtractor(c, 65536).ProcessRelations(context.Background(), res, docs, originals, RelationProcessOptions{MaxRetries: 1, SuppliedCandidatesAreNew: tc.newSeed})
+			if calls != tc.calls || rpt.Scopes[0].Outcome != tc.outcome || rpt.Scopes[0].Exhausted != (tc.disposition == "insufficient_evidence") || len(rpt.Selected) != 1 || len(sd.Relations) != 1 || sd.Relations[0].Kind != "depends_on" {
+				t.Fatalf("disposition gate, budget or good selection changed: calls=%d report=%+v", calls, rpt)
+			}
+			d := rpt.Decisions[0]
+			if !strings.Contains(d.Reason, reason) || d.Verifier == nil || d.Verifier.Disposition != tc.disposition {
+				t.Fatalf("raw verdict/reason reclassified: %+v", d)
+			}
+			if tc.disposition == "rejected" && (d.Disposition != "rejected_semantic" || d.Outcome != annotation.DocumentPartial) {
+				t.Fatalf("candidate rejection erased: %+v", d)
+			}
+		})
+	}
+}
