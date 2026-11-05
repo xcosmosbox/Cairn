@@ -156,6 +156,17 @@ neighborhood or verifier failure can reduce the accepted graph; reports expose t
 instead of claiming a successful semantic judgment. Completed-extraction replay still
 requires callers to verify checkpoint origin and is not a substitute verifier.
 
+## C4 source namespace continuity
+
+Managed writeback omits discovery frontmatter. Before annotating C4 prose or assigning
+member IDs, incremental Run resolves the exact source path against persisted node_sources
+and validated caller frozen sources. Their unique namespace takes precedence over the
+scanner's directory fallback. Conflicting or missing registered identities remain a local
+unavailable document; no member-prefix guessing or generated Markdown substitutes for raw
+source evidence. A genuinely new unregistered path keeps normal discovery. Current raw
+snapshot checks and all later member/source joins remain required; stale or absent raw
+originals cannot advance a changed document's baseline.
+
 ## Evidence and acceptance
 
 Offline regressions cover reversed scope order, duplicate/local/global aliases, missing
