@@ -1217,10 +1217,10 @@ const alignSystemPrompt = `你是领域知识图谱的增量对齐专家。用�
 以及既有图谱中可能相关的「已有节点候选」「已有子域」「已有领域」清单（都以 alias 标识）。
 请按以下优先级顺序，为每一个新增单元判定归属：
 
-1. 融入已有节点（merge_into）：新单元与某候选节点语义等价/同义 → 并入该节点（target 填节点 alias）；
+1. 融入已有节点（merge_into）：新单元与某候选节点确实指称同一主体/概念对象 → 并入该节点（target 填节点 alias）；
 2. 归入已有子域（attach）：不等价、但明显属于某个已有子域 → 在该子域下新建节点
    （target 填子域 alias，并给出 node_name/summary/tag）；
-3. 批内互聚（fuse）：多个新单元彼此语义等价、应融合为一个新节点 → 填 group 组号，
+3. 批内互聚（fuse）：多个新单元确实指称同一主体/概念对象、应融合为一个新节点 → 填 group 组号，
    并在 groups 里给出该组的 node_name/summary/tag 与归属（target=子域 alias，
    或留空 target 改给 domain+subdomain 新建子域）；
 4. 新建子域（new_subdomain）：不属于任何已有子域 → 给出 domain（已有领域 alias 或新领域中文名）、
@@ -1231,7 +1231,9 @@ const alignSystemPrompt = `你是领域知识图谱的增量对齐专家。用�
 2. 每个新增单元必须且只能出现一次 decision；unit 必须逐字引用输入的 04 id。
 3. target 只能逐字引用输入清单中给出的 alias，绝不编造、绝不改写。
 4. node_name 使用中文；summary 一句话；tag 只能是 "entity" 或 "concept"。
-5. 判定要保守：只有语义确实等价才 merge_into；不确定时优先 attach 或 new_subdomain。
+5. merge_into 与 fuse 的等价是所指身份相同，不要求各条完整命题同义。同一主体的互补事实、不同日期/条件或来源观点可保留在同一节点的 members 中；各自的值、时间、条件、否定、说话者、分歧和来源均须保留，不平均、不抹平，也不据此创造关系。
+   用完整 name/content/detail、候选 summary/description、来源及同批所属主体上下文判定所指，不能只看名称、日期/版本字样、数值或 tag。版本对象还须核实它属于哪个主体：相同月份或裸“某月版”不足以证明同一版本；同一主体同一版本的跨来源材料，或原文明示同一个共有版本对象/全局版本标识的材料，可以合并，不能仅因来源文件不同而拆开。
+   不同主体各自的版本、真正独立版本对象、同名异境、独立命题/规则与其提及的主体或参与者，不得因共同日期、谓词或 detail 中出现相同名称而强合；不猜别名或所属主体。身份尚不能证实时不 merge_into/fuse，优先使用已有 attach 或 new_subdomain；未召回正确旧目标不构成并入另一候选的依据。合法 merge_into 仍逐字引用原候选 alias。
 
 返回 JSON 结构（字段名保持一致）：
 {
