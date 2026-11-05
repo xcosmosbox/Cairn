@@ -22,6 +22,14 @@ import (
 	"github.com/xcosmosbox/cairn/core/storage"
 )
 
+// Serialization of manually authored fixture results, without semantic inference.
+func entrySubjectRow(quote, subject string, index int, item string, same, preserves bool) map[string]any {
+	return map[string]any{"source_quote": quote, "subject_referent": subject, "checks": []any{map[string]any{"item_index": index, "item_referent": item, "same_referent": same, "preserves_assertion": preserves, "reason": "source-specific scripted result"}}}
+}
+func entrySubjectVerdict(rows ...map[string]any) map[string]any {
+	return map[string]any{"supported": true, "reason": "authored whole-document fixture verdict", "unsupported_items": []int{}, "omissions": []string{}, "subject_coverage": rows}
+}
+
 const v016ChangedSource = "Atlas pump may run only above 2 bar; it requires the safety valve when bypass is off. Safety valve remains closed during maintenance."
 const v016ChangedSummary = "Qualified Atlas pump operation"
 const v016ChangedDetail = "Atlas pump must not run during maintenance. Atlas pump may run only above 2 bar; it requires the safety valve when bypass is off."
@@ -55,7 +63,13 @@ func (c *v016ChangedClient) Complete(_ context.Context, r llm.CompleteRequest) (
 		span := map[string]any{"start_line": line, "end_line": line, "quote": v016ChangedSource}
 		return result(map[string]any{"items": []any{map[string]any{"tag": "entity", "name": "Atlas pump", "content": "Atlas pump may run only above 2 bar.", "detail": "Atlas pump may run only above 2 bar; it requires the safety valve when bypass is off.", "confidence": .95, "source_span": span}, map[string]any{"tag": "entity", "name": "Safety valve", "content": v016ValveDetail, "detail": v016ValveDetail, "confidence": .95, "source_span": span}}})
 	case strings.Contains(r.System, "语义核验专家"):
-		return result(map[string]any{"supported": true, "reason": "fixed original and complete node pair retain all conditions", "unsupported_items": []int{}, "omissions": []string{}})
+		if strings.Contains(r.User, "## Existing machine description / 现有机器详述") {
+			return result(map[string]any{"supported": true, "reason": "supplied node members retained", "unsupported_items": []int{}, "omissions": []string{}})
+		}
+		if strings.Contains(r.User, "Atlas pump operates only above 2 bar.") {
+			return result(entrySubjectVerdict(entrySubjectRow("Atlas pump operates only above 2 bar.", "Atlas pump", 0, "Atlas pump", true, true), entrySubjectRow(v016ValveDetail, "Safety valve", 1, "Safety valve", true, true)))
+		}
+		return result(entrySubjectVerdict(entrySubjectRow("Atlas pump may run only above 2 bar; it requires the safety valve when bypass is off.", "Atlas pump", 0, "Atlas pump", true, true), entrySubjectRow(v016ValveDetail, "Safety valve", 1, "Safety valve", true, true)))
 	case strings.Contains(r.System, "增量") && strings.Contains(r.User, "unit_id="):
 		decisions := []map[string]string{}
 		for _, m := range regexp.MustCompile(`unit_id=([^\s]+)`).FindAllStringSubmatch(r.User, -1) {

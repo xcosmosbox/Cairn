@@ -21,6 +21,14 @@ import (
 	"github.com/xcosmosbox/cairn/core/storage"
 )
 
+// Serialization of manually authored fixture results, without semantic inference.
+func entrySubjectRow(quote, subject string, index int, item string, same, preserves bool) map[string]any {
+	return map[string]any{"source_quote": quote, "subject_referent": subject, "checks": []any{map[string]any{"item_index": index, "item_referent": item, "same_referent": same, "preserves_assertion": preserves, "reason": "source-specific scripted result"}}}
+}
+func entrySubjectVerdict(rows ...map[string]any) map[string]any {
+	return map[string]any{"supported": true, "reason": "authored whole-document fixture verdict", "unsupported_items": []int{}, "omissions": []string{}, "subject_coverage": rows}
+}
+
 const v016Admission = "Admission requires quota only when bypass is off; emergency admission is exempt."
 const v016Quota = "Quota limits scheduled admission; emergency admission is exempt."
 
@@ -87,7 +95,13 @@ func (c *v016EntryClient) Complete(ctx context.Context, r llm.CompleteRequest) (
 				return v016Reply(map[string]any{"supported": true, "reason": "exception omitted", "unsupported_items": []int{}, "omissions": []string{"emergency admission is exempt"}})
 			}
 		}
-		return v016Reply(map[string]any{"supported": true, "reason": "fixed control retains every source qualification", "unsupported_items": []int{}, "omissions": []string{}})
+		if strings.Contains(r.User, "## Existing machine description / 现有机器详述") {
+			return v016Reply(map[string]any{"supported": true, "reason": "supplied node members retained", "unsupported_items": []int{}, "omissions": []string{}})
+		}
+		if strings.Contains(r.User, "# Quota\n") {
+			return v016Reply(entrySubjectVerdict(entrySubjectRow(v016Quota, "Quota", 0, "Quota", true, true)))
+		}
+		return v016Reply(entrySubjectVerdict(entrySubjectRow(v016Admission, "Admission", 0, "Admission", true, true)))
 	case strings.Contains(r.System, "领域知识融合专家"):
 		members := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindAllStringSubmatch(r.User, -1)
 		nodes := []map[string]any{}

@@ -63,7 +63,7 @@ func TestV012ProductionClientServiceResponseRetriesAssessment(t *testing.T) {
 					w.WriteHeader(status)
 					_, _ = io.WriteString(w, `unsupported protocol scheme "ftp"; http: no Host in request URL; missing API key; max_tokens`)
 				default:
-					v012BoundaryReply(w, `{"supported":true,"reason":"the one fact is preserved","unsupported_items":[],"omissions":[]}`)
+					v012BoundaryReply(w, fixtureSubjectPositive(fixtureSubjectRow("Orbit preserves one fact.", "Orbit", 0, "Orbit", true, true)))
 				}
 			}))
 			defer server.Close()

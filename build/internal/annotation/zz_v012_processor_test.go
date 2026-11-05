@@ -46,7 +46,8 @@ func (c *processorClient) Complete(ctx context.Context, r llm.CompleteRequest) (
 	return &llm.CompleteResponse{Text: reply.text, FinishReason: finish}, nil
 }
 
-const supportedComplete = `{"supported":true,"reason":"every substantive source fact is retained faithfully","unsupported_items":[],"omissions":[]}`
+// These transport/finite-flow cases use the literal label "fact", not a direct predicate.
+var supportedComplete = fixtureNoSubjects("Controlled source is a bare fact label, without a directly predicated referent.")
 
 func annotationRows(contents ...string) string {
 	rows := []map[string]any{}
@@ -102,7 +103,7 @@ func TestDocumentProcessorRevisionRechecksEntireCandidate(t *testing.T) {
 		{text: annotationRows("B only when ready")},
 		{text: `{"supported":true,"reason":"revision erased A and UUID","unsupported_items":[],"omissions":["A before 2020 and original UUID"]}`},
 		{text: annotationRows("A before 2020", "B only when ready. UUID 12345678-1234-1234-1234-123456789abc remains literal.")},
-		{text: supportedComplete},
+		{text: fixtureSubjectPositive(fixtureSubjectRow("A before 2020", "A", 0, "A", true, true), fixtureSubjectRow("B only when ready", "B", 1, "B", true, true))},
 	}}
 	r := NewDocumentProcessor(c, 0, 2, 1).Process(context.Background(), "s", "revision.md", original)
 	if r.Outcome != DocumentComplete || len(r.Document.Items) != 2 || len(r.Attempts) != 6 {
@@ -132,7 +133,7 @@ func TestDocumentProcessorUnsupportedClaimRevisedInsteadOfFiltered(t *testing.T)
 	c := &processorClient{t: t, replies: []processorReply{
 		{text: annotationRows("real fact", "invented date")},
 		{text: `{"supported":false,"reason":"item1 invents the date; source also requires negation","unsupported_items":[1],"omissions":["does not allow refunds"]}`},
-		{text: annotationRows("real fact; does not allow refunds")}, {text: supportedComplete},
+		{text: annotationRows("real fact; does not allow refunds")}, {text: fixtureNoSubjects("The negative fragment does not identify its subject; preserve that attribution limit.")},
 	}}
 	r := NewDocumentProcessor(c, 0, 1, 1).Process(context.Background(), "s", "p", "real fact; does not allow refunds")
 	if r.Outcome != DocumentComplete || len(c.requests) != 4 || len(r.Document.Items) != 1 || !strings.Contains(r.Document.Items[0].Content, "does not allow refunds") {
@@ -207,7 +208,7 @@ func TestDocumentProcessorEmptySourceAndCandidateRequireTruthfulCoverage(t *test
 	}
 	// Nonempty boilerplate can be explicitly found non-substantive; it cannot bypass
 	// assessment merely because annotation returned no rows.
-	c = &processorClient{t: t, replies: []processorReply{{text: annotationRows()}, {text: supportedComplete}}}
+	c = &processorClient{t: t, replies: []processorReply{{text: annotationRows()}, {text: fixtureNoSubjects("Contents is only a title, with no direct subject assertion.")}}}
 	r = NewDocumentProcessor(c, 0, -1, 1).Process(context.Background(), "s", "boilerplate.md", "Contents")
 	if r.Outcome != DocumentComplete || len(c.requests) != 2 || !strings.HasSuffix(c.requests[1].User, "[]") {
 		t.Fatalf("empty output bypassed assessment: %+v", r)

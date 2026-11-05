@@ -101,7 +101,16 @@ func (c *crossPipelineClient) Complete(_ context.Context, req llm.CompleteReques
 		}
 		text = fmt.Sprintf(`{"items":[{"tag":"concept","name":%q,"content":%q,"detail":%q,"confidence":0.95}]}`, name, body, body+" Generated annotation detail.")
 	case strings.Contains(req.System, "语义核验专家"):
-		text = `{"supported":true,"reason":"fixture retains each complete prerequisite sentence; generated-detail label adds no domain claim","unsupported_items":[],"omissions":[]}`
+		if strings.Contains(req.User, "## Existing machine description / 现有机器详述") {
+			text = `{"supported":true,"reason":"node member material checked","unsupported_items":[],"omissions":[]}`
+		} else {
+			quote, subject := "Admission requires an available quota before accepting work.", "Admission"
+			if strings.Contains(req.User, "# Quota\n") {
+				quote, subject = "Quota is the prerequisite for admission in version 2.", "Quota"
+			}
+			b, _ := json.Marshal(entrySubjectVerdict(entrySubjectRow(quote, subject, 0, subject, true, true)))
+			text = string(b)
+		}
 	case strings.Contains(req.System, "领域知识融合专家"):
 		matches := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindAllStringSubmatch(req.User, -1)
 		members := map[string]string{}

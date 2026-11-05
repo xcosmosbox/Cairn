@@ -29,7 +29,9 @@ func v012Assessment(omitted bool) *llm.CompleteResponse {
 	if omitted {
 		return &llm.CompleteResponse{Text: `{"supported":true,"reason":"missing required prohibition","unsupported_items":[],"omissions":["Preserve the source prohibition"]}`}
 	}
-	return &llm.CompleteResponse{Text: `{"supported":true,"reason":"source faithful and complete","unsupported_items":[],"omissions":[]}`}
+	// These callers use literal file/rule labels or a navigation heading,
+	// not a direct subject predicate. The UUID prohibition case below is separate.
+	return &llm.CompleteResponse{Text: `{"supported":true,"reason":"controlled labels retained","unsupported_items":[],"omissions":[],"subject_coverage":[],"no_direct_subjects_reason":"Only a file/rule label or navigation heading is supplied, without a direct predicate."}`}
 }
 func v012Plan(paths ...string) *PipelinePlan {
 	p := &PipelinePlan{C4ByDoc: map[string][]TextSegment{}, SkillByDoc: map[string]string{}}
@@ -255,7 +257,11 @@ func TestV012C4HumanBlocksExcludedFromRepair(t *testing.T) {
 		}
 		if strings.Contains(req.System, "语义核验") {
 			assessed++
-			return v012Assessment(assessed == 1), nil
+			if assessed == 1 {
+				return v012Assessment(true), nil
+			}
+			b, _ := json.Marshal(entrySubjectVerdict(entrySubjectRow("Outside rule "+literal+" prohibits deletion.", "Outside rule "+literal, 0, "Outside rule "+literal, true, true)))
+			return &llm.CompleteResponse{Text: string(b)}, nil
 		}
 		generated++
 		return v012Candidate("Outside rule " + literal + " prohibits deletion."), nil

@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,15 +20,29 @@ func (writebackFixtureLLM) Complete(ctx context.Context, req llm.CompleteRequest
 	var text string
 	switch {
 	case strings.Contains(req.System, "知识结构化标注专家"):
-		text = `{"items":[{"tag":"concept","name":"幂等键","content":"重复请求只处理一次。","detail":"通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95}]}`
+		text = `{"items":[{"tag":"concept","name":"幂等键","content":"通过幂等键标识请求。","detail":"通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95},{"tag":"concept","name":"服务端","content":"服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","detail":"服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95}]}`
 	case strings.Contains(req.System, "语义核验专家"):
-		text = `{"supported":true,"reason":"fixture detail retains the complete idempotency source sentence","unsupported_items":[],"omissions":[]}`
-	case strings.Contains(req.System, "领域知识融合专家"):
-		match := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindStringSubmatch(req.User)
-		if len(match) != 2 {
-			return nil, fmt.Errorf("missing annotated member")
+		if strings.Contains(req.User, "## Existing machine description / 现有机器详述") {
+			text = `{"supported":true,"reason":"node material retained","unsupported_items":[],"omissions":[]}`
+		} else {
+			b, _ := json.Marshal(entrySubjectVerdict(entrySubjectRow("通过幂等键标识请求", "幂等键", 0, "幂等键", true, true), entrySubjectRow("服务端识别重试并复用同一结果，避免重复处理造成数据副作用。", "服务端", 1, "服务端", true, true)))
+			text = string(b)
 		}
-		text = fmt.Sprintf(`{"domains":[{"name":"工程","summary":"工程知识","reusability_rationale":"可复用","subdomains":[{"name":"可靠性","summary":"可靠性方法","concepts":[{"id":"idempotency-key","label":"Concept","name":"幂等键","summary":"重复请求只处理一次。","confidence":0.95,"members":[%q]}],"entities":[],"relations":[]}]}]}`, match[1])
+	case strings.Contains(req.System, "领域知识融合专家"):
+		matches := regexp.MustCompile(`(?m)^- id=([^\s]+)`).FindAllStringSubmatch(req.User, -1)
+		if len(matches) != 2 {
+			return nil, fmt.Errorf("expected key and server carriers, got %d", len(matches))
+		}
+		concepts := []map[string]any{}
+		for i, m := range matches {
+			name, id := "幂等键", "idempotency-key"
+			if i == 1 {
+				name, id = "服务端", "server"
+			}
+			concepts = append(concepts, map[string]any{"id": id, "label": "Concept", "name": name, "summary": name, "confidence": .95, "members": []string{m[1]}})
+		}
+		b, _ := json.Marshal(map[string]any{"domains": []any{map[string]any{"name": "工程", "summary": "工程知识", "reusability_rationale": "可复用", "subdomains": []any{map[string]any{"name": "可靠性", "summary": "可靠性方法", "concepts": concepts, "entities": []any{}, "relations": []any{}}}}}})
+		text = string(b)
 	case strings.Contains(req.System, "知识融合重写专家"):
 		return pipelineNodeDescriptionResponse(req, "通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。")
 	default:
