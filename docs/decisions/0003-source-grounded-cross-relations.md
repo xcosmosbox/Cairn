@@ -167,6 +167,23 @@ source evidence. A genuinely new unregistered path keeps normal discovery. Curre
 snapshot checks and all later member/source joins remain required; stale or absent raw
 originals cannot advance a changed document's baseline.
 
+## Source-internal references and fused node prose
+
+Node-prose coverage reads the complete frozen source, including its title and adjacent
+sentences. A unique compatible reference may restore an omitted subject or version owner
+without adding a fact. Multiple plausible owners, wrong entities/values or attributes
+borrowed from another source remain unsupported. This permission does not establish a
+`generalizes` edge or relax any candidate-edge focus, kind, direction or contradiction gate.
+
+For fused node prose, each assertion must be checked through the actual node/member/source
+joins against its corresponding raw original. Compatible contributions with unambiguous
+ownership need no mechanical source-ID label in every sentence. Speaker disagreement,
+conflicting values, conditions, time and uncertainty must still be preserved explicitly;
+member material or a binding alone cannot substitute for correct surviving node prose.
+Relation-only revision cannot repair immutable node text, and unresolved prose still fails
+under the existing finite budget. Offline controls verify this request contract and failure
+handling; actual model effectiveness requires a separately identified affected mini run.
+
 ## Evidence and acceptance
 
 Offline regressions cover reversed scope order, duplicate/local/global aliases, missing
