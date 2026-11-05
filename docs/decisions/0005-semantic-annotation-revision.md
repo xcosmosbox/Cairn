@@ -194,3 +194,47 @@ old member-scoped wording was necessarily false or that January values contradic
 whole source. The clarification uses the same two node prompt roles and existing finite
 flow; its scripted repair/exhaustion/unknown checks also pass the parent and prove flow
 only. Neither clarification relabels the previous automatic or independent semantic results.
+
+## Subject ownership as annotation's organizing contract
+
+The later fixed actual08 repeat completed production with 6 PASS / 1 FAIL across its
+seven checks. The entry subject still lacked the log source. Earliest log generation
+emitted a complete dependency proposition and its other participant, but no item referring
+to the directly predicated activity; the following assessment accepted it. The recorded
+generation and assessment system bytes matched the deployed subject rules. This establishes
+a generation/assessment miss despite those rules, not lost feedback, an exhausted allowance
+or a mapper mistake. Separation of an independent proposition from an activity is legitimate;
+the missing subject-bearing contribution is the defect. Whether ordinary action names were
+interpreted as ineligible subjects is only a hypothesis about model behavior.
+
+Generation now starts by organizing source-addressable subjects/concepts and their facts,
+with optional independent statements afterward. Its former trailing direct-subject paragraph
+and assessment's corresponding late paragraph are replaced by one shared early ownership
+contract. Ordinary actions, processes, methods and roles can be subjects without proper
+names or independent definitions; either entity or concept can carry their facts. A whole
+proposition containing a subject's name is not automatically an item referring to that
+subject. Whole-document assessment treats source-to-direct-subject carrying, combined-item
+substantive coverage and each field's faithfulness as separately necessary. Missing required
+carrying uses existing concrete omissions with the subject, original assertion and qualifiers;
+it does not introduce a new response field, parser, judge, retry loop or allowance.
+
+The shared core preserves actual argument roles, direction, quotation, speaker stance,
+negation, conditionality, versions and faithful source uncertainty. A proposition merely
+being discussed does not assert its content; uncertain or generic attribution does not
+authorize guessing a particular owner. Neither mentioning an object nor sharing a name
+requires copying all facts to it, forced merging or an inverse edge. Assessment states
+the single-node exception before the shared core: the real node caller's supplied members
+and current node define its scope, with no new parent, changed membership or graph regrouping.
+This does not exempt whole-document annotation from its source-subject obligation.
+
+Twelve scripted cases exercise actual DocumentProcessor repair/exhaustion, retention of
+all four existing items, complete-candidate recheck, ordinary/proper subjects, discussion,
+uncertain/generic ownership, quoted denial and source-explicit unknown. The single-node
+case calls the real FuseNodeDescriptions and shared SemanticGate through the existing
+caller scope. Supplied verdicts establish data/feedback/finite-flow boundaries only; they
+can also pass parent prompts and do not demonstrate model detection or efficacy. Actual08
+and all earlier outcomes remain unchanged. After exact publication the runtime owner will
+separately assess the recorded bad candidate, a controlled complete candidate and a faithful
+single-node candidate, then decide the affected fixed-input mini from actual evidence.
+No provider action occurs in this source change; no whole-mini or broader acceptance is
+claimed by offline checks or by preparing those probes.
