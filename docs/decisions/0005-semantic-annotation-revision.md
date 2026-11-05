@@ -119,3 +119,32 @@ members, structural coverage and lossless source/member material flow. They cann
 that a model will choose the intended grouping. Actual after validation remains necessary
 on the same fixed inputs and acceptance criteria; the failed repeat and earlier outcomes
 are retained without promotion.
+
+## Node predicate and negation scope
+
+The next fixed repeat passed its finite artifact/query checks and negative controls, yet
+independent semantic review found a later meaning loss. Mapping retained both subject
+members. An earlier nominal relative clause had a faithful reading, and the full member
+Detail explicitly excluded participation in the whole admission activity. Node generation
+changed that to excluding only admission's counting matters; its assessment accepted the
+narrower scope. This does not establish an actual participation event, but it fails to
+retain the original broad exclusion. Automatic PASS receipts and this semantic FAIL remain
+separate preserved evidence; the active changed run used the original source unchanged.
+
+Node generation and its existing single-node assessment now share one predicate-scope
+instruction. Moving from a nominal modifier to a full sentence must preserve subject,
+arguments, negation and modifier scope; a category head describing the subject cannot
+become a newly restricted negation object. Conversely, a source's narrow subclass exclusion
+cannot become a blanket exclusion. Each assertion in summary and detail must be faithful;
+a correct field or a correct statement elsewhere cannot cancel another field's error.
+An explicit complete member sentence may be retained or separated into unambiguous clauses,
+but this is not a universal Detail-wins priority: genuine source differences remain
+attributed and unresolved where appropriate. Faithfully preserved source uncertainty may
+be supported; an assessor unable to verify fidelity still returns unknown.
+
+Only the two existing node prompt roles share this rule. The finite per-node flow,
+successful-sibling retention, IDs, graph schema, allowances and call topology are unchanged.
+Scripts exercise concrete forward/inverse scope feedback, repair/exhaustion, exact-candidate
+unknown handling, independent siblings and faithful uncertainty/source differences. They
+can pass the parent prompts and prove flow rather than model detection or repaired live
+semantics. The actual affected cases still require their own same-input after validation.
