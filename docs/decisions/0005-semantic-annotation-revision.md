@@ -148,3 +148,49 @@ Scripts exercise concrete forward/inverse scope feedback, repair/exhaustion, exa
 unknown handling, independent siblings and faithful uncertainty/source differences. They
 can pass the parent prompts and prove flow rather than model detection or repaired live
 semantics. The actual affected cases still require their own same-input after validation.
+
+## Incremental version identity and material scope
+
+In the changed phase of that repeat, alignment assigned an incoming bare month-version
+unit from a ticket context to an old counting-version node. The complete batch identified
+the incoming owner, and the candidate summary/description identified the counting owner;
+the shared month did not establish one object identity. Later source-separated paragraphs
+inside a single UUID could not repair that unsupported identity assignment. The phase
+was conservatively blocked before writeback and remains failed. Failure to recall the
+correct old ticket-version target did not authorize merging into a different candidate.
+
+The existing C4 alignment prompt now applies referent identity consistently to merge_into
+and batch fuse. Complementary facts need not be whole-sentence synonyms to belong to one
+proven object. Complete supplied name/content/detail, candidate summary/description, source
+and batch owning-subject context establish identity; a bare version name, date, value or
+tag alone does not. Versions of different owners and independently identified version
+objects are not forced together. Same-owner/same-version cross-source material, or an
+explicitly shared version object/global version identifier, can establish one identity;
+different source files alone do not establish different objects. Mentioned participants,
+standalone propositions and their subjects remain distinct referents. Unproven identities
+use the existing attach/new_subdomain choices without guessing owners or aliases.
+
+Only the existing alignment prompt changes: exact-alias validation, legal merge UUID
+pinning, members/sources, FTS recall, candidate limits, schema, finite flow and allowances
+remain unchanged. An unretrieved matching old target can still result in a new duplicate;
+this change neither supplies missing candidates nor invents identity to avoid duplication.
+Four SQLite-backed scripted cases exercise actual recall, judgment parsing, aliases,
+materialization, stored-old-object preservation and all source incidences for same-owner
+versions, a shared global release, different owners and an unproven owner. Their replies
+are supplied by the test; parent prompts can pass them too. They establish material flow,
+not model identity recognition or live efficacy. Actual after validation is still required.
+
+A separate node-generation/assessment clarification distinguishes material omission from
+whole-source omission and reality absence. Missing provided-member information does not
+establish that the complete source omitted a fact, that a fact does not exist, or that
+an assertion has unlimited applicability or no constraints. Do not invent blanket absence
+or unknown statements from that omission. Preserve source-explicit unknown, unspecified
+or uncertain facts with their actual subject, time, scope and attribution. A necessary
+local observation must identify the provided member and its limited scope; neither
+generation nor assessment may promote it to a whole-source claim. Consider all supplied
+contributions without mechanically preferring Content or Detail. The existing assessment
+still returns unknown when fidelity cannot be established. This does not assert that the
+old member-scoped wording was necessarily false or that January values contradicted the
+whole source. The clarification uses the same two node prompt roles and existing finite
+flow; its scripted repair/exhaustion/unknown checks also pass the parent and prove flow
+only. Neither clarification relabels the previous automatic or independent semantic results.
