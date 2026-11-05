@@ -184,6 +184,22 @@ Relation-only revision cannot repair immutable node text, and unresolved prose s
 under the existing finite budget. Offline controls verify this request contract and failure
 handling; actual model effectiveness requires a separately identified affected mini run.
 
+## Candidate support eligibility and uncertainty
+
+The relation verifier judges whether the exact candidate has explicit support for its
+kind, direction and full qualifiers in the supplied originals. It does not decide whether
+the relation exists in the world. Complete, usable, unambiguous sources that establish only
+cooccurrence, inference or a mismatched predicate/direction can reject the candidate's
+source-support eligibility without proving that the real-world relationship is false.
+Missing/unusable necessary originals, unresolved reference or genuinely undecidable support
+still produce `insufficient_evidence`. No program parses the reason into a different verdict.
+
+This clarification does not change the evaluator, evidence/focus/contradiction gates,
+Full-only new-seed rejection exception, persisted-edge defaults or finite shared budgets.
+Historical unknown verdicts and their partial runs remain unchanged. Offline seed-shaped
+controls establish the request contract and separate rejection/unknown handling only;
+live effectiveness and separate subject/fact reachability gaps require their own evidence.
+
 ## Evidence and acceptance
 
 Offline regressions cover reversed scope order, duplicate/local/global aliases, missing
