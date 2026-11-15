@@ -20,6 +20,10 @@ func (writebackFixtureLLM) Complete(ctx context.Context, req llm.CompleteRequest
 	var text string
 	switch {
 	case strings.Contains(req.System, "知识结构化标注专家"):
+		if strings.Contains(req.User, "path: SKILL.md\n") {
+			// This source has only fixture metadata; its business facts are in doc.md.
+			return &llm.CompleteResponse{Text: `{"items":[]}`, FinishReason: "stop"}, nil
+		}
 		text = `{"items":[{"tag":"concept","name":"幂等键","content":"通过幂等键标识请求。","detail":"通过幂等键标识请求，服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95},{"tag":"concept","name":"服务端","content":"服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","detail":"服务端识别重试并复用同一结果，避免重复处理造成数据副作用。","confidence":0.95}]}`
 	case strings.Contains(req.System, "语义核验专家"):
 		if strings.Contains(req.User, "## Existing machine description / 现有机器详述") {

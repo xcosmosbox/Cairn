@@ -22,68 +22,6 @@ func v016SubjectItem(name, detail string) dktypes.AnnotatedItem {
 	return dktypes.AnnotatedItem{Tag: dktypes.TagEntity, Name: name, Content: detail, Detail: detail, Confidence: .9}
 }
 
-// 原故障形态：数值仍在独立属性/日期单元中，真实主体却只剩定义，后续成员融合无从补回。
-// Scripted judgments verify existing finite revision/data flow, not model efficacy of the prompts.
-func TestV016SubjectAttributeFeedbackRevisesWholeDocument(t *testing.T) {
-	t.Parallel()
-	cases := []struct{ name, original, subject, definition, attribute, fact string }{
-		{"ticket_duration", "霜羽票签是纸岚展馆夜场使用的票签。2026年1月版的有效期为9分钟。过期票签无效。", "霜羽票签", "纸岚展馆夜场使用的票签。", "霜羽票签2026年1月版有效期", "霜羽票签2026年1月版的有效期为9分钟；过期票签无效。"},
-		{"count_quantity", "檐铃清点只负责闭馆后清点纸鹤，不参与夜场入厅。檐铃清点在2026年1月版每次清点4只纸鹤。", "檐铃清点", "只负责闭馆后清点纸鹤，不参与夜场入厅。", "2026年1月版", "檐铃清点只负责闭馆后清点纸鹤，不参与夜场入厅；在2026年1月版每次清点4只纸鹤。"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, exhausted := range []bool{false, true} {
-				name := "repaired"
-				if exhausted {
-					name = "exhausted"
-				}
-				t.Run(name, func(t *testing.T) {
-					bad := v016SubjectRows(v016SubjectItem(tc.subject, tc.definition), v016SubjectItem(tc.attribute, tc.fact))
-					good := v016SubjectRows(v016SubjectItem(tc.subject, tc.definition+" "+tc.fact))
-					feedback := "主体 " + tc.subject + " 只有定义；把其直接属性连同时间、数量、否定限定保留在该主体单元，不能只留在 " + tc.attribute
-					verdict, err := json.Marshal(map[string]any{"supported": true, "reason": feedback, "unsupported_items": []int{}, "omissions": []string{feedback}})
-					if err != nil {
-						t.Fatal(err)
-					}
-					revision, finalVerdict := good, v012AcceptanceProof(tc.original, tc.subject, 0)
-					if exhausted {
-						revision, finalVerdict = bad, string(verdict)
-					}
-					client := &v012AcceptanceClient{t: t, replies: []string{bad, string(verdict), revision, finalVerdict}}
-					result := NewDocumentProcessor(client, 0, 1, 0).Process(context.Background(), "mini", "references/"+tc.name+".md", tc.original)
-					if len(client.calls) != 4 || len(result.Attempts) != 4 {
-						t.Fatalf("shared allowance reset: %+v", result)
-					}
-					for i, step := range []string{"annotate", "assess", "revise", "assess"} {
-						if result.Attempts[i].Step != step || result.Attempts[i].Number != i+1 {
-							t.Fatalf("wrong failed-step recovery: %+v", result.Attempts)
-						}
-					}
-					for _, text := range []string{tc.original, feedback, tc.attribute, tc.subject} {
-						if !strings.Contains(client.calls[2].User, text) {
-							t.Fatalf("revision lost original/candidate/ownership critique: %s", text)
-						}
-					}
-					if !strings.Contains(client.calls[3].User, tc.original) || !strings.Contains(client.calls[3].User, tc.fact) {
-						t.Fatal("revision was not assessed as a whole candidate against the original")
-					}
-					if exhausted {
-						if result.Outcome != DocumentPartial || !result.Exhausted || !strings.Contains(result.Reason, tc.subject) {
-							t.Fatalf("unrepaired ownership promoted: %+v", result)
-						}
-						return
-					}
-					if result.Outcome != DocumentComplete || result.Exhausted || result.Document == nil || len(result.Document.Items) != 1 || result.Document.Items[0].Name != tc.subject || result.Document.Items[0].Detail != tc.definition+" "+tc.fact || result.Attempts[1].CandidateID == result.CandidateID {
-						t.Fatalf("subject fact was not retained in the accepted replacement: %+v", result)
-					}
-				})
-			}
-		})
-	}
-}
-
-// 真正独立的版本对象、不同主体、不同日期值和否定不能因属性归属修订而被硬并。
-// No programmatic name/date merge is introduced; accepted distinct source identities survive verbatim.
 func TestV016SubjectAttributesPreserveDistinctObjectsAndDatedFacts(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -144,59 +82,6 @@ func TestV016UnknownSubjectAssessmentRechecksSameCandidate(t *testing.T) {
 	}
 }
 
-// 真实无日期反例中，依赖句在票签和独立命题中，却没有夜场入厅主体自己的单元。
-// Scripted feedback adds subject-bearing material without merging away a separate proposition.
-func TestV016UndatedSubjectPredicateOmissionRevisesWholeDocument(t *testing.T) {
-	t.Parallel()
-	original := "# 夜场记录\n本页的“票签”指霜羽票签。夜场入厅依赖霜羽票签。\n檐铃清点在2026年1月版每次清点4只纸鹤。"
-	statement := v016SubjectItem("夜场入厅依赖霜羽票签", "夜场入厅依赖霜羽票签。")
-	statement.Tag = dktypes.TagConcept
-	items := []dktypes.AnnotatedItem{
-		v016SubjectItem("霜羽票签", "本页的“票签”指霜羽票签。夜场入厅依赖霜羽票签。"),
-		statement,
-		v016SubjectItem("檐铃清点", "檐铃清点在2026年1月版每次清点4只纸鹤。"),
-	}
-	entry := v016SubjectItem("夜场入厅", "夜场入厅依赖霜羽票签。")
-	entry.Tag = dktypes.TagConcept
-	correct := append(append([]dktypes.AnnotatedItem{}, items...), entry)
-	feedback := "无日期的直接依赖句缺少被陈述主体夜场入厅自己的单元；补回其依赖霜羽票签的完整断言，保留独立命题、票签指代和清点的日期数量，不交换关系方向。"
-	verdict, err := json.Marshal(map[string]any{"supported": true, "reason": feedback, "unsupported_items": []int{}, "omissions": []string{feedback}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, exhausted := range []bool{false, true} {
-		name := "repaired"
-		if exhausted {
-			name = "exhausted"
-		}
-		t.Run(name, func(t *testing.T) {
-			revised, final := v016SubjectRows(correct...), fixtureSubjectPositive(fixtureSubjectRow("本页的“票签”指霜羽票签。", "霜羽票签", 0, "霜羽票签", true, true), fixtureSubjectRow("夜场入厅依赖霜羽票签。", "夜场入厅", 3, "夜场入厅", true, true), fixtureSubjectRow("檐铃清点在2026年1月版每次清点4只纸鹤。", "檐铃清点", 2, "檐铃清点", true, true))
-			if exhausted {
-				revised, final = v016SubjectRows(items...), string(verdict)
-			}
-			client := &v012AcceptanceClient{t: t, replies: []string{v016SubjectRows(items...), string(verdict), revised, final}}
-			result := NewDocumentProcessor(client, 0, 1, 0).Process(context.Background(), "paperhall-mini", "mini/references/log.md", original)
-			if len(client.calls) != 4 || len(result.Attempts) != 4 || result.Attempts[2].Step != "revise" || result.Attempts[3].Step != "assess" {
-				t.Fatalf("wrong finite recovery: %+v", result)
-			}
-			if !strings.Contains(client.calls[2].User, original) || !strings.Contains(client.calls[2].User, feedback) || !strings.Contains(client.calls[3].User, original) {
-				t.Fatal("subject repair lost original/whole-candidate feedback")
-			}
-			if exhausted {
-				if result.Outcome != DocumentPartial || !result.Exhausted {
-					t.Fatalf("subject omission promoted: %+v", result)
-				}
-				return
-			}
-			if result.Outcome != DocumentComplete || result.Exhausted || result.Document == nil || !reflect.DeepEqual(result.Document.Items, correct) {
-				t.Fatalf("subject or successful statement material changed: %+v", result)
-			}
-		})
-	}
-}
-
-// 主体承载不能变成方向翻转或把受争议的引述关系升级为作者确认。
-// Repair the exact attribution/direction defect while preserving the quoted stance and negation.
 func TestV016DirectPredicateRepairPreservesRolesAndQuotedStance(t *testing.T) {
 	t.Parallel()
 	original := "An auditor alleges Entry requires ticket A, not ticket B. The operator disputes this allegation; the dependency is not confirmed."

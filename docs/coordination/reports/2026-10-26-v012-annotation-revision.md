@@ -206,3 +206,13 @@ regressions test routing and validation, not the semantic efficacy of these inst
 Only subsequent exact-head ordinary construction and source-to-graph review can
 establish that effect; independent review remains pending. Historical candidates,
 accepted statuses and receipts remain immutable.
+
+## 2026-11-15 superseding correctness boundary
+
+The [current user instruction](https://github.com/xcosmosbox/Cairn/issues/8#issuecomment-6894812206)
+supersedes the proof and mandatory-carrier rules described above. Whole-document
+assessment no longer requires subject-coverage tables, literal quotes, source references
+or an index. Content and legal relations together must preserve source meaning, actual
+identity, attribution and conditions; facts need not be repeated in a designated item.
+Genuine semantic verification and the existing finite correction remain. Earlier native
+receipts and diagnostic results retain their exact historical code and interpretation.

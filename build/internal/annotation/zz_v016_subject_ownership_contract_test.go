@@ -58,67 +58,6 @@ func subjectCoreEvidence(rows ...map[string]any) string {
 
 const subjectCoreSupported = `{"supported":true,"reason":"source ownership, coverage and fields are faithful","unsupported_items":[],"omissions":[]}`
 
-// The observed shape has four accepted items, including the whole proposition
-// and its other endpoint, but no item referring to the predicated activity.
-// Supplied verdicts test finite repair and retention, not prompt efficacy.
-func TestV016SubjectCoreMissingCarrierFiniteRevision(t *testing.T) {
-	t.Parallel()
-	for _, subject := range []string{"索引重建", "Atlas重建器"} {
-		for _, exhaust := range []bool{false, true} {
-			name := subject + "/repair"
-			if exhaust {
-				name = subject + "/exhausted"
-			}
-			t.Run(name, func(t *testing.T) {
-				predicate := subject + "仅在获批维护窗口中执行，且依赖维护窗口。"
-				items := []dktypes.AnnotatedItem{
-					subjectCoreItem(dktypes.TagEntity, "维护窗口", "本页的窗口指维护窗口。"+predicate),
-					subjectCoreItem(dktypes.TagConcept, subject+"依赖维护窗口", predicate),
-					subjectCoreItem(dktypes.TagConcept, "日志轮换", "日志轮换在一月版每轮处理4份日志，不负责重建。"),
-					subjectCoreItem(dktypes.TagConcept, "一月版轮换数量", "日志轮换在一月版每轮处理4份日志。"),
-				}
-				original := "本页的窗口指维护窗口。" + predicate + "日志轮换在一月版每轮处理4份日志，不负责重建。"
-				good := append(append([]dktypes.AnnotatedItem(nil), items...), subjectCoreItem(dktypes.TagConcept, subject, predicate))
-				feedback := "缺少以" + subject + "本身为所指的单元；补回“" + predicate + "”，保留获批、仅在及依赖方向。独立完整命题和维护窗口不能替代主体。"
-				reject := subjectCoreJSON(map[string]any{"supported": false, "reason": feedback, "unsupported_items": []int{}, "omissions": []string{feedback}})
-				revision, verdict := subjectCoreRows(good), subjectCoreEvidence(subjectCoreRow(predicate, subject, 4, subject, true, true), subjectCoreRow("本页的窗口指维护窗口。", "维护窗口", 0, "维护窗口", true, true), subjectCoreRow("日志轮换在一月版每轮处理4份日志，不负责重建。", "日志轮换", 2, "日志轮换", true, true))
-				if exhaust {
-					revision, verdict = subjectCoreRows(items), reject
-				}
-				client := &subjectCoreScript{t: t, replies: []string{subjectCoreRows(items), reject, revision, verdict}}
-				out := annotation.NewDocumentProcessor(client, 4096, 1, 0).Process(context.Background(), "operations", "references/rebuild.md", original)
-				if len(client.calls) != 4 || len(out.Attempts) != 4 {
-					t.Fatalf("allowance changed: %+v", out)
-				}
-				for i, step := range []string{"annotate", "assess", "revise", "assess"} {
-					if out.Attempts[i].Step != step || out.Attempts[i].Number != i+1 {
-						t.Fatalf("wrong finite flow: %+v", out.Attempts)
-					}
-				}
-				for _, text := range []string{original, feedback, items[1].Name, items[2].Detail, items[3].Detail} {
-					if !strings.Contains(client.calls[2].User, text) {
-						t.Fatalf("revision lost original/candidate/feedback: %q", text)
-					}
-				}
-				if exhaust {
-					if out.Outcome != annotation.DocumentPartial || !out.Exhausted || !strings.Contains(out.Reason, subject) {
-						t.Fatalf("missing carrier promoted: %+v", out)
-					}
-					return
-				}
-				if out.Outcome != annotation.DocumentComplete || out.Exhausted || out.Document == nil || !reflect.DeepEqual(out.Document.Items, good) {
-					t.Fatalf("subject repair lost preexisting items or source limits: %+v", out)
-				}
-				if out.Attempts[1].CandidateID == out.CandidateID || !strings.Contains(client.calls[3].User, original) || !strings.Contains(client.calls[3].User, subjectCoreJSON(good)) {
-					t.Fatal("replacement was not wholly rechecked with original source")
-				}
-			})
-		}
-	}
-}
-
-// Proper names are unnecessary, but mere discussion/uncertain attribution does
-// not authorize inventing owners or converting quoted/negated claims to facts.
 func TestV016SubjectCoreFaithfulOwnershipBoundaries(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
