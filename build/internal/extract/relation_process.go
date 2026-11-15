@@ -764,6 +764,7 @@ contradicts 复用既有严格双断言规则：允许两份原文分别明示�
 const relationGraphContract = `
 既有边类型与图谱保留契约（生成和覆盖共同遵守）：` + relationFocusAssertionContract + `
 kind 只能为 triggers（source 触发 target）、depends_on（source 依赖 target）、references（source 明确引用 target）、generalizes（source 是 target 的泛化/抽象）、composes（source 是整体，target 是其组成部分）、contradicts（相同主体/属性/时间/条件下不可兼容的断言）。这些是谓词的严格含义，不是通用关联标签；提供、供给、传送、控制、共现等谓词不能仅因相关而改标成 triggers/depends_on/references，必须有原文对相应类型含义和方向的明确支持。
+references 表达来源明确描述的实际引用行为，例如某人出示邮件或援引信件。文章中出现某实体名称，不自动要求文章节点到该实体的 references 边；按真实引用谓词、论元和来源判断必要关系，不按每个提及名词或固定文章→对象布局枚举。已有正文完整也不能替代应保留的真实明示引用关系。
 先从 focus_source_id 的完整冻结原文独立识别本轮应保留的明示断言，再对照实际图候选，不能以生成的 nodes 或 candidate_relations 作为原文证据。能忠实用六种 kind 表达的必要明示关系必须有相应 candidate_relations 边，即使 nodes.description 已提及也不能省略；该 focus 明示的同三元组不同有效时间/条件须保留并逐条验证，其他来源贡献在其自身轮次保留。
 仅当原文明示谓词确实无法由六种 kind 忠实表达时，才检查其语义和来源是否已完整保存在正确参与节点实际存续的 nodes.summary/description 中；这时无需捏造边，也不能仅因没有对应 kind 或边而判为遗漏。member_sources 是由已校验成员归属构造的 member_id/source_id 对；必须核对该节点 members、original_sources 的 members 和 member_material 的 source_id/成员，回到对应冻结原文验证主体、对象及承载节点身份。成员绑定不是对正文内容的真实性背书。正文必须真实保留完整谓词、论元角色、方向、条件、否定、例外、时间、说话者/来源归属和不确定性，摘要也不得与正文或原文矛盾。错误节点/其他来源上的相似文字、只在 original_sources 或 member_material 出现的文字、节点名、候选关系描述、笼统摘要或无关原文堆积均不能证明图谱保留；不能把推断性正文当作明示事实。
 以下澄清只用于实际 nodes.summary/description 的语义核验，不改变 candidate_relations 的完整 focus 支持、六种 kind 的谓词或方向要求。核验必须使用完整冻结原文的标题、段落和相邻句：同一原文内只有一个兼容指代对象时，可以忠实恢复省略的主语、代词或版本所属对象；这种无歧义指代展开不是新增事实，但不能据此自动认定 generalizes 等边。存在多个兼容对象、歧义版本、错实体或错值时仍须报告缺口；不能从生成的节点名称、member_material 的扩写或其他来源补入原文没有的属性、条件、身份关系或版本对应。
