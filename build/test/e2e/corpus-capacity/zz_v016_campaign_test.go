@@ -134,6 +134,76 @@ func TestV016CallerContextRepairThenChanged(t *testing.T) {
 	}
 }
 
+func TestV016CallerOriginalsRestorePartialWithoutAcceptingCandidates(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	const marker = "different-folder/SKILL.md"
+	const healthy = "different-folder/references/healthy.md"
+	const pending = "different-folder/references/pending.md"
+	for path, body := range map[string]string{marker: "---\nname: canonical\n---\n", healthy: "Original healthy fact.\n", pending: "Pending original fact.\r\n"} {
+		full := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	frozenTree := filepath.Join(t.TempDir(), "original")
+	roster, err := copyV016Tree(root, frozenTree, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := v016CallerOriginals(nil, frozenTree, roster)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("complete raw input unavailable: %+v %v", all, err)
+	}
+	var partial []extract.FrozenSource
+	for _, source := range all {
+		if source.Skill != "canonical" {
+			t.Fatal("folder name replaced canonical skill")
+		}
+		if source.Path != pending {
+			partial = append(partial, source)
+		}
+	}
+	for i, source := range partial {
+		if source.Path == healthy {
+			partial[i] = extract.FreezeSource(source.Skill, source.Path, source.Content+"New current fact.\n")
+		}
+	}
+	restored, err := v016CallerOriginals(partial, frozenTree, roster)
+	if err != nil || len(restored) != 3 {
+		t.Fatalf("partial predecessor not restored: %+v %v", restored, err)
+	}
+	for _, source := range restored {
+		if source.Path == healthy && !strings.Contains(source.Content, "New current fact.") {
+			t.Fatal("current changed snapshot overwritten by base raw source")
+		}
+		if source.Path == pending && source.Content != "Pending original fact.\r\n" {
+			t.Fatal("pending raw bytes changed")
+		}
+	}
+	accepted := extract.AssignIDs([]*dktypes.AnnotatedDocument{{Skill: "canonical", FilePath: healthy, Items: []dktypes.AnnotatedItem{{Tag: dktypes.TagConcept, Name: "Healthy fact", Content: "Original healthy fact."}}}})
+	if len(v016CallerDocuments(accepted, nil, restored)) != 1 {
+		t.Fatal("raw availability promoted pending annotation")
+	}
+	if err := extract.ValidateSourceContext(restored, accepted); err != nil {
+		t.Fatal(err)
+	}
+	bad := append([]extract.FrozenSource(nil), partial...)
+	bad[0].Skill = "wrong-namespace"
+	if _, err := v016CallerOriginals(bad, frozenTree, roster); err == nil {
+		t.Fatal("conflicting namespace silently adopted")
+	}
+	if err := os.WriteFile(filepath.Join(frozenTree, pending), []byte("different input"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v016CallerOriginals(partial, frozenTree, roster); err == nil {
+		t.Fatal("changed frozen bytes accepted")
+	}
+}
+
 func TestV016UnavailablePredecessorCannotRunDependentPhase(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "fixed")

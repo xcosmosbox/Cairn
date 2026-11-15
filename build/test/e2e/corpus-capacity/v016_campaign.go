@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/xcosmosbox/cairn/build/internal/annotation"
+	"github.com/xcosmosbox/cairn/build/internal/discovery"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
@@ -120,6 +121,12 @@ func runV016Phase(out string, maxTokens int, requestTimeout time.Duration, concu
 			return err
 		}
 	}
+	// Raw source availability is independent of annotation acceptance. In
+	// particular, an older partial Full exported only its accepted originals.
+	originals, err = v016CallerOriginals(originals, filepath.Join(out, "original"), roster)
+	if err != nil {
+		return err
+	}
 	if inPlace {
 		if err = copyV016File(filepath.Join(*v016Previous, "knowledge.db"), filepath.Join(out, "knowledge.db")); err != nil {
 			return fmt.Errorf("v016: previous database: %w", err)
@@ -211,9 +218,6 @@ func runV016Phase(out string, maxTokens int, requestTimeout time.Duration, concu
 		report, buildErr = orch.RunFullRebuild(ctx, filepath.Join(out, "source"), filepath.Join(out, "knowledge.db"))
 	}
 	if phase == "full" || phase == "repeat" {
-		if e := readJSON(filepath.Join(out, "stages", "00_frozen_sources.json"), &originals); e != nil {
-			log.Printf("WARN frozen input evidence: %v", e)
-		}
 		if e := readJSON(filepath.Join(out, "stages", "04_extract_input.json"), &documents); e != nil {
 			log.Printf("WARN accepted input evidence: %v", e)
 		}
@@ -244,6 +248,56 @@ func runV016Phase(out string, maxTokens int, requestTimeout time.Duration, concu
 		return fmt.Errorf("v016: persisted graph readback: %w", snapshotErr)
 	}
 	return buildErr
+}
+
+// Recover complete raw snapshots from the frozen source-only tree, with the
+// same canonical ownership used by the ordinary Full scanner. This supplies no
+// accepted members and never overwrites a caller's current changed snapshot.
+func v016CallerOriginals(previous []extract.FrozenSource, tree string, roster []v016SourceIdentity) ([]extract.FrozenSource, error) {
+	scan, err := discovery.NewFSScanner().ScanReport(context.Background(), tree, discovery.DiscoveryRules{})
+	if err != nil {
+		return nil, fmt.Errorf("v016: frozen source discovery: %w", err)
+	}
+	want := map[string]string{}
+	for _, source := range roster {
+		want[source.Path] = source.SHA256
+	}
+	out := append([]extract.FrozenSource(nil), previous...)
+	existing := map[string]string{}
+	for _, source := range previous {
+		if prior, ok := existing[source.Path]; ok && prior != source.Skill {
+			return nil, fmt.Errorf("v016: conflicting prior source namespace: %s", source.Path)
+		}
+		existing[source.Path] = source.Skill
+	}
+	for _, source := range scan.Sources {
+		if source.Disposition != discovery.Supported {
+			continue
+		}
+		if digest, ok := want[source.Path]; !ok || digest != sha(source.Content) {
+			return nil, fmt.Errorf("v016: frozen original hash mismatch: %s", source.Path)
+		}
+		skill, longest := "", -1
+		for _, candidate := range scan.Skills {
+			if source.Path == candidate.MarkerFile || candidate.Path == "." || strings.HasPrefix(source.Path, strings.TrimSuffix(candidate.Path, "/")+"/") {
+				if len(candidate.Path) > longest {
+					skill, longest = candidate.Name, len(candidate.Path)
+				}
+			}
+		}
+		if skill == "" {
+			return nil, fmt.Errorf("v016: frozen original has no canonical skill: %s", source.Path)
+		}
+		if prior, ok := existing[source.Path]; ok {
+			if prior != skill {
+				return nil, fmt.Errorf("v016: conflicting frozen source namespace: %s", source.Path)
+			}
+			continue
+		}
+		existing[source.Path] = skill
+		out = append(out, extract.FreezeSource(skill, source.Path, string(source.Content)))
+	}
+	return out, nil
 }
 
 // Preserve the accepted material consumed by the next incremental build. C4
