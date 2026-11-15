@@ -229,8 +229,33 @@ func (a *aligner) align(ctx context.Context, docs []*dktypes.AnnotatedDocument, 
 		outcome.unitsByID[u.ID] = u
 	}
 
-	// —— 1. FTS5 召回 top-K 已有 node 候选（R10：不引 embedding）——
-	candidates := a.recall(ctx, units, rs)
+	// 来源读取不完整时不让依赖单元误判为新对象；保留原 units 供完整覆盖核算。
+	// Defer only units with unavailable source associations; keep the full denominator.
+	available, sourceCandidates := a.sourceBoundCandidates(ctx, units, rs)
+	if ctx.Err() != nil {
+		outcome.report = alignReport{Outcome: "cancelled", Reason: ctx.Err().Error()}
+		reconcileAlignCoverage(outcome, units, sourcesByID)
+		return outcome, ctx.Err()
+	}
+	if len(available) == 0 {
+		outcome.report = alignReport{Outcome: "unavailable", Reason: "source-bound candidate associations unavailable"}
+		reconcileAlignCoverage(outcome, units, sourcesByID)
+		return outcome, nil // 读取阻塞不是模型耗尽 / no judge attempt or invented exhaustion
+	}
+
+	// —— 1. 原 FTS top-K 与完整来源候选取并集；来源只影响可见性，不决定身份。——
+	// Union original FTS top-K with the complete finite source roster, without truncation.
+	candidates := a.recall(ctx, available, rs)
+	seen := make(map[string]bool, len(candidates))
+	for _, n := range candidates {
+		seen[n.ID] = true
+	}
+	for _, n := range sourceCandidates {
+		if !seen[n.ID] {
+			seen[n.ID] = true
+			candidates = append(candidates, n)
+		}
+	}
 
 	// —— 2. 载入已有 subdomain / domain 清单（attach/new_subdomain 的目标）——
 	subs, doms, err := a.loadLayerNodes(ctx)
@@ -242,7 +267,7 @@ func (a *aligner) align(ctx context.Context, docs []*dktypes.AnnotatedDocument, 
 	book, promptSections := buildAliases(candidates, subs, doms)
 
 	// —— 4. LLM 判归属（一次调用，含 batch 内互聚全局视野）——
-	decisions, groups, report, err := a.judge(ctx, units, promptSections, book, rs)
+	decisions, groups, report, err := a.judge(ctx, available, promptSections, book, rs)
 	outcome.report = report
 	if err != nil {
 		rs.warnf(fmt.Sprintf("I-4 unresolved placement: %v", err))
@@ -252,10 +277,103 @@ func (a *aligner) align(ctx context.Context, docs []*dktypes.AnnotatedDocument, 
 	// Keep accepted siblings after later failures, then reconcile actual source rows.
 	a.materialize(ctx, outcome, decisions, groups, book, sourcesByID, rs)
 	reconcileAlignCoverage(outcome, units, sourcesByID)
+	if len(available) != len(units) {
+		outcome.report.Reason = strings.TrimSpace(outcome.report.Reason + "; source-bound candidate associations unavailable for deferred units")
+	}
 	if ctx.Err() != nil {
 		return outcome, ctx.Err()
 	}
 	return outcome, nil
+}
+
+// sourceBoundCandidates 补回同来源中因措辞不同而被 FTS 漏掉的已有业务节点。
+// 每个真实贡献都参与精确 skill+path 查询；不能以首来源、member 前缀或同名代替。
+// 可读旧空 member 行仅用于候选，不增加证据或合并信用。一次坏读取会暂缓整个
+// 依赖单元，健康兄弟继续；已解析的集合不受 FTS K 限制。
+// sourceBoundCandidates recalls exact associations from every real contribution.
+// Membership supplies candidates only. Unavailable dependencies defer their units.
+func (a *aligner) sourceBoundCandidates(ctx context.Context, units []*alignUnit, rs *runState) (available []*alignUnit, candidates []*dktypes.Node) {
+	type sourceKey struct{ skill, file string }
+	type lookup struct {
+		nodes []*dktypes.Node
+		err   error
+	}
+	cache := make(map[sourceKey]lookup)
+	read := func(key sourceKey) lookup {
+		if strings.TrimSpace(key.skill) == "" || strings.TrimSpace(key.file) == "" {
+			return lookup{err: fmt.Errorf("missing incoming skill/path")}
+		}
+		if a.st == nil || a.st.sources == nil || a.st.nodes == nil {
+			return lookup{err: fmt.Errorf("source/node repository unavailable")}
+		}
+		rows, err := a.st.sources.ListByFile(ctx, key.file)
+		if err != nil {
+			return lookup{err: err}
+		}
+		var ids []string
+		seen := make(map[string]bool)
+		for _, row := range rows {
+			if row.Skill != key.skill || row.FilePath != key.file {
+				continue
+			}
+			if strings.TrimSpace(row.NodeUUID) == "" {
+				return lookup{err: fmt.Errorf("empty associated node identity")}
+			}
+			if !seen[row.NodeUUID] {
+				seen[row.NodeUUID] = true
+				ids = append(ids, row.NodeUUID)
+			}
+		}
+		nodes, err := a.st.nodes.GetByIDs(ctx, ids)
+		if err != nil {
+			return lookup{err: err}
+		}
+		result := lookup{}
+		for _, id := range ids {
+			n := nodes[id]
+			if n == nil {
+				return lookup{err: fmt.Errorf("dangling associated node identity")}
+			}
+			if n.Label == dktypes.LabelEntity || n.Label == dktypes.LabelConcept {
+				result.nodes = append(result.nodes, n)
+			}
+		}
+		return result
+	}
+	seen := make(map[string]bool)
+	for _, u := range units {
+		sources := u.sources
+		if len(sources) == 0 {
+			sources = []*alignUnit{u}
+		}
+		var recalled []*dktypes.Node
+		blocked := false
+		for _, source := range sources {
+			key := sourceKey{source.Skill, source.FilePath}
+			result, ok := cache[key]
+			if !ok {
+				result = read(key)
+				cache[key] = result
+			}
+			if result.err != nil {
+				blocked = true
+				rs.warnf(fmt.Sprintf("I-4 source-bound candidates unavailable for unit %s (%s/%s): %v", u.ID, key.skill, key.file, result.err))
+				continue
+			}
+			recalled = append(recalled, result.nodes...)
+		}
+		if blocked {
+			continue
+		}
+		available = append(available, u)
+		for _, n := range recalled {
+			if !seen[n.ID] {
+				seen[n.ID] = true
+				candidates = append(candidates, n)
+			}
+		}
+	}
+	return available, candidates
 }
 
 // recall 对每个新单元做 FTS5 召回，合并去重候选（仅 entity/concept 节点）。
