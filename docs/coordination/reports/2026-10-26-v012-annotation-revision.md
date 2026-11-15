@@ -145,3 +145,37 @@ configuration error. Local recoverable branch:
 as `abe258a`, core followups `4cd6aed` as `7b6ebed` and `19ec6ec` as `45a3d19`, initial acceptance commit `8534915`.
 Publication must retain this explicit
 file scope and match the tested tree; no generic history push or historical cache upgrade.
+
+## 2026-11-15 exact source-range evidence extension
+
+Under [the #110 protocol decision](https://github.com/xcosmosbox/Cairn/issues/110#issuecomment-6894211376),
+whole-document assessment may return `source_quote_ref:{"start":1,"end":3}`
+instead of a literal `source_quote` in each subject-coverage row. The caller indexes
+every physical line of the exact current original, including blank lines and original
+line endings. The index performs no semantic selection. Its `source_quote_scope`
+digest binds the canonical skill, file path and original bytes; reference responses
+must repeat that current digest. Full assessment indexes its complete supplied raw
+source, while C4 assessment indexes only the exact supplied C4 text. Trusted node
+assessment retains its previous input and result contract without this index.
+
+Start/end line identifiers include both endpoints and resolve one contiguous original
+byte range, including every intervening byte. Wrong-source scopes, unknown or
+out-of-bounds identifiers, reversed/noninteger ranges, extra reference fields and
+simultaneous literal/reference fields are invalid. A locator never establishes
+semantic correctness: the resolved original bytes still undergo the existing exact
+source check, direct-subject/item checks and coverage judgment. References cannot
+join disjoint ranges, normalize or repair a submitted proof, or retroactively accept
+historical malformed literal proofs. The strict literal path remains supported.
+
+The same bounded patch clarifies that an explicitly attributed conditional assessment
+of a named subject retains its if-condition, author attribution and unresolved jury
+judgment in that subject's carrier, while preserving a lawful separate author item.
+It must not turn conditional responsibility into an established fact. No graph/DB
+schema, source denominator, finite recovery allowance or additional model stage changes.
+
+Zero-provider controls exercise actual whole-document and node gate boundaries,
+source/byte binding, continuity, malformed references, literal compatibility and
+same-candidate reassessment. They establish protocol handling, not model semantic
+efficacy. Serialized index overhead and actual provider usage belong to the subsequent
+exact-head attempt receipts. Real validation of this extension and the fresh independent
+review remain pending; earlier run outcomes retain their original source identities.
