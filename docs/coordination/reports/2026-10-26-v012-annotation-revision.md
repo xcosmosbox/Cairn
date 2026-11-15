@@ -179,3 +179,30 @@ same-candidate reassessment. They establish protocol handling, not model semanti
 efficacy. Serialized index overhead and actual provider usage belong to the subsequent
 exact-head attempt receipts. Real validation of this extension and the fresh independent
 review remain pending; earlier run outcomes retain their original source identities.
+
+## 2026-11-15 direct action actor clarification
+
+Scope and continuation follow [the #114 coordinator decision](https://github.com/xcosmosbox/Cairn/issues/114#issuecomment-6894656460)
+and [the #110 three-file claim](https://github.com/xcosmosbox/Cairn/issues/110#issuecomment-6894657824).
+A subsequent source-to-candidate check found that an assessment selected a displayed
+object as the subject of its actor's display action, while omitting a different
+explicit action from the actor coverage. This identifies an upstream assessment
+basis problem; final persisted details and relations still require separate inspection
+before claiming final graph loss or replaying an already accepted source.
+
+Whole-document generation and assessment now explicitly distinguish the actual actor
+of an action from its object or the event recording it. In “according to R, X made
+or displayed Y”, preserve X's action with R's attribution; Y or an event item cannot
+substitute for that actor. Conversely, “X's product Y has P” does not assign P to X,
+and “A says B acted” does not make A the actor. Passive wording and references retain
+their real roles. Cover each actual distinct direct assertion, preserving lawful
+object/event/speaker items without copying every assertion to every mentioned entity,
+inventing actors or requiring reverse edges. Trusted node assessment still considers
+only its supplied material and does not acquire a whole-document graph rewrite duty.
+
+The three-file prompt/documentation change keeps schemas, evidence guards, model
+stages and finite budgets unchanged. Established carrier, attribution and node-scope
+regressions test routing and validation, not the semantic efficacy of these instructions.
+Only subsequent exact-head ordinary construction and source-to-graph review can
+establish that effect; independent review remains pending. Historical candidates,
+accepted statuses and receipts remain immutable.
