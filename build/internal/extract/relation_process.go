@@ -747,11 +747,6 @@ func relationCoverage(response *llm.CompleteResponse) (bool, error) {
 		return false, fmt.Errorf("relation coverage: malformed or unknown assessment")
 	}
 	if *complete && *supported {
-		if raw, ok := fields["critique"]; ok {
-			if json.Unmarshal(raw, &critique) != nil || strings.TrimSpace(critique) != "" {
-				return false, fmt.Errorf("relation coverage: contradictory positive assessment/critique")
-			}
-		}
 		return false, nil
 	}
 	if json.Unmarshal(fields["critique"], &critique) != nil || strings.TrimSpace(critique) == "" {
