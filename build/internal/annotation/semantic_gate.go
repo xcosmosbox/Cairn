@@ -78,6 +78,16 @@ func (g *SemanticGate) assessOnce(ctx context.Context, original string, doc *dkt
 	if err != nil {
 		return permanentError(err)
 	}
+	var quoteIndex *sourceQuoteIndex
+	if !g.nodeScope {
+		quoteIndex = makeSourceQuoteIndex(original, doc)
+		encoded, err := json.Marshal(quoteIndex)
+		if err != nil {
+			return permanentError(err)
+		}
+		at := strings.LastIndex(user, "\n## 标注单元（数组下标从0开始） / annotated items\n")
+		user = user[:at] + sourceQuoteIndexMarker + string(encoded) + user[at:]
+	}
 	system := semanticSystemPrompt
 	if g.nodeScope {
 		system += nodeSemanticResultPrompt
@@ -115,7 +125,7 @@ func (g *SemanticGate) assessOnce(ctx context.Context, original string, doc *dkt
 		seen[i] = true
 	}
 	if !g.nodeScope {
-		missing, err := validateSubjectCoverage(v, original, len(doc.Items))
+		missing, err := validateSubjectCoverage(v, original, len(doc.Items), quoteIndex)
 		if err != nil {
 			return invalidError(fmt.Errorf("semantic gate: invalid subject coverage: %w", err))
 		}
@@ -178,6 +188,7 @@ type semanticVerdict struct {
 	explicitReject   bool
 	subjectCoverage  json.RawMessage
 	noSubjectsReason json.RawMessage
+	sourceQuoteScope json.RawMessage
 }
 
 func parseSemanticResponse(text string) (*semanticVerdict, error) {
@@ -244,6 +255,7 @@ func parseSemanticResponse(text string) (*semanticVerdict, error) {
 	v := &semanticVerdict{Idempotent: *supported, Reason: reason, UnsupportedItems: []int{}, Omissions: []string{}, explicitReject: !*supported}
 	v.subjectCoverage = fields["subject_coverage"]
 	v.noSubjectsReason = fields["no_direct_subjects_reason"]
+	v.sourceQuoteScope = fields["source_quote_scope"]
 	for _, i := range indices {
 		if i == nil {
 			return nil, fmt.Errorf("null unsupported item index")
