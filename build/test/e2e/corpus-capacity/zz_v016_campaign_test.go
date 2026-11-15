@@ -13,8 +13,126 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
+	"github.com/xcosmosbox/cairn/build/internal/extract"
+	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
+	"github.com/xcosmosbox/cairn/core/dktypes"
 )
+
+// A zero-call unchanged phase cannot expose a stale caller cache. Serialize a
+// recovered pending source, then a changed old source, and consume those exact
+// bindings in the same source-grounded relation helper used by changed builds.
+func TestV016CallerContextRepairThenChanged(t *testing.T) {
+	t.Parallel()
+	const skill = "fixture"
+	const oldPath, pendingPath = "fixture/references/old.md", "fixture/references/pending.md"
+	makeDoc := func(path, name, fact string) *dktypes.AnnotatedDocument {
+		return &dktypes.AnnotatedDocument{Skill: skill, FilePath: path, Items: []dktypes.AnnotatedItem{{Tag: dktypes.TagEntity, Name: name, Content: fact, Detail: fact, Confidence: .9}}}
+	}
+	old := makeDoc(oldPath, "Pump", "The pump limit is 8 bar before June.")
+	pending := makeDoc(pendingPath, "Battery", "Battery B has capacity 12 ampere-hours.")
+	changed := makeDoc(oldPath, "Pump", "From June the pump limit is 6 bar.")
+	pending.Items[0].SourceSpan = &dktypes.SourceSpan{StartLine: 90, EndLine: 90, Quote: pending.Items[0].Content}
+	changed.Items[0].SourceSpan = &dktypes.SourceSpan{StartLine: 900, EndLine: 900, Quote: changed.Items[0].Content}
+	originals := []extract.FrozenSource{extract.FreezeSource(skill, oldPath, old.Items[0].Content+"\n\n"+changed.Items[0].Content), extract.FreezeSource(skill, pendingPath, pending.Items[0].Content)}
+	previous := extract.AssignIDs([]*dktypes.AnnotatedDocument{old})
+	before, _ := json.Marshal([]any{previous, pending, changed})
+	complete := func(d *dktypes.AnnotatedDocument) annotation.DocumentResult {
+		return annotation.DocumentResult{Skill: d.Skill, FilePath: d.FilePath, Document: d, Outcome: annotation.DocumentComplete}
+	}
+	roundTrip := func(name string, docs []*dktypes.AnnotatedDocument) []*dktypes.AnnotatedDocument {
+		path := filepath.Join(t.TempDir(), name+".json")
+		if err := writeNew(path, docs); err != nil {
+			t.Fatal(err)
+		}
+		var restored []*dktypes.AnnotatedDocument
+		if err := readJSON(path, &restored); err != nil {
+			t.Fatal(err)
+		}
+		return restored
+	}
+	repaired := roundTrip("repair", v016CallerDocuments(previous, []annotation.DocumentResult{complete(pending)}, originals))
+	results := []annotation.DocumentResult{complete(changed)}
+	for _, outcome := range []annotation.DocumentOutcome{annotation.DocumentPartial, annotation.DocumentUnavailable, annotation.DocumentCancelled} {
+		bad := makeDoc(oldPath, "Unsupported", "not accepted")
+		r := complete(bad)
+		r.Outcome = outcome
+		results = append(results, r)
+	}
+	results = append(results, annotation.DocumentResult{Outcome: annotation.DocumentComplete}, complete(&dktypes.AnnotatedDocument{Skill: skill, FilePath: oldPath}))
+	next := roundTrip("changed", v016CallerDocuments(repaired, results, originals))
+	if len(next) != 3 || next[1].Items[0].SourceSpan.StartLine != 1 || next[2].Items[0].SourceSpan.StartLine != 3 {
+		t.Fatalf("accepted old/repaired/changed material or original spans lost: %+v", next)
+	}
+	if len(v016CallerDocuments(next, results, originals)) != len(next) {
+		t.Fatal("identical accepted cache grew")
+	}
+	after, _ := json.Marshal([]any{previous, pending, changed})
+	if string(before) != string(after) {
+		t.Fatal("caller or factual report was mutated")
+	}
+	assigned := extract.AssignIDs([]*dktypes.AnnotatedDocument{old, pending, changed})
+	wanted := map[string]bool{}
+	for _, doc := range assigned {
+		for _, item := range doc.Items {
+			wanted[item.ID] = true
+		}
+	}
+	for _, tc := range []struct {
+		name     string
+		docs     []*dktypes.AnnotatedDocument
+		complete bool
+	}{{"stale-predecessor-control", previous, false}, {"restored-repair-then-changed", next, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			client := clientFunc(func(_ context.Context, req llm.CompleteRequest) (*llm.CompleteResponse, error) {
+				calls++
+				if tc.complete {
+					var input struct {
+						Material []struct {
+							Items []dktypes.AnnotatedItem `json:"items"`
+						} `json:"member_material"`
+					}
+					if err := json.Unmarshal([]byte(req.User), &input); err != nil {
+						t.Fatal(err)
+					}
+					seen := map[string]bool{}
+					for _, material := range input.Material {
+						for _, item := range material.Items {
+							seen[item.ID] = true
+						}
+					}
+					if len(seen) != len(wanted) {
+						t.Fatalf("next changed helper consumed stale or rejected material: %v", seen)
+					}
+					for member := range wanted {
+						if !seen[member] {
+							t.Fatalf("actual assigned member missing: %s", member)
+						}
+					}
+				}
+				text := `{"relations":[]}`
+				if strings.HasPrefix(req.System, "SOURCE-RELATION COVERAGE") {
+					text = `{"complete":true,"supported":true,"reason":"controlled facts have no enum-supported edge"}`
+				}
+				return &llm.CompleteResponse{Text: text, FinishReason: "stop"}, nil
+			})
+			if _, err := incremental.NewIncrementalOrchestrator(incremental.Options{Client: client, Sources: originals, SourceDocuments: tc.docs}); err != nil {
+				t.Fatalf("next changed entry rejects restored caller identity: %v", err)
+			}
+			graph := &extract.Result{Domains: []extract.Domain{{Slug: "equipment", Subdomains: []extract.Subdomain{{Slug: "devices", Entities: []extract.Node{{ID: "pump", Label: "Entity", Name: "Pump", Members: []string{assigned[0].Items[0].ID, assigned[2].Items[0].ID}}, {ID: "battery", Label: "Entity", Name: "Battery", Members: []string{assigned[1].Items[0].ID}}}}}}}}
+			report := extract.NewExtractor(client, 4096).ProcessRelations(context.Background(), graph, tc.docs, originals, extract.RelationProcessOptions{MaxRetries: -1})
+			allComplete := len(report.Scopes) == 2
+			for _, scope := range report.Scopes {
+				allComplete = allComplete && scope.Outcome == annotation.DocumentComplete
+			}
+			if allComplete != tc.complete || calls == 0 {
+				t.Fatalf("changed consumption status=%+v calls=%d", report.Scopes, calls)
+			}
+		})
+	}
+}
 
 func TestV016UnavailablePredecessorCannotRunDependentPhase(t *testing.T) {
 	root := t.TempDir()

@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xcosmosbox/cairn/build/internal/annotation"
 	"github.com/xcosmosbox/cairn/build/internal/extract"
 	"github.com/xcosmosbox/cairn/build/internal/incremental"
 	"github.com/xcosmosbox/cairn/build/internal/llm"
@@ -199,7 +200,9 @@ func runV016Phase(out string, maxTokens int, requestTimeout time.Duration, concu
 		if e != nil {
 			return e
 		}
-		report, buildErr = orch.Run(ctx, filepath.Join(out, "source"), filepath.Join(out, "knowledge.db"))
+		incrementalReport, incrementalErr := orch.Run(ctx, filepath.Join(out, "source"), filepath.Join(out, "knowledge.db"))
+		report, buildErr = incrementalReport, incrementalErr
+		documents = v016CallerDocuments(documents, incrementalReport.Documents, originals)
 	} else {
 		orch, e := pipeline.NewOrchestrator(pipeline.Options{RepositoryIdentity: "cairn-v016-fixed-source-campaign-v1", Client: bounded, MaxTokens: maxTokens, MaxRetries: *v016Retries, DumpDir: filepath.Join(out, "stages")})
 		if e != nil {
@@ -241,6 +244,50 @@ func runV016Phase(out string, maxTokens int, requestTimeout time.Duration, concu
 		return fmt.Errorf("v016: persisted graph readback: %w", snapshotErr)
 	}
 	return buildErr
+}
+
+// Preserve the accepted material consumed by the next incremental build. C4
+// results precede AssignIDs (which clones them), so reproduce that same identity
+// operation rather than exporting blank members or trusting rejected candidates.
+func v016CallerDocuments(previous []*dktypes.AnnotatedDocument, results []annotation.DocumentResult, originals []extract.FrozenSource) []*dktypes.AnnotatedDocument {
+	out := append([]*dktypes.AnnotatedDocument(nil), previous...)
+	seen := map[string]bool{}
+	for _, doc := range out {
+		wire, _ := json.Marshal(doc)
+		seen[string(wire)] = true
+	}
+	for _, result := range results {
+		if result.Outcome != annotation.DocumentComplete || result.Document == nil || len(result.Document.Items) == 0 {
+			continue
+		}
+		doc := extract.AssignIDs([]*dktypes.AnnotatedDocument{result.Document})[0]
+		for i := range doc.Items {
+			// C4 spans refer to the outside-block input, not necessarily the
+			// frozen complete original. Keep a span only when it can be bound.
+			span := doc.Items[i].SourceSpan
+			if span == nil {
+				continue
+			}
+			doc.Items[i].SourceSpan = nil
+			for _, source := range originals {
+				if source.Skill != doc.Skill || source.Path != doc.FilePath || span.Quote == "" {
+					continue
+				}
+				at := strings.Index(source.Content, span.Quote)
+				if at >= 0 {
+					start := 1 + strings.Count(source.Content[:at], "\n")
+					doc.Items[i].SourceSpan = &dktypes.SourceSpan{StartLine: start, EndLine: start + strings.Count(span.Quote, "\n"), Quote: span.Quote}
+				}
+				break
+			}
+		}
+		wire, _ := json.Marshal(doc)
+		if !seen[string(wire)] {
+			seen[string(wire)] = true
+			out = append(out, doc)
+		}
+	}
+	return out
 }
 
 func copyV016File(from, to string) error {
