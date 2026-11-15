@@ -300,6 +300,13 @@ func (o *Orchestrator) RunFullRebuild(ctx context.Context, repoPath, dbPath stri
 		}
 		report.Reasons = append(report.Reasons, materialized.Reasons...)
 	}
+	retained, retainErr := retainIncompleteFullSources(ctx, repoPath, originals, report.Relations)
+	for _, path := range retained {
+		report.Reasons = append(report.Reasons, "incomplete relation original retained as pending prose: "+path)
+	}
+	if retainErr != nil {
+		err = errors.Join(err, fmt.Errorf("pipeline: retain pending originals: %w", retainErr))
+	}
 	return report, err
 }
 
